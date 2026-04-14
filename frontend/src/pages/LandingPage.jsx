@@ -131,14 +131,7 @@ export default function LandingPage() {
                   >
                     Explore Places
                     <ChevronRight className="ml-2" size={18} />
-                  </Link>
-
-                  <Link
-                    to="/places/new"
-                    className="rounded-full border border-[#94AB71] px-6 py-3 text-sm font-medium text-[#385723] transition hover:bg-[#C7D9B5]"
-                  >
-                    Create Place
-                  </Link>
+                  </Link>                 
                 </>
               ) : (
                 <>
