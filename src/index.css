@@ -1,8 +1,0 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&display=swap');
-@import "tailwindcss";
-
-html,
-body,
-#root {
-  font-family: "Nunito Sans", sans-serif;
-}
