@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -51,15 +50,13 @@ function LoginForm({ onSwitchToRegister, onClose }) {
   const [isLoading, setIsLoading] = useState(false)
   const { loginUser, isLoggedIn } = useAuth()
   const { showToast, ToastComponent } = useToast()
-  const navigate = useNavigate()
 
-  // Nếu đã đăng nhập rồi thì đóng modal và chuyển về /map
+  // Nếu đã đăng nhập rồi thì chỉ đóng modal, không chuyển trang
   useEffect(() => {
     if (isLoggedIn) {
-        onClose()
-        navigate("/map")
-       }
-    }, [isLoggedIn])
+      onClose()
+    }
+  }, [isLoggedIn, onClose])
 
   const {
     register,
@@ -77,9 +74,9 @@ function LoginForm({ onSwitchToRegister, onClose }) {
       const { user, token } = response.data
       loginUser(user, token)
       showToast(`Welcome back, ${user.name}!`, "success")
+
       setTimeout(() => {
         onClose()
-        navigate("/map")
       }, 800)
     } catch (error) {
       const msg = error.response?.data?.error || "Invalid email or password"
@@ -91,7 +88,6 @@ function LoginForm({ onSwitchToRegister, onClose }) {
 
   return (
     <>
-      {/* Header */}
       <div className="mb-5 mt-3">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#003b1f]">
           <MapPin className="h-6 w-6 text-white" />
@@ -101,10 +97,7 @@ function LoginForm({ onSwitchToRegister, onClose }) {
         </h2>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
-        {/* Email */}
         <div>
           <label className="mb-2 block text-[14px] font-semibold text-[#16351e]">
             Email address
@@ -115,13 +108,11 @@ function LoginForm({ onSwitchToRegister, onClose }) {
             className="h-[48px] w-full rounded-[12px] border border-[#8ea183] px-4 text-[15px] outline-none transition focus:border-[#355e1d]"
             {...register("email")}
           />
-          {/* Lỗi validation hiện ngay bên dưới input */}
           {errors.email && (
             <p className="mt-1 text-[12px] text-red-500">{errors.email.message}</p>
           )}
         </div>
 
-        {/* Password */}
         <div>
           <label className="mb-2 block text-[14px] font-semibold text-[#16351e]">
             Password
@@ -146,7 +137,6 @@ function LoginForm({ onSwitchToRegister, onClose }) {
           )}
         </div>
 
-        {/* Forgot password */}
         <button
           type="button"
           className="text-[14px] text-[#355e1d] underline hover:text-black"
@@ -154,17 +144,15 @@ function LoginForm({ onSwitchToRegister, onClose }) {
           Forgot password?
         </button>
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={isLoading}
-          className="h-[50px] w-full rounded-full bg-[#003b1f] text-[17px] font-semibold text-white transition hover:bg-[#002814] disabled:opacity-60 disabled:cursor-not-allowed"
+          className="h-[50px] w-full rounded-full bg-[#003b1f] text-[17px] font-semibold text-white transition hover:bg-[#002814] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Signing in..." : "Sign in"}
         </button>
       </form>
 
-      {/* Switch to register */}
       <div className="mt-6 text-center">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px flex-1 bg-[#d7ddd4]" />
@@ -203,7 +191,6 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
   const [cityOpen, setCityOpen] = useState(false)
   const { loginUser } = useAuth()
   const { showToast, ToastComponent } = useToast()
-  const navigate = useNavigate()
 
   const {
     register,
@@ -215,7 +202,6 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
     defaultValues: { name: "", email: "", password: "", city: "" },
   })
 
-  // Xử lý chọn city
   const handleCitySelect = (city) => {
     setSelectedCity(city)
     setValue("city", city, { shouldValidate: true })
@@ -234,9 +220,9 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
       const { user, token } = response.data
       loginUser(user, token)
       showToast(`Welcome to NetSuggest, ${user.name}!`, "success")
+
       setTimeout(() => {
         onClose()
-        navigate("/map")
       }, 800)
     } catch (error) {
       const msg = error.response?.data?.error || "Registration failed. Please try again."
@@ -248,7 +234,6 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
 
   return (
     <>
-      {/* Header */}
       <div className="mb-5 mt-3">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#003b1f]">
           <MapPin className="h-6 w-6 text-white" />
@@ -258,10 +243,7 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
         </h2>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
-        {/* Full Name - đổi từ First/Last thành Full Name */}
         <div>
           <label className="mb-2 block text-[14px] font-semibold text-[#16351e]">
             Full Name
@@ -277,7 +259,6 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
           )}
         </div>
 
-        {/* Email */}
         <div>
           <label className="mb-2 block text-[14px] font-semibold text-[#16351e]">
             Email address
@@ -293,7 +274,6 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
           )}
         </div>
 
-        {/* Password */}
         <div>
           <label className="mb-2 block text-[14px] font-semibold text-[#16351e]">
             Create a password
@@ -318,7 +298,6 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
           )}
         </div>
 
-        {/* City dropdown */}
         <div>
           <label className="mb-2 block text-[14px] font-semibold text-[#16351e]">
             City
@@ -327,7 +306,7 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
             <button
               type="button"
               onClick={() => setCityOpen(!cityOpen)}
-              className="h-[48px] w-full rounded-[12px] border border-[#8ea183] px-4 text-[15px] outline-none transition focus:border-[#355e1d] flex items-center justify-between bg-white"
+              className="flex h-[48px] w-full items-center justify-between rounded-[12px] border border-[#8ea183] bg-white px-4 text-[15px] outline-none transition focus:border-[#355e1d]"
             >
               <span className={selectedCity ? "text-[#001910]" : "text-gray-400"}>
                 {selectedCity || "Select your city"}
@@ -338,14 +317,13 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
               />
             </button>
 
-            {/* Dropdown list */}
             {cityOpen && (
-              <div className="absolute top-[calc(100%+4px)] left-0 right-0 z-50 rounded-[12px] border border-[#C7D9B5] bg-white shadow-lg overflow-hidden">
+              <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-[12px] border border-[#C7D9B5] bg-white shadow-lg">
                 {CITIES.map((city) => (
                   <div
                     key={city}
                     onClick={() => handleCitySelect(city)}
-                    className="px-4 py-3 text-[14px] cursor-pointer hover:bg-[#f0f5eb] transition-colors"
+                    className="cursor-pointer px-4 py-3 text-[14px] transition-colors hover:bg-[#f0f5eb]"
                     style={{ color: selectedCity === city ? "#355e1d" : "#001910" }}
                   >
                     {city}
@@ -359,17 +337,15 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
           )}
         </div>
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={isLoading}
-          className="h-[50px] w-full rounded-full bg-[#003b1f] text-[17px] font-semibold text-white transition hover:bg-[#002814] disabled:opacity-60 disabled:cursor-not-allowed"
+          className="h-[50px] w-full rounded-full bg-[#003b1f] text-[17px] font-semibold text-white transition hover:bg-[#002814] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isLoading ? "Creating account..." : "Join"}
         </button>
       </form>
 
-      {/* Switch to login */}
       <div className="mt-6 text-center">
         <div className="mb-4 flex items-center gap-3">
           <div className="h-px flex-1 bg-[#d7ddd4]" />
@@ -399,19 +375,16 @@ function RegisterForm({ onSwitchToLogin, onClose }) {
 }
 
 // ================================================
-// AUTH MODAL - Component chính
+// AUTH MODAL
 // ================================================
 function AuthModal({ authMode, setAuthMode }) {
-  // Đóng modal
   const handleClose = () => setAuthMode(null)
 
   if (!authMode) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-[520px] rounded-[22px] bg-white px-7 pt-6 pb-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-
-        {/* Nút back - chỉ hiện ở register để quay về login */}
+      <div className="relative max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-[22px] bg-white px-7 pb-5 pt-6 shadow-2xl">
         <button
           type="button"
           onClick={() =>
@@ -422,7 +395,6 @@ function AuthModal({ authMode, setAuthMode }) {
           <ArrowLeft className="h-5 w-5" />
         </button>
 
-        {/* Nút đóng modal */}
         <button
           type="button"
           onClick={handleClose}
@@ -431,7 +403,6 @@ function AuthModal({ authMode, setAuthMode }) {
           <X className="h-5 w-5" />
         </button>
 
-        {/* Render form tương ứng */}
         {authMode === "login" ? (
           <LoginForm
             onSwitchToRegister={() => setAuthMode("register")}

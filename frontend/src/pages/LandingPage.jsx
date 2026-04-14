@@ -12,6 +12,7 @@ import {
   Bookmark,
 } from "lucide-react"
 import AuthModal from "../components/landing/AuthModal"
+import { useAuth } from "../context/AuthContext"
 
 const places = [
   {
@@ -19,82 +20,107 @@ const places = [
     category: "Sight",
     comment: "Colorful waterfront area, good for a short team walk.",
     price: "$",
-    image: "https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=1200&q=80",
+    image:
+      "https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=1200&q=80",
   },
   {
     name: "Kødbyens Fiskebar",
     category: "Restaurants",
     comment: "A popular option for team dinners and small gatherings.",
     price: "$$$",
-    image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
+    image:
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
   },
   {
     name: "Generator Bar",
     category: "Bars",
     comment: "Casual place for after-work drinks.",
     price: "$$",
-    image: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&w=1200&q=80",
+    image:
+      "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&w=1200&q=80",
   },
   {
     name: "Tivoli Gardens",
     category: "Entertainment",
     comment: "A lively destination for group outings.",
     price: "$$",
-    image: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80",
+    image:
+      "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80",
   },
   {
     name: "Escape Room Copenhagen",
     category: "Team Events",
     comment: "A strong option for team bonding activities.",
     price: "$$",
-    image: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",
+    image:
+      "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",
   },
   {
     name: "Torvehallerne",
     category: "Restaurants",
     comment: "A flexible food market with many choices.",
     price: "$$",
-    image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
+    image:
+      "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
   },
 ]
 
 export default function LandingPage() {
-  // authMode: null = không hiện modal, "login" = hiện form login, "register" = hiện form register
   const [authMode, setAuthMode] = useState(null)
+  const { user, isLoggedIn, logoutUser } = useAuth()
 
   return (
     <div className='min-h-screen bg-[#94AB71] text-[#001910] [font-family:"Nunito_Sans",sans-serif]'>
-
-      {/* NAVBAR */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-white/30 backdrop-blur-md border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 h-20 flex items-center justify-between">
+      <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/20 bg-white/30 backdrop-blur-md">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#dce8c8] flex items-center justify-center">
-              <MapPin className="w-6 h-6 text-[#355e1d]" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#dce8c8]">
+              <MapPin className="h-6 w-6 text-[#355e1d]" />
             </div>
             <span className="text-2xl font-semibold text-black">NetSuggest</span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-10 text-[#355e1d] font-medium">
-            <a href="#categories" className="hover:text-black transition">Categories</a>
-            <a href="#places" className="hover:text-black transition">Places</a>
-            <a href="#map" className="hover:text-black transition">Map</a>
-            <a href="#planner" className="hover:text-black transition">Planner</a>
+          <nav className="hidden items-center gap-10 font-medium text-[#355e1d] md:flex">
+            <a href="#categories" className="transition hover:text-black">
+              Categories
+            </a>
+            <a href="#places" className="transition hover:text-black">
+              Places
+            </a>
+            <a href="#map" className="transition hover:text-black">
+              Map
+            </a>
+            <a href="#planner" className="transition hover:text-black">
+              Planner
+            </a>
           </nav>
 
-          <button
-            type="button"
-            onClick={() => setAuthMode("login")}
-            className="bg-[#355e1d] text-white px-5 py-2.5 rounded-full font-medium hover:bg-[#2d4f18] transition"
-          >
-            Sign in
-          </button>
+          {isLoggedIn ? (
+            <div className="flex items-center gap-3">
+              <span className="max-w-[180px] truncate text-sm font-semibold text-[#16351e]">
+                {user?.name}
+              </span>
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="rounded-full border border-[#355e1d] px-4 py-2 text-sm font-medium text-[#355e1d] transition hover:bg-[#355e1d] hover:text-white"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAuthMode("login")}
+              className="rounded-full bg-[#355e1d] px-5 py-2.5 font-medium text-white transition hover:bg-[#2d4f18]"
+            >
+              Sign in
+            </button>
+          )}
         </div>
       </header>
 
       <main>
-
-        {/* HERO SECTION */}
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(148,171,113,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(199,217,181,0.35),transparent_30%)]" />
           <div className="relative mx-auto max-w-7xl px-6 py-20 text-center lg:px-8 lg:py-28">
@@ -104,6 +130,7 @@ export default function LandingPage() {
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#385723]">
               Discover restaurants, bars, entertainment, and team activities near your office.
             </p>
+
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <button
                 onClick={() => setAuthMode("login")}
@@ -129,7 +156,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* CATEGORIES SECTION */}
         <section id="categories" className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-[#94AB71]">
@@ -148,7 +174,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* PLACES SECTION */}
         <section id="places" className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
@@ -169,6 +194,7 @@ export default function LandingPage() {
               <FilterChip label="Opening Hours" />
             </div>
           </div>
+
           <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {places.map((place) => (
               <PlaceCard key={place.name} {...place} />
@@ -176,7 +202,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* MAP SECTION */}
         <section id="map" className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
           <div className="mb-6">
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-[#94AB71]">
@@ -194,9 +219,7 @@ export default function LandingPage() {
             >
               <div className="px-6">
                 <MapPin className="mx-auto text-[#385723]" size={34} />
-                <p className="mt-4 text-lg font-medium text-[#001910]">
-                  Interactive Map Area
-                </p>
+                <p className="mt-4 text-lg font-medium text-[#001910]">Interactive Map Area</p>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[#385723]">
                   Sign in to explore recommended places, filters, and route optimization.
                 </p>
@@ -205,7 +228,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* PLANNER SECTION */}
         <section id="planner" className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
           <div className="grid gap-8 lg:grid-cols-2">
             <div className="rounded-[32px] border border-[#C7D9B5] bg-white p-8 shadow-sm">
@@ -216,8 +238,8 @@ export default function LandingPage() {
                 Plan outings in a simpler way
               </h3>
               <p className="mt-5 leading-8 text-[#385723]">
-                Save places, compare options, and organize a small team plan.
-                Users can build a personal itinerary and select multiple places in one flow.
+                Save places, compare options, and organize a small team plan. Users can build a
+                personal itinerary and select multiple places in one flow.
               </p>
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
                 <MiniInfoCard
@@ -264,55 +286,49 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* FOOTER */}
-      <footer className="bg-[#355e1d] text-white mt-24">
-        <div className="max-w-7xl mx-auto px-6 lg:px-10 py-16">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 pb-14 border-b border-white/10 max-w-3xl">
+      <footer className="mt-24 bg-[#355e1d] text-white">
+        <div className="mx-auto max-w-7xl px-6 py-16 lg:px-10">
+          <div className="grid max-w-3xl grid-cols-1 gap-16 border-b border-white/10 pb-14 md:grid-cols-2">
             <div>
-              <h3 className="text-xl font-semibold mb-6 text-white">About NetSuggest</h3>
+              <h3 className="mb-6 text-xl font-semibold text-white">About NetSuggest</h3>
               <ul className="space-y-4 text-white/75">
-                <li><a href="#" className="hover:text-white transition">About Us</a></li>
-                <li><a href="#" className="hover:text-white transition">Press</a></li>
-                <li><a href="#" className="hover:text-white transition">Resources and Policies</a></li>
-                <li><a href="#" className="hover:text-white transition">Careers</a></li>
-                <li><a href="#" className="hover:text-white transition">Trust & Safety</a></li>
-                <li><a href="#" className="hover:text-white transition">Contact Us</a></li>
+                <li><a href="#" className="transition hover:text-white">About Us</a></li>
+                <li><a href="#" className="transition hover:text-white">Press</a></li>
+                <li><a href="#" className="transition hover:text-white">Resources and Policies</a></li>
+                <li><a href="#" className="transition hover:text-white">Careers</a></li>
+                <li><a href="#" className="transition hover:text-white">Trust & Safety</a></li>
+                <li><a href="#" className="transition hover:text-white">Contact Us</a></li>
               </ul>
             </div>
             <div>
-              <h3 className="text-xl font-semibold mb-6 text-white">Explore</h3>
+              <h3 className="mb-6 text-xl font-semibold text-white">Explore</h3>
               <ul className="space-y-4 text-white/75">
-                <li><a href="#" className="hover:text-white transition">Write a Review</a></li>
-                <li><a href="#" className="hover:text-white transition">Add a Place</a></li>
-                <li><a href="#" className="hover:text-white transition">Join</a></li>
-                <li><a href="#" className="hover:text-white transition">Travel Stories</a></li>
+                <li><a href="#" className="transition hover:text-white">Write a Review</a></li>
+                <li><a href="#" className="transition hover:text-white">Add a Place</a></li>
+                <li><a href="#" className="transition hover:text-white">Join</a></li>
+                <li><a href="#" className="transition hover:text-white">Travel Stories</a></li>
               </ul>
             </div>
           </div>
-          <div className="mt-14 pt-8 border-t border-white/15 flex flex-col md:flex-row items-center justify-between gap-6">
+
+          <div className="mt-14 flex flex-col items-center justify-between gap-6 border-t border-white/15 pt-8 md:flex-row">
             <div>
-              <p className="text-white/70 text-sm">© 2026 NetSuggest. All rights reserved.</p>
-              <div className="flex flex-wrap gap-5 mt-3 text-sm text-white/70">
-                <a href="#" className="hover:text-white transition">Terms of Use</a>
-                <a href="#" className="hover:text-white transition">Privacy and Cookies Statement</a>
-                <a href="#" className="hover:text-white transition">Cookie consent</a>
-                <a href="#" className="hover:text-white transition">Contact us</a>
+              <p className="text-sm text-white/70">© 2026 NetSuggest. All rights reserved.</p>
+              <div className="mt-3 flex flex-wrap gap-5 text-sm text-white/70">
+                <a href="#" className="transition hover:text-white">Terms of Use</a>
+                <a href="#" className="transition hover:text-white">Privacy and Cookies Statement</a>
+                <a href="#" className="transition hover:text-white">Cookie consent</a>
+                <a href="#" className="transition hover:text-white">Contact us</a>
               </div>
             </div>
           </div>
         </div>
       </footer>
 
-      {/* AUTH MODAL - thay toàn bộ đoạn code cũ bằng 1 dòng này */}
       <AuthModal authMode={authMode} setAuthMode={setAuthMode} />
-
     </div>
   )
 }
-
-// ================================================
-// HELPER COMPONENTS (giữ nguyên của Linh)
-// ================================================
 
 function StatCard({ label, value }) {
   return (
