@@ -1,6 +1,7 @@
 import express from "express"
 import cors from "cors"
 import authRoutes from "./routes/auth.routes.js"
+import placeRoutes from "./routes/place.routes.js"
 import { errorHandler } from "./middlewares/error.middleware.js"
 
 const app = express()
@@ -20,6 +21,7 @@ app.get("/", (req, res) => {
 })
 
 app.use("/api/auth", authRoutes)
+app.use("/api/places", placeRoutes)
 
 app.use(errorHandler)
 

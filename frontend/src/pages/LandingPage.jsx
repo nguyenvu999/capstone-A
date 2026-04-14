@@ -1,4 +1,5 @@
-import React, { useState } from "react"
+import React, { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import {
   ChevronRight,
   MapPin,
@@ -13,72 +14,47 @@ import {
 } from "lucide-react"
 import AuthModal from "../components/landing/AuthModal"
 import { useAuth } from "../context/AuthContext"
-
-const places = [
-  {
-    name: "Nyhavn",
-    category: "Sight",
-    comment: "Colorful waterfront area, good for a short team walk.",
-    price: "$",
-    image:
-      "https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    name: "Kødbyens Fiskebar",
-    category: "Restaurants",
-    comment: "A popular option for team dinners and small gatherings.",
-    price: "$$$",
-    image:
-      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    name: "Generator Bar",
-    category: "Bars",
-    comment: "Casual place for after-work drinks.",
-    price: "$$",
-    image:
-      "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    name: "Tivoli Gardens",
-    category: "Entertainment",
-    comment: "A lively destination for group outings.",
-    price: "$$",
-    image:
-      "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    name: "Escape Room Copenhagen",
-    category: "Team Events",
-    comment: "A strong option for team bonding activities.",
-    price: "$$",
-    image:
-      "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",
-  },
-  {
-    name: "Torvehallerne",
-    category: "Restaurants",
-    comment: "A flexible food market with many choices.",
-    price: "$$",
-    image:
-      "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80",
-  },
-]
+import { getPlaces } from "../api/places"
 
 export default function LandingPage() {
   const [authMode, setAuthMode] = useState(null)
   const { user, isLoggedIn, logoutUser } = useAuth()
 
+  const [places, setPlaces] = useState([])
+  const [placesLoading, setPlacesLoading] = useState(false)
+  const [placesError, setPlacesError] = useState("")
+
+  useEffect(() => {
+    const fetchPlaces = async () => {
+      try {
+        setPlacesLoading(true)
+        setPlacesError("")
+        const response = await getPlaces()
+        setPlaces(response.data || [])
+      } catch (error) {
+        setPlacesError(error.response?.data?.error || "Failed to load places")
+      } finally {
+        setPlacesLoading(false)
+      }
+    }
+
+    if (isLoggedIn) {
+      fetchPlaces()
+    } else {
+      setPlaces([])
+    }
+  }, [isLoggedIn])
+
   return (
     <div className='min-h-screen bg-[#94AB71] text-[#001910] [font-family:"Nunito_Sans",sans-serif]'>
       <header className="fixed left-0 right-0 top-0 z-50 border-b border-white/20 bg-white/30 backdrop-blur-md">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-10">
-          <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#dce8c8]">
               <MapPin className="h-6 w-6 text-[#355e1d]" />
             </div>
             <span className="text-2xl font-semibold text-black">NetSuggest</span>
-          </div>
+          </Link>
 
           <nav className="hidden items-center gap-10 font-medium text-[#355e1d] md:flex">
             <a href="#categories" className="transition hover:text-black">
@@ -97,9 +73,24 @@ export default function LandingPage() {
 
           {isLoggedIn ? (
             <div className="flex items-center gap-3">
+              <Link
+                to="/places"
+                className="rounded-full border border-[#355e1d] px-4 py-2 text-sm font-medium text-[#355e1d] transition hover:bg-[#355e1d] hover:text-white"
+              >
+                My Places
+              </Link>
+
+              <Link
+                to="/places/new"
+                className="rounded-full bg-[#355e1d] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
+              >
+                Add Place
+              </Link>
+
               <span className="max-w-[180px] truncate text-sm font-semibold text-[#16351e]">
                 {user?.name}
               </span>
+
               <button
                 type="button"
                 onClick={logoutUser}
@@ -132,24 +123,49 @@ export default function LandingPage() {
             </p>
 
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <button
-                onClick={() => setAuthMode("login")}
-                className="inline-flex items-center justify-center rounded-full bg-[#385723] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#94AB71]"
-              >
-                Explore Places
-                <ChevronRight className="ml-2" size={18} />
-              </button>
-              <button
-                onClick={() => setAuthMode("register")}
-                className="rounded-full border border-[#94AB71] px-6 py-3 text-sm font-medium text-[#385723] transition hover:bg-[#C7D9B5]"
-              >
-                Create Itinerary
-              </button>
+              {isLoggedIn ? (
+                <>
+                  <Link
+                    to="/places"
+                    className="inline-flex items-center justify-center rounded-full bg-[#385723] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
+                  >
+                    Explore Places
+                    <ChevronRight className="ml-2" size={18} />
+                  </Link>
+
+                  <Link
+                    to="/places/new"
+                    className="rounded-full border border-[#94AB71] px-6 py-3 text-sm font-medium text-[#385723] transition hover:bg-[#C7D9B5]"
+                  >
+                    Create Place
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setAuthMode("login")}
+                    className="inline-flex items-center justify-center rounded-full bg-[#385723] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
+                  >
+                    Explore Places
+                    <ChevronRight className="ml-2" size={18} />
+                  </button>
+
+                  <button
+                    onClick={() => setAuthMode("register")}
+                    className="rounded-full border border-[#94AB71] px-6 py-3 text-sm font-medium text-[#385723] transition hover:bg-[#C7D9B5]"
+                  >
+                    Create Itinerary
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Categories" value="5" />
-              <StatCard label="Recommended Places" value="120+" />
+              <StatCard
+                label="Recommended Places"
+                value={isLoggedIn ? String(places.length) : "0"}
+              />
               <StatCard label="Team Event Planner" value="Built-in" />
               <StatCard label="Route Optimization" value="Available" />
             </div>
@@ -165,6 +181,7 @@ export default function LandingPage() {
               Explore places by type
             </h3>
           </div>
+
           <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-5">
             <CategoryCard icon={<MapPin size={22} />} title="Sight" />
             <CategoryCard icon={<Utensils size={22} />} title="Restaurants" />
@@ -187,6 +204,7 @@ export default function LandingPage() {
                 Browse places with category, comment, price level, and image.
               </p>
             </div>
+
             <div className="flex flex-wrap gap-3">
               <FilterChip label="Category" />
               <FilterChip label="Location" />
@@ -195,10 +213,48 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="mt-12 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {places.map((place) => (
-              <PlaceCard key={place.name} {...place} />
-            ))}
+          <div className="mt-12">
+            {!isLoggedIn ? (
+              <div className="rounded-[28px] border border-[#C7D9B5] bg-white/80 p-8 text-center shadow-sm">
+                <p className="text-lg font-medium text-[#001910]">
+                  Sign in to see places added by users.
+                </p>
+              </div>
+            ) : placesLoading ? (
+              <div className="rounded-[28px] border border-[#C7D9B5] bg-white/80 p-8 text-center shadow-sm">
+                <p className="text-[#385723]">Loading places...</p>
+              </div>
+            ) : placesError ? (
+              <div className="rounded-[28px] border border-red-200 bg-red-50 p-8 text-center shadow-sm">
+                <p className="text-red-600">{placesError}</p>
+              </div>
+            ) : places.length === 0 ? (
+              <div className="rounded-[28px] border border-[#C7D9B5] bg-white/80 p-8 text-center shadow-sm">
+                <p className="text-lg font-medium text-[#001910]">No places yet.</p>
+                <p className="mt-2 text-sm text-[#385723]">
+                  Start by adding your first recommended place.
+                </p>
+                <Link
+                  to="/places/new"
+                  className="mt-5 inline-flex rounded-full bg-[#355e1d] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
+                >
+                  Add Place
+                </Link>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {places.map((place) => (
+                  <PlaceCard
+                    key={place.id}
+                    image={place.imageUrl}
+                    name={place.name}
+                    category={place.category}
+                    comment={place.comment}
+                    price={place.priceLevel}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -211,20 +267,40 @@ export default function LandingPage() {
               View places on the map
             </h3>
           </div>
+
           <div className="overflow-hidden rounded-[32px] border border-[#C7D9B5] bg-white p-3 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setAuthMode("login")}
-              className="flex h-[420px] w-full items-center justify-center rounded-[24px] border border-dashed border-[#94AB71] bg-[#F9FAF5] text-center transition hover:bg-[#f3f6eb]"
-            >
-              <div className="px-6">
-                <MapPin className="mx-auto text-[#385723]" size={34} />
-                <p className="mt-4 text-lg font-medium text-[#001910]">Interactive Map Area</p>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[#385723]">
-                  Sign in to explore recommended places, filters, and route optimization.
-                </p>
-              </div>
-            </button>
+            {isLoggedIn ? (
+              <Link
+                to="/places"
+                className="flex h-[420px] w-full items-center justify-center rounded-[24px] border border-dashed border-[#94AB71] bg-[#F9FAF5] text-center transition hover:bg-[#f3f6eb]"
+              >
+                <div className="px-6">
+                  <MapPin className="mx-auto text-[#385723]" size={34} />
+                  <p className="mt-4 text-lg font-medium text-[#001910]">
+                    Interactive Map Area
+                  </p>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[#385723]">
+                    Continue to your places and map-related features.
+                  </p>
+                </div>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAuthMode("login")}
+                className="flex h-[420px] w-full items-center justify-center rounded-[24px] border border-dashed border-[#94AB71] bg-[#F9FAF5] text-center transition hover:bg-[#f3f6eb]"
+              >
+                <div className="px-6">
+                  <MapPin className="mx-auto text-[#385723]" size={34} />
+                  <p className="mt-4 text-lg font-medium text-[#001910]">
+                    Interactive Map Area
+                  </p>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[#385723]">
+                    Sign in to explore recommended places, filters, and route optimization.
+                  </p>
+                </div>
+              </button>
+            )}
           </div>
         </section>
 
@@ -238,9 +314,10 @@ export default function LandingPage() {
                 Plan outings in a simpler way
               </h3>
               <p className="mt-5 leading-8 text-[#385723]">
-                Save places, compare options, and organize a small team plan. Users can build a
-                personal itinerary and select multiple places in one flow.
+                Save places, compare options, and organize a small team plan.
+                Users can build a personal itinerary and select multiple places in one flow.
               </p>
+
               <div className="mt-8 grid gap-4 sm:grid-cols-2">
                 <MiniInfoCard
                   icon={<CalendarDays size={18} />}
@@ -259,6 +336,7 @@ export default function LandingPage() {
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-[#C7D9B5]">
                 Main Features
               </p>
+
               <div className="mt-6 space-y-5">
                 <FeatureRow
                   icon={<Filter size={18} />}
@@ -292,21 +370,62 @@ export default function LandingPage() {
             <div>
               <h3 className="mb-6 text-xl font-semibold text-white">About NetSuggest</h3>
               <ul className="space-y-4 text-white/75">
-                <li><a href="#" className="transition hover:text-white">About Us</a></li>
-                <li><a href="#" className="transition hover:text-white">Press</a></li>
-                <li><a href="#" className="transition hover:text-white">Resources and Policies</a></li>
-                <li><a href="#" className="transition hover:text-white">Careers</a></li>
-                <li><a href="#" className="transition hover:text-white">Trust & Safety</a></li>
-                <li><a href="#" className="transition hover:text-white">Contact Us</a></li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    About Us
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Press
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Resources and Policies
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Careers
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Trust & Safety
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Contact Us
+                  </a>
+                </li>
               </ul>
             </div>
+
             <div>
               <h3 className="mb-6 text-xl font-semibold text-white">Explore</h3>
               <ul className="space-y-4 text-white/75">
-                <li><a href="#" className="transition hover:text-white">Write a Review</a></li>
-                <li><a href="#" className="transition hover:text-white">Add a Place</a></li>
-                <li><a href="#" className="transition hover:text-white">Join</a></li>
-                <li><a href="#" className="transition hover:text-white">Travel Stories</a></li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Write a Review
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Add a Place
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Join
+                  </a>
+                </li>
+                <li>
+                  <a href="#" className="transition hover:text-white">
+                    Travel Stories
+                  </a>
+                </li>
               </ul>
             </div>
           </div>
@@ -315,10 +434,18 @@ export default function LandingPage() {
             <div>
               <p className="text-sm text-white/70">© 2026 NetSuggest. All rights reserved.</p>
               <div className="mt-3 flex flex-wrap gap-5 text-sm text-white/70">
-                <a href="#" className="transition hover:text-white">Terms of Use</a>
-                <a href="#" className="transition hover:text-white">Privacy and Cookies Statement</a>
-                <a href="#" className="transition hover:text-white">Cookie consent</a>
-                <a href="#" className="transition hover:text-white">Contact us</a>
+                <a href="#" className="transition hover:text-white">
+                  Terms of Use
+                </a>
+                <a href="#" className="transition hover:text-white">
+                  Privacy and Cookies Statement
+                </a>
+                <a href="#" className="transition hover:text-white">
+                  Cookie consent
+                </a>
+                <a href="#" className="transition hover:text-white">
+                  Contact us
+                </a>
               </div>
             </div>
           </div>
@@ -353,7 +480,14 @@ function CategoryCard({ icon, title }) {
 function PlaceCard({ image, name, category, comment, price }) {
   return (
     <div className="overflow-hidden rounded-[28px] border border-[#C7D9B5] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-      <img src={image} alt={name} className="h-52 w-full object-cover" />
+      {image ? (
+        <img src={image} alt={name} className="h-52 w-full object-cover" />
+      ) : (
+        <div className="flex h-52 items-center justify-center bg-[#edf2e5] text-[#6b7a60]">
+          No image
+        </div>
+      )}
+
       <div className="p-5">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-semibold text-[#001910]">{name}</h3>
@@ -364,9 +498,12 @@ function PlaceCard({ image, name, category, comment, price }) {
         <p className="mt-3 text-sm leading-7 text-[#385723]">{comment}</p>
         <div className="mt-4 flex items-center justify-between">
           <span className="font-medium text-[#385723]">{price}</span>
-          <button className="rounded-full bg-[#385723] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#94AB71]">
-            Save
-          </button>
+          <Link
+            to="/places"
+            className="rounded-full bg-[#385723] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#94AB71]"
+          >
+            View
+          </Link>
         </div>
       </div>
     </div>
