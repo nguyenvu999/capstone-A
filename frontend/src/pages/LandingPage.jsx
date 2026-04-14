@@ -80,12 +80,7 @@ export default function LandingPage() {
                 My Places
               </Link>
 
-              <Link
-                to="/places/new"
-                className="rounded-full bg-[#355e1d] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
-              >
-                Add Place
-              </Link>
+             
 
               <span className="max-w-[180px] truncate text-sm font-semibold text-[#16351e]">
                 {user?.name}
@@ -226,13 +221,7 @@ export default function LandingPage() {
                 <p className="text-lg font-medium text-[#001910]">No places yet.</p>
                 <p className="mt-2 text-sm text-[#385723]">
                   Start by adding your first recommended place.
-                </p>
-                <Link
-                  to="/places/new"
-                  className="mt-5 inline-flex rounded-full bg-[#355e1d] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
-                >
-                  Add Place
-                </Link>
+                </p>             
               </div>
             ) : (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">

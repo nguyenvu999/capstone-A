@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
 import { getPlaceById, updatePlace } from "../api/places"
+import { useToast } from "../components/ui/Toast"
 
 const CATEGORIES = [
   "Sight",
@@ -12,10 +13,13 @@ const CATEGORIES = [
 ]
 
 const PRICE_LEVELS = ["$", "$$", "$$$", "$$$$"]
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 export default function EditPlacePage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { showToast, ToastComponent } = useToast()
 
   const [form, setForm] = useState({
     name: "",
@@ -26,18 +30,66 @@ export default function EditPlacePage() {
     address: "",
   })
 
+  const [errors, setErrors] = useState({})
   const [image, setImage] = useState(null)
   const [preview, setPreview] = useState("")
   const [existingImage, setExistingImage] = useState("")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
+  const [submitError, setSubmitError] = useState("")
+
+  const validateField = (name, value) => {
+    switch (name) {
+      case "name":
+        if (!value.trim()) return "Place name is required"
+        if (value.trim().length < 2) return "Place name must be at least 2 characters"
+        return ""
+
+      case "category":
+        if (!value) return "Category is required"
+        return ""
+
+      case "comment":
+        if (!value.trim()) return "Comment is required"
+        if (value.trim().length < 10) return "Comment must be at least 10 characters"
+        return ""
+
+      case "priceLevel":
+        if (!value) return "Price level is required"
+        return ""
+
+      case "city":
+        if (!value.trim()) return "City is required"
+        return ""
+
+      default:
+        return ""
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors = {
+      name: validateField("name", form.name),
+      category: validateField("category", form.category),
+      comment: validateField("comment", form.comment),
+      priceLevel: validateField("priceLevel", form.priceLevel),
+      city: validateField("city", form.city),
+      image: errors.image || "",
+    }
+
+    Object.keys(newErrors).forEach((key) => {
+      if (!newErrors[key]) delete newErrors[key]
+    })
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
   useEffect(() => {
     const fetchPlace = async () => {
       try {
         setLoading(true)
-        setError("")
+        setSubmitError("")
 
         const response = await getPlaceById(id)
         const place = response.data
@@ -53,7 +105,9 @@ export default function EditPlacePage() {
 
         setExistingImage(place.imageUrl || "")
       } catch (err) {
-        setError(err.response?.data?.error || "Failed to load place")
+        const message = err.response?.data?.error || "Failed to load place"
+        setSubmitError(message)
+        showToast(message, "error")
       } finally {
         setLoading(false)
       }
@@ -64,9 +118,23 @@ export default function EditPlacePage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
+
     setForm((prev) => ({
       ...prev,
       [name]: value,
+    }))
+
+    setErrors((prev) => ({
+      ...prev,
+      [name]: validateField(name, value),
+    }))
+  }
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target
+    setErrors((prev) => ({
+      ...prev,
+      [name]: validateField(name, value),
     }))
   }
 
@@ -74,33 +142,70 @@ export default function EditPlacePage() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setErrors((prev) => ({
+        ...prev,
+        image: "Only JPG, PNG, or WEBP images are allowed",
+      }))
+      setImage(null)
+      setPreview("")
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setErrors((prev) => ({
+        ...prev,
+        image: "Image must be smaller than 5MB",
+      }))
+      setImage(null)
+      setPreview("")
+      return
+    }
+
+    setErrors((prev) => ({
+      ...prev,
+      image: "",
+    }))
+
     setImage(file)
     setPreview(URL.createObjectURL(file))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError("")
+    setSubmitError("")
+
+    const isValid = validateForm()
+    if (!isValid) {
+      showToast("Please fix the form errors before submitting.", "error")
+      return
+    }
 
     try {
       setSaving(true)
 
       const formData = new FormData()
-      formData.append("name", form.name)
+      formData.append("name", form.name.trim())
       formData.append("category", form.category)
-      formData.append("comment", form.comment)
+      formData.append("comment", form.comment.trim())
       formData.append("priceLevel", form.priceLevel)
-      formData.append("city", form.city)
-      formData.append("address", form.address)
+      formData.append("city", form.city.trim())
+      formData.append("address", form.address.trim())
 
       if (image) {
         formData.append("image", image)
       }
 
       await updatePlace(id, formData)
-      navigate("/places")
+      showToast("Place updated successfully.", "success")
+
+      setTimeout(() => {
+        navigate("/places")
+      }, 700)
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to update place")
+      const message = err.response?.data?.error || "Failed to update place"
+      setSubmitError(message)
+      showToast(message, "error")
     } finally {
       setSaving(false)
     }
@@ -123,6 +228,7 @@ export default function EditPlacePage() {
           </div>
 
           <p className="text-[#385723]">Loading place...</p>
+          {ToastComponent}
         </div>
       </div>
     )
@@ -144,13 +250,13 @@ export default function EditPlacePage() {
           <h1 className="text-3xl font-bold text-[#001910]">Edit Place</h1>
         </div>
 
-        {error && (
+        {submitError && (
           <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
+            {submitError}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
           <div>
             <label className="mb-2 block text-sm font-semibold text-[#001910]">
               Place name
@@ -159,10 +265,15 @@ export default function EditPlacePage() {
               name="name"
               value={form.name}
               onChange={handleChange}
-              className="h-12 w-full rounded-xl border px-4"
+              onBlur={handleBlur}
+              className={`h-12 w-full rounded-xl border px-4 ${
+                errors.name ? "border-red-500" : ""
+              }`}
               placeholder="Pizza 4P's"
-              required
             />
+            {errors.name && (
+              <p className="mt-2 text-sm text-red-600">{errors.name}</p>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -174,7 +285,10 @@ export default function EditPlacePage() {
                 name="category"
                 value={form.category}
                 onChange={handleChange}
-                className="h-12 w-full rounded-xl border px-4"
+                onBlur={handleBlur}
+                className={`h-12 w-full rounded-xl border px-4 ${
+                  errors.category ? "border-red-500" : ""
+                }`}
               >
                 {CATEGORIES.map((item) => (
                   <option key={item} value={item}>
@@ -182,6 +296,9 @@ export default function EditPlacePage() {
                   </option>
                 ))}
               </select>
+              {errors.category && (
+                <p className="mt-2 text-sm text-red-600">{errors.category}</p>
+              )}
             </div>
 
             <div>
@@ -192,7 +309,10 @@ export default function EditPlacePage() {
                 name="priceLevel"
                 value={form.priceLevel}
                 onChange={handleChange}
-                className="h-12 w-full rounded-xl border px-4"
+                onBlur={handleBlur}
+                className={`h-12 w-full rounded-xl border px-4 ${
+                  errors.priceLevel ? "border-red-500" : ""
+                }`}
               >
                 {PRICE_LEVELS.map((item) => (
                   <option key={item} value={item}>
@@ -200,6 +320,9 @@ export default function EditPlacePage() {
                   </option>
                 ))}
               </select>
+              {errors.priceLevel && (
+                <p className="mt-2 text-sm text-red-600">{errors.priceLevel}</p>
+              )}
             </div>
           </div>
 
@@ -211,10 +334,15 @@ export default function EditPlacePage() {
               name="city"
               value={form.city}
               onChange={handleChange}
-              className="h-12 w-full rounded-xl border px-4"
+              onBlur={handleBlur}
+              className={`h-12 w-full rounded-xl border px-4 ${
+                errors.city ? "border-red-500" : ""
+              }`}
               placeholder="Ho Chi Minh City"
-              required
             />
+            {errors.city && (
+              <p className="mt-2 text-sm text-red-600">{errors.city}</p>
+            )}
           </div>
 
           <div>
@@ -238,10 +366,15 @@ export default function EditPlacePage() {
               name="comment"
               value={form.comment}
               onChange={handleChange}
-              className="min-h-[120px] w-full rounded-xl border px-4 py-3"
+              onBlur={handleBlur}
+              className={`min-h-[120px] w-full rounded-xl border px-4 py-3 ${
+                errors.comment ? "border-red-500" : ""
+              }`}
               placeholder="Why do you recommend this place?"
-              required
             />
+            {errors.comment && (
+              <p className="mt-2 text-sm text-red-600">{errors.comment}</p>
+            )}
           </div>
 
           <div>
@@ -249,7 +382,11 @@ export default function EditPlacePage() {
               Image
             </label>
 
-            <div className="rounded-2xl border border-dashed border-[#b8c8a7] bg-[#f8fbf3] p-4">
+            <div
+              className={`rounded-2xl border border-dashed bg-[#f8fbf3] p-4 ${
+                errors.image ? "border-red-500" : "border-[#b8c8a7]"
+              }`}
+            >
               <input
                 id="edit-place-image"
                 type="file"
@@ -281,6 +418,10 @@ export default function EditPlacePage() {
               </div>
             </div>
 
+            {errors.image && (
+              <p className="mt-2 text-sm text-red-600">{errors.image}</p>
+            )}
+
             {(preview || existingImage) && (
               <div className="mt-4">
                 <p className="mb-2 text-sm text-[#385723]">
@@ -299,7 +440,7 @@ export default function EditPlacePage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-full bg-[#355e1d] px-6 py-3 font-medium text-white"
+              className="rounded-full bg-[#355e1d] px-6 py-3 font-medium text-white disabled:opacity-60"
             >
               {saving ? "Updating..." : "Update place"}
             </button>
@@ -314,6 +455,8 @@ export default function EditPlacePage() {
           </div>
         </form>
       </div>
+
+      {ToastComponent}
     </div>
   )
 }

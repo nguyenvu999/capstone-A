@@ -4,6 +4,8 @@ import ProtectedRoute from "./components/ProtectedRoute"
 import LandingPage from "./pages/LandingPage"
 import PlacesPage from "./pages/PlacesPage"
 import AddPlacePage from "./pages/AddPlacePage"
+import EditPlacePage from "./pages/EditPlacePage"
+import PlaceDetailPage from "./pages/PlaceDetailPage"
 
 function App() {
   return (
@@ -37,6 +39,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <AddPlacePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/places/:id"
+            element={
+              <ProtectedRoute>
+                <PlaceDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/places/:id/edit"
+            element={
+              <ProtectedRoute>
+                <EditPlacePage />
               </ProtectedRoute>
             }
           />

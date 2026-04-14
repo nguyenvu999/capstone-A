@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowLeft } from "lucide-react"
 import { createPlace } from "../api/places"
+import { useToast } from "../components/ui/Toast"
 
 const CATEGORIES = [
   "Sight",
@@ -12,9 +13,13 @@ const CATEGORIES = [
 ]
 
 const PRICE_LEVELS = ["$", "$$", "$$$", "$$$$"]
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 export default function AddPlacePage() {
   const navigate = useNavigate()
+  const { showToast, ToastComponent } = useToast()
+
   const [form, setForm] = useState({
     name: "",
     category: "Restaurants",
@@ -23,15 +28,79 @@ export default function AddPlacePage() {
     city: "",
     address: "",
   })
+
+  const [errors, setErrors] = useState({})
   const [image, setImage] = useState(null)
   const [preview, setPreview] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [submitError, setSubmitError] = useState("")
+
+  const validateField = (name, value) => {
+    switch (name) {
+      case "name":
+        if (!value.trim()) return "Place name is required"
+        if (value.trim().length < 2) return "Place name must be at least 2 characters"
+        return ""
+
+      case "category":
+        if (!value) return "Category is required"
+        return ""
+
+      case "comment":
+        if (!value.trim()) return "Comment is required"
+        if (value.trim().length < 10) return "Comment must be at least 10 characters"
+        return ""
+
+      case "priceLevel":
+        if (!value) return "Price level is required"
+        return ""
+
+      case "city":
+        if (!value.trim()) return "City is required"
+        return ""
+
+      default:
+        return ""
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors = {
+      name: validateField("name", form.name),
+      category: validateField("category", form.category),
+      comment: validateField("comment", form.comment),
+      priceLevel: validateField("priceLevel", form.priceLevel),
+      city: validateField("city", form.city),
+      image: errors.image || "",
+    }
+
+    Object.keys(newErrors).forEach((key) => {
+      if (!newErrors[key]) delete newErrors[key]
+    })
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
   const handleChange = (e) => {
+    const { name, value } = e.target
+
     setForm((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
+    }))
+
+    setErrors((prev) => ({
+      ...prev,
+      [name]: validateField(name, value),
+    }))
+  }
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target
+    setErrors((prev) => ({
+      ...prev,
+      [name]: validateField(name, value),
     }))
   }
 
@@ -39,33 +108,70 @@ export default function AddPlacePage() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setErrors((prev) => ({
+        ...prev,
+        image: "Only JPG, PNG, or WEBP images are allowed",
+      }))
+      setImage(null)
+      setPreview("")
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setErrors((prev) => ({
+        ...prev,
+        image: "Image must be smaller than 5MB",
+      }))
+      setImage(null)
+      setPreview("")
+      return
+    }
+
+    setErrors((prev) => ({
+      ...prev,
+      image: "",
+    }))
+
     setImage(file)
     setPreview(URL.createObjectURL(file))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError("")
+    setSubmitError("")
+
+    const isValid = validateForm()
+    if (!isValid) {
+      showToast("Please fix the form errors before submitting.", "error")
+      return
+    }
 
     try {
       setLoading(true)
 
       const formData = new FormData()
-      formData.append("name", form.name)
+      formData.append("name", form.name.trim())
       formData.append("category", form.category)
-      formData.append("comment", form.comment)
+      formData.append("comment", form.comment.trim())
       formData.append("priceLevel", form.priceLevel)
-      formData.append("city", form.city)
-      formData.append("address", form.address)
+      formData.append("city", form.city.trim())
+      formData.append("address", form.address.trim())
 
       if (image) {
         formData.append("image", image)
       }
 
       await createPlace(formData)
-      navigate("/places")
+      showToast("Place created successfully.", "success")
+
+      setTimeout(() => {
+        navigate("/places")
+      }, 700)
     } catch (err) {
-      setError(err.response?.data?.error || "Failed to create place")
+      const message = err.response?.data?.error || "Failed to create place"
+      setSubmitError(message)
+      showToast(message, "error")
     } finally {
       setLoading(false)
     }
@@ -87,13 +193,13 @@ export default function AddPlacePage() {
           <h1 className="text-3xl font-bold text-[#001910]">Add New Place</h1>
         </div>
 
-        {error && (
+        {submitError && (
           <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
+            {submitError}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
           <div>
             <label className="mb-2 block text-sm font-semibold text-[#001910]">
               Place name
@@ -102,10 +208,15 @@ export default function AddPlacePage() {
               name="name"
               value={form.name}
               onChange={handleChange}
-              className="h-12 w-full rounded-xl border px-4"
+              onBlur={handleBlur}
+              className={`h-12 w-full rounded-xl border px-4 ${
+                errors.name ? "border-red-500" : ""
+              }`}
               placeholder="Pizza 4P's"
-              required
             />
+            {errors.name && (
+              <p className="mt-2 text-sm text-red-600">{errors.name}</p>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -117,7 +228,10 @@ export default function AddPlacePage() {
                 name="category"
                 value={form.category}
                 onChange={handleChange}
-                className="h-12 w-full rounded-xl border px-4"
+                onBlur={handleBlur}
+                className={`h-12 w-full rounded-xl border px-4 ${
+                  errors.category ? "border-red-500" : ""
+                }`}
               >
                 {CATEGORIES.map((item) => (
                   <option key={item} value={item}>
@@ -125,6 +239,9 @@ export default function AddPlacePage() {
                   </option>
                 ))}
               </select>
+              {errors.category && (
+                <p className="mt-2 text-sm text-red-600">{errors.category}</p>
+              )}
             </div>
 
             <div>
@@ -135,7 +252,10 @@ export default function AddPlacePage() {
                 name="priceLevel"
                 value={form.priceLevel}
                 onChange={handleChange}
-                className="h-12 w-full rounded-xl border px-4"
+                onBlur={handleBlur}
+                className={`h-12 w-full rounded-xl border px-4 ${
+                  errors.priceLevel ? "border-red-500" : ""
+                }`}
               >
                 {PRICE_LEVELS.map((item) => (
                   <option key={item} value={item}>
@@ -143,6 +263,9 @@ export default function AddPlacePage() {
                   </option>
                 ))}
               </select>
+              {errors.priceLevel && (
+                <p className="mt-2 text-sm text-red-600">{errors.priceLevel}</p>
+              )}
             </div>
           </div>
 
@@ -154,10 +277,15 @@ export default function AddPlacePage() {
               name="city"
               value={form.city}
               onChange={handleChange}
-              className="h-12 w-full rounded-xl border px-4"
+              onBlur={handleBlur}
+              className={`h-12 w-full rounded-xl border px-4 ${
+                errors.city ? "border-red-500" : ""
+              }`}
               placeholder="Ho Chi Minh City"
-              required
             />
+            {errors.city && (
+              <p className="mt-2 text-sm text-red-600">{errors.city}</p>
+            )}
           </div>
 
           <div>
@@ -181,10 +309,15 @@ export default function AddPlacePage() {
               name="comment"
               value={form.comment}
               onChange={handleChange}
-              className="min-h-[120px] w-full rounded-xl border px-4 py-3"
+              onBlur={handleBlur}
+              className={`min-h-[120px] w-full rounded-xl border px-4 py-3 ${
+                errors.comment ? "border-red-500" : ""
+              }`}
               placeholder="Why do you recommend this place?"
-              required
             />
+            {errors.comment && (
+              <p className="mt-2 text-sm text-red-600">{errors.comment}</p>
+            )}
           </div>
 
           <div>
@@ -192,7 +325,11 @@ export default function AddPlacePage() {
               Image
             </label>
 
-            <div className="rounded-2xl border border-dashed border-[#b8c8a7] bg-[#f8fbf3] p-4">
+            <div
+              className={`rounded-2xl border border-dashed bg-[#f8fbf3] p-4 ${
+                errors.image ? "border-red-500" : "border-[#b8c8a7]"
+              }`}
+            >
               <input
                 id="place-image"
                 type="file"
@@ -224,6 +361,10 @@ export default function AddPlacePage() {
               </div>
             </div>
 
+            {errors.image && (
+              <p className="mt-2 text-sm text-red-600">{errors.image}</p>
+            )}
+
             {preview && (
               <div className="mt-4">
                 <p className="mb-2 text-sm text-[#385723]">Image preview</p>
@@ -240,7 +381,7 @@ export default function AddPlacePage() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-full bg-[#355e1d] px-6 py-3 font-medium text-white"
+              className="rounded-full bg-[#355e1d] px-6 py-3 font-medium text-white disabled:opacity-60"
             >
               {loading ? "Saving..." : "Create place"}
             </button>
@@ -255,6 +396,8 @@ export default function AddPlacePage() {
           </div>
         </form>
       </div>
+
+      {ToastComponent}
     </div>
   )
 }

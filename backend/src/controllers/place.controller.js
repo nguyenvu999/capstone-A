@@ -3,6 +3,15 @@ import Place from "../models/place.model.js"
 import { supabaseAdmin } from "../config/supabase.js"
 
 function formatPlace(place) {
+  const createdBy =
+    place.createdBy && typeof place.createdBy === "object"
+      ? {
+          id: place.createdBy._id?.toString?.() || place.createdBy.id || place.createdBy.toString(),
+          name: place.createdBy.name,
+          email: place.createdBy.email,
+        }
+      : place.createdBy?.toString?.() || place.createdBy
+
   return {
     id: place._id.toString(),
     name: place.name,
@@ -12,7 +21,7 @@ function formatPlace(place) {
     city: place.city,
     address: place.address,
     imageUrl: place.imageUrl,
-    createdBy: place.createdBy,
+    createdBy,
     createdAt: place.createdAt,
     updatedAt: place.updatedAt,
   }
@@ -89,7 +98,7 @@ export async function createPlace(req, res, next) {
 
 export async function getPlaces(req, res, next) {
   try {
-    const { category, city, priceLevel, mine } = req.query
+    const { category, city, priceLevel, mine, search } = req.query
 
     const filter = {}
 
@@ -97,6 +106,10 @@ export async function getPlaces(req, res, next) {
     if (city) filter.city = city
     if (priceLevel) filter.priceLevel = priceLevel
     if (mine === "true") filter.createdBy = req.user._id
+
+    if (search) {
+      filter.name = { $regex: search, $options: "i" }
+    }
 
     const places = await Place.find(filter)
       .sort({ createdAt: -1 })
