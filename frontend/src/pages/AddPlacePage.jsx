@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { ArrowLeft } from "lucide-react"
 import { createPlace } from "../api/places"
 
 const CATEGORIES = [
@@ -73,7 +74,18 @@ export default function AddPlacePage() {
   return (
     <div className="min-h-screen bg-[#f7f9f3] px-6 py-10">
       <div className="mx-auto max-w-2xl rounded-3xl bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-3xl font-bold text-[#001910]">Add New Place</h1>
+        <div className="mb-6 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/places")}
+            className="inline-flex items-center justify-center rounded-full border border-[#355e1d] px-4 py-2 text-sm font-medium text-[#355e1d] transition hover:bg-[#355e1d] hover:text-white"
+          >
+            <ArrowLeft size={16} className="mr-2" />
+            Back
+          </button>
+
+          <h1 className="text-3xl font-bold text-[#001910]">Add New Place</h1>
+        </div>
 
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
