@@ -1,0 +1,36 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres.xomvatjznjjqplifhkej}
+    password: ${SPRING_DATASOURCE_PASSWORD:Tg9ABbc1yP8nh5DT}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        format_sql: true
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:your_super_secret_key_change_this_to_a_long_random_string_123456789}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+supabase:
+  url: ${SUPABASE_URL:https://xomvatjznjjqplifhkej.supabase.co}
+  service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvbXZhdGp6bmpqcXBsaWZoa2VqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjE3ODcyMCwiZXhwIjoyMDkxNzU0NzIwfQ.wHZL2aEU55p-gyZybJQ3a-640muTSGoMO_39ISpKUbk}
+  bucket: ${SUPABASE_BUCKET:place-images}
+
+logging:
+  level:
+    org.springframework.security: INFO
