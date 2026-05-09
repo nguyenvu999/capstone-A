@@ -35,7 +35,13 @@ function Toast({ message, type = "success", onClose }) {
       <span style={{ flex: 1 }}>{message}</span>
       <button
         onClick={onClose}
-        style={{ background: "none", border: "none", cursor: "pointer", color: "white", display: "flex" }}
+        style={{
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: "white",
+          display: "flex",
+        }}
       >
         <X size={16} />
       </button>
@@ -46,8 +52,13 @@ function Toast({ message, type = "success", onClose }) {
 export function useToast() {
   const [toast, setToast] = useState(null)
 
-  const showToast = (message, type = "success") => setToast({ message, type })
-  const hideToast = () => setToast(null)
+  const showToast = (message, type = "success") => {
+    setToast({ message, type })
+  }
+
+  const hideToast = () => {
+    setToast(null)
+  }
 
   const ToastComponent = toast ? (
     <Toast message={toast.message} type={toast.type} onClose={hideToast} />

@@ -1,65 +1,34 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
-import { AuthProvider } from "./context/AuthContext"
-import ProtectedRoute from "./components/ProtectedRoute"
-import LandingPage from "./pages/LandingPage"
-import PlacesPage from "./pages/PlacesPage"
-import AddPlacePage from "./pages/AddPlacePage"
-import EditPlacePage from "./pages/EditPlacePage"
-import PlaceDetailPage from "./pages/PlaceDetailPage"
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
+import { AuthProvider } from "./features/auth/context/AuthContext"
+import ProtectedRoute from "./features/auth/components/ProtectedRoute"
+import LoginPage from "./features/auth/pages/LoginPage"
+import AuthCallbackPage from "./features/auth/pages/AuthCallbackPage"
+import MapPage from "./features/map/pages/MapPage"
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          {/* Root route: luôn đưa về login */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
 
+          {/* PUBLIC ROUTES */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+          {/* PROTECTED ROUTES */}
           <Route
             path="/map"
             element={
               <ProtectedRoute>
-                <div style={{ padding: "32px" }}>
-                  <h1>Map Page - Coming Soon</h1>
-                </div>
+                <MapPage />
               </ProtectedRoute>
             }
           />
 
-          <Route
-            path="/places"
-            element={
-              <ProtectedRoute>
-                <PlacesPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/places/new"
-            element={
-              <ProtectedRoute>
-                <AddPlacePage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/places/:id"
-            element={
-              <ProtectedRoute>
-                <PlaceDetailPage />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/places/:id/edit"
-            element={
-              <ProtectedRoute>
-                <EditPlacePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
