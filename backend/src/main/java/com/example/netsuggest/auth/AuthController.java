@@ -1,48 +1,61 @@
 package com.example.netsuggest.auth;
 
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+import java.util.UUID;
+
+@RestController
 public class AuthController {
 
-    // 1. Sau khi MS thành công, lưu Cookie và nhảy về trang trung gian của React
     @GetMapping("/login/success")
-    public String loginSuccess(OAuth2AuthenticationToken authentication, HttpServletResponse response) {
+    public void loginSuccess(OAuth2AuthenticationToken authentication, HttpServletResponse response) throws Exception {
         if (authentication != null) {
-            String token = "dummy-session-token"; // Hoặc lấy từ authentication.getPrincipal()
-            Cookie cookie = new Cookie("access_token", token);
+            // 1. Tạo UUID ngẫu nhiên để Token cũ không bao giờ dùng lại được
+            String newToken = UUID.randomUUID().toString();
+
+            // 2. Thiết lập Cookie 6 tiếng (21600s)
+            Cookie cookie = new Cookie("access_token", newToken);
             cookie.setHttpOnly(true);
             cookie.setPath("/");
-            cookie.setMaxAge(3600);
+            cookie.setMaxAge(6 * 3600);
             response.addCookie(cookie);
         }
-        // Redirect về trang callback của React để xử lý nốt logic UI
-        return "redirect:http://localhost:5173/auth/callback";
+        response.sendRedirect("http://localhost:5173/auth/callback");
     }
 
-    // 2. Endpoint để React lấy thông tin user (getMe)
     @GetMapping("/auth/me")
-    @ResponseBody
     public ResponseEntity<?> getMe(OAuth2AuthenticationToken authentication) {
         if (authentication == null) return ResponseEntity.status(401).build();
         return ResponseEntity.ok(authentication.getPrincipal().getAttributes());
     }
 
-    // 3. Logout xóa Cookie
     @PostMapping("/auth/logout")
-    @ResponseBody
-    public ResponseEntity<?> logout(HttpServletResponse response) {
-        Cookie cookie = new Cookie("access_token", null);
-        cookie.setMaxAge(0);
-        cookie.setPath("/");
-        response.addCookie(cookie);
+    public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
+        // Xóa Cookies phía Client
+        clearCookie(response, "access_token");
+        clearCookie(response, "JSESSIONID");
+
+        // Vô hiệu hóa Session trên Server ngay lập tức
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        SecurityContextHolder.clearContext();
+
         return ResponseEntity.ok().build();
+    }
+
+    private void clearCookie(HttpServletResponse response, String name) {
+        Cookie cookie = new Cookie(name, null);
+        cookie.setPath("/");
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
     }
 }
