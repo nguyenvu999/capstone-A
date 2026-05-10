@@ -8,6 +8,8 @@ export const logout = () => api.post("/auth/logout");
 
 // Khởi động luồng Microsoft SSO
 export const getMicrosoftSSOStartUrl = () => {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
+  // Thay đổi: Ưu tiên lấy URL từ biến môi trường của Render, 
+  // nếu không có mới dùng localhost (dành cho dev)
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || "https://capstone-a-backend.onrender.com/api";
   return `${baseUrl}/oauth2/authorization/microsoft`;
 };
