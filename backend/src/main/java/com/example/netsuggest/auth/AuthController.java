@@ -57,7 +57,7 @@ public class AuthController {
         }
         
         // Redirect về trang callback của React Frontend
-        response.sendRedirect("http://localhost:5173/auth/callback");
+        response.sendRedirect("http://localhost/auth/callback");
     }
 
     /**

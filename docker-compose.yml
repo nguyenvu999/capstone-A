@@ -1,12 +1,27 @@
 version: '3.8'
 
 services:
-  backend:
-    build: ./backend
-    container_name: netsuggest-backend
+  # --- SERVER ĐIỀU PHỐI (NGINX) ---
+  nginx-lb:
+    image: nginx:latest
+    container_name: netsuggest-nginx
     ports:
-      - "8080:8080"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend-1
+      - backend-2
+    networks:
+      - netsuggest-net
+
+  # --- SERVER CHÍNH (BACKEND 1) ---
+  backend-1:
+    build: ./backend
+    container_name: netsuggest-backend-1
     environment:
+      - SERVER_ID=backend-1
       - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
       - SPRING_DATASOURCE_USERNAME=postgres.xomvatjznjjqplifhkej
       - SPRING_DATASOURCE_PASSWORD=Tg9ABbc1yP8nh5DT
@@ -16,15 +31,18 @@ services:
     networks:
       - netsuggest-net
 
-  frontend:
-    build: ./frontend
-    container_name: netsuggest-frontend
-    ports:
-      - "5173:80" # Maps port 80 in container to 5173 on your machine
+  # --- SERVER DỰ PHÒNG (BACKEND 2) ---
+  backend-2:
+    build: ./backend
+    container_name: netsuggest-backend-2
     environment:
-      - VITE_API_BASE_URL=http://localhost:8080/api
-    depends_on:
-      - backend
+      - SERVER_ID=backend-2
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+      - SPRING_DATASOURCE_USERNAME=postgres.xomvatjznjjqplifhkej
+      - SPRING_DATASOURCE_PASSWORD=Tg9ABbc1yP8nh5DT
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_ID=0cf7e364-6c7f-4527-b8c0-7f26527eb843
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_SECRET=wQI8Q~nXX.f_Zn~vDhHs1Rkqjcq.IxOluH~m.c9g
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_SCOPE=openid, profile, email
     networks:
       - netsuggest-net
 
