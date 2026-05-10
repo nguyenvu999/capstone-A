@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   backend:
     build: ./backend
@@ -9,12 +10,24 @@ services:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
       - SPRING_DATASOURCE_USERNAME=postgres.xomvatjznjjqplifhkej
       - SPRING_DATASOURCE_PASSWORD=Tg9ABbc1yP8nh5DT
-      # Các biến OAuth2 Microsoft giữ nguyên trong application.properties hoặc ghi đè tại đây
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_ID=0cf7e364-6c7f-4527-b8c0-7f26527eb843
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_SECRET=wQI8Q~nXX.f_Zn~vDhHs1Rkqjcq.IxOluH~m.c9g
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_SCOPE=openid, profile, email
+    networks:
+      - netsuggest-net
 
   frontend:
     build: ./frontend
     container_name: netsuggest-frontend
     ports:
-      - "80:80"
+      - "5173:80" # Maps port 80 in container to 5173 on your machine
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8080/api
     depends_on:
       - backend
+    networks:
+      - netsuggest-net
+
+networks:
+  netsuggest-net:
+    driver: bridge
