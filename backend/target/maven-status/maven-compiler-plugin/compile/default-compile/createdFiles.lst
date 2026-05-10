@@ -1,4 +1,6 @@
 com\example\netsuggest\auth\AuthController.class
 com\example\netsuggest\NetsuggestApplication.class
+com\example\netsuggest\auth\repository\UserRepository.class
+com\example\netsuggest\auth\entity\User.class
 com\example\netsuggest\config\WebConfig.class
 com\example\netsuggest\auth\SecurityConfig.class

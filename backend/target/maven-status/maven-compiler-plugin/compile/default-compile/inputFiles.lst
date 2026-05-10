@@ -1,4 +1,6 @@
 C:\Users\Admin\Documents\GitHub\capstone-A\backend\src\main\java\com\example\netsuggest\auth\AuthController.java
+C:\Users\Admin\Documents\GitHub\capstone-A\backend\src\main\java\com\example\netsuggest\auth\entity\User.java
+C:\Users\Admin\Documents\GitHub\capstone-A\backend\src\main\java\com\example\netsuggest\auth\repository\UserRepository.java
 C:\Users\Admin\Documents\GitHub\capstone-A\backend\src\main\java\com\example\netsuggest\auth\SecurityConfig.java
 C:\Users\Admin\Documents\GitHub\capstone-A\backend\src\main\java\com\example\netsuggest\config\WebConfig.java
 C:\Users\Admin\Documents\GitHub\capstone-A\backend\src\main\java\com\example\netsuggest\NetsuggestApplication.java

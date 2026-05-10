@@ -22,9 +22,8 @@ public class SecurityConfig {
             )
             .logout(logout -> logout
                 .logoutUrl("/auth/logout")
-                .deleteCookies("access_token", "JSESSIONID")
                 .invalidateHttpSession(true)
-                .clearAuthentication(true)
+                .deleteCookies("access_token", "JSESSIONID")
                 .logoutSuccessHandler((req, res, auth) -> res.setStatus(HttpServletResponse.SC_OK))
             );
         return http.build();
