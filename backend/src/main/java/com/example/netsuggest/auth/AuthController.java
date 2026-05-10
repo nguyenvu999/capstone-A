@@ -33,20 +33,16 @@ public class AuthController {
             user.setLastLogin(LocalDateTime.now());
             userRepository.save(user);
 
-            // Tạo token phiên làm việc
             String sessionToken = UUID.randomUUID().toString();
             Cookie cookie = new Cookie("access_token", sessionToken);
             cookie.setHttpOnly(true);
             cookie.setPath("/");
             cookie.setMaxAge(6 * 3600);
-            
-            // Cấu hình cho Render (HTTPS + Cross-site)
             cookie.setSecure(true); 
             cookie.setAttribute("SameSite", "None"); 
-            
             response.addCookie(cookie);
         }
-        // Redirect về Frontend
+        // Redirect về link Frontend Render
         response.sendRedirect("https://frontend-capstone-p0a6.onrender.com/auth/callback");
     }
 
