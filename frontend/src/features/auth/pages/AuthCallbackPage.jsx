@@ -1,36 +1,37 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { getMe } from "../api/authApi";
 import { useAuth } from "../context/AuthContext";
-import PageLoader from "../../../shared/ui/PageLoader";
+import { getMe } from "../api/authApi";
 
-function AuthCallbackPage() {
+export default function AuthCallback() {
   const navigate = useNavigate();
-  const { finishLogin } = useAuth();
-  const hasCalled = useRef(false);
+  const { finishLogin, setLoading } = useAuth();
 
   useEffect(() => {
-    if (hasCalled.current) return;
-    hasCalled.current = true;
-
-    const finalize = async () => {
+    const initAuth = async () => {
+      setLoading(true);
       try {
-        // Lúc này mới gọi Backend để lấy thông tin từ Cookie đã set
-        const response = await getMe();
-        if (response.data) {
-          finishLogin(response.data);
+        // Lúc này request này sẽ mang theo Cookie access_token
+        const res = await getMe(); 
+        if (res.data) {
+          finishLogin(res.data);
+          // Chuyển hướng ngay lập tức
           navigate("/map", { replace: true });
         }
-      } catch (error) {
-        console.error("Auth failed");
-        navigate("/login", { replace: true });
+      } catch (err) {
+        console.error("Lỗi callback:", err);
+        navigate("/login");
+      } finally {
+        setLoading(false);
       }
     };
+    initAuth();
+  }, []);
 
-    finalize();
-  }, [navigate, finishLogin]);
-
-  return <PageLoader text="Verifying your Microsoft account..." />;
+  return (
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h2>Đang xác thực thông tin...</h2>
+      <p>Vui lòng đợi trong giây lát.</p>
+    </div>
+  );
 }
-
-export default AuthCallbackPage;

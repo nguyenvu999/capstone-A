@@ -1,4 +1,4 @@
-package com.example.netsuggest.auth;
+package com.example.netsuggest.config;
 
 import com.example.netsuggest.auth.entity.User;
 import com.example.netsuggest.auth.repository.UserRepository;
