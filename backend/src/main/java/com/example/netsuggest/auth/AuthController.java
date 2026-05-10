@@ -53,8 +53,8 @@ public class AuthController {
             response.addCookie(cookie);
         }
         
-        // THAY ĐỔI: Redirect về URL thật của Frontend trên Render
-        response.sendRedirect("https://capstone-a-frontend.onrender.com/auth/callback");
+       
+        response.sendRedirect("https://frontend-capstone-p0a6.onrender.com/auth/callback");
     }
 
     @GetMapping("/auth/me")
