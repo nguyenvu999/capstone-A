@@ -82,6 +82,12 @@ function MapNavbar({ onRegisterPlaceClick }) {
                   <button className="block w-full px-4 py-2.5 text-left text-sm text-[#001910] hover:bg-[#F0F5ED]">
                     Map
                   </button>
+                  <button className="block w-full px-4 py-2.5 text-left text-sm text-[#64748B] hover:bg-[#F0F5ED]">
+                    My Places (coming soon)
+                  </button>
+                  <button className="block w-full px-4 py-2.5 text-left text-sm text-[#64748B] hover:bg-[#F0F5ED]">
+                    Itineraries (coming soon)
+                  </button>
                 </div>
                 <div className="border-t border-[#D4E5C4]" />
                 <button
