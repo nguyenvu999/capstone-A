@@ -5,43 +5,49 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const clearAuth = useCallback(() => {
-    setUser(null);
-    setLoading(false);
+  // 1. Khôi phục session khi F5 hoặc mở tab mới
+  useEffect(() => {
+    async function initializeAuth() {
+      try {
+        const userData = await getMe();
+        // Nếu getMe trả về dữ liệu trực tiếp, dùng userData. Nếu bọc trong .data thì dùng userData.data
+        const actualData = userData?.data || userData;
+        if (actualData) setUser(actualData);
+      } catch (error) {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+    initializeAuth();
   }, []);
 
-  useEffect(() => {
-    const handleUnauthorized = () => clearAuth();
-    window.addEventListener("auth:unauthorized", handleUnauthorized);
-    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
-  }, [clearAuth]);
-
+  // 2. Hàm nạp dữ liệu tức thì sau khi Login thành công
   const finishLogin = useCallback((userData) => {
-    setUser(userData);
-    
-    // Auto-logout sau 6 tiếng ở phía Client
-    const SIX_HOURS = 6 * 60 * 60 * 1000;
-    const timer = setTimeout(() => {
-      logoutUser();
-      alert("Phiên đăng nhập 6 tiếng đã hết hạn!");
-    }, SIX_HOURS);
-
-    return () => clearTimeout(timer);
+    const actualData = userData?.data || userData;
+    if (actualData) {
+      setUser(actualData);
+      setLoading(false);
+    }
   }, []);
 
   const logoutUser = useCallback(async () => {
     try {
       await logout();
     } finally {
-      clearAuth();
+      setUser(null);
       window.location.replace("/login");
     }
-  }, [clearAuth]);
+  }, []);
 
   const value = useMemo(() => ({
-    user, loading, setLoading, finishLogin, logoutUser, isAuthenticated: !!user
+    user, 
+    loading, 
+    finishLogin, 
+    logoutUser, 
+    isAuthenticated: !!user
   }), [user, loading, finishLogin, logoutUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

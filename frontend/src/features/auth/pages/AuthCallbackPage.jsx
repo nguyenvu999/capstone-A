@@ -15,14 +15,19 @@ function AuthCallbackPage() {
 
     const finalize = async () => {
       try {
-        // Lúc này mới gọi Backend để lấy thông tin từ Cookie đã set
         const response = await getMe();
-        if (response.data) {
-          finishLogin(response.data);
+        // Lấy data và nạp vào Context ngay lập tức
+        const userData = response?.data || response;
+        
+        if (userData) {
+          finishLogin(userData);
+          // Điều hướng thay thế trang callback trong lịch sử bằng trang map
           navigate("/map", { replace: true });
+        } else {
+          navigate("/login", { replace: true });
         }
       } catch (error) {
-        console.error("Auth failed");
+        console.error("Auth callback failed:", error);
         navigate("/login", { replace: true });
       }
     };
@@ -30,7 +35,7 @@ function AuthCallbackPage() {
     finalize();
   }, [navigate, finishLogin]);
 
-  return <PageLoader text="Verifying your Microsoft account..." />;
+  return <PageLoader text="Finishing your secure login..." />;
 }
 
 export default AuthCallbackPage;
