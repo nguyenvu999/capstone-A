@@ -54,10 +54,11 @@ public class AuthController {
             cookie.setMaxAge(6 * 3600); // 21,600 giây = 6 tiếng
             // cookie.setSecure(true); // Kích hoạt nếu dùng HTTPS
             response.addCookie(cookie);
+            response.setHeader("Set-Cookie", "access_token=" + sessionToken + "; Path=/; Max-Age=21600; HttpOnly; Secure; SameSite=None");
         }
         
-        // Redirect về trang callback của React Frontend
-        response.sendRedirect("http://localhost/auth/callback");
+        String frontendUrl = System.getenv("capstone-a.vercel.app"); // Ví dụ: https://capstone-a.vercel.app
+        response.sendRedirect(frontendUrl + "/auth/callback");
     }
 
     /**
