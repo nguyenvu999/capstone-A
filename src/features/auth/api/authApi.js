@@ -13,6 +13,6 @@ export const getMicrosoftSSOStartUrl = () => {
   const startUrl = import.meta.env.VITE_MICROSOFT_AUTH_START_URL;
   if (startUrl) return startUrl;
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost/api";
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ;
   return `${baseUrl}/oauth2/authorization/microsoft`;
 };
