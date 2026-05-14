@@ -13,6 +13,6 @@ export const getMicrosoftSSOStartUrl = () => {
   const startUrl = import.meta.env.VITE_MICROSOFT_AUTH_START_URL;
   if (startUrl) return startUrl;
 
-  const baseUrl = import.meta.env.VITE_API_BASE_URL ;
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || "https://backend-capstone-4f1a.onrender.com/api";
   return `${baseUrl}/oauth2/authorization/microsoft`;
 };
