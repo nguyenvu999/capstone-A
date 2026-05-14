@@ -57,8 +57,7 @@ public class AuthController {
             response.setHeader("Set-Cookie", "access_token=" + sessionToken + "; Path=/; Max-Age=21600; HttpOnly; Secure; SameSite=None");
         }
         
-        String frontendUrl = System.getenv("capstone-a.vercel.app"); // Ví dụ: https://capstone-a.vercel.app
-        response.sendRedirect(frontendUrl + "/auth/callback");
+       response.sendRedirect("https://capstone-a.vercel.app/auth/callback");
     }
 
     /**
