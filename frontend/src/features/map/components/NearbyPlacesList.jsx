@@ -1,7 +1,10 @@
+// NearbyPlacesList.jsx
+// Hiển thị danh sách places gần user (trong vòng 5km)
+
 import { MapPin } from "lucide-react"
 import NearbyPlaceCard from "./NearbyPlaceCard"
 
-function NearbyPlacesList({ places }) {
+function NearbyPlacesList({ places, isLoading }) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-white">
       {/* Header */}
@@ -11,12 +14,20 @@ function NearbyPlacesList({ places }) {
 
       {/* Place cards - scrollable list view only */}
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {places.length === 0 ? (
+        {isLoading ? (
+          // Loading state
+          <div className="py-8 text-center">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-[#D4E5C4] border-t-[#355e1d]"></div>
+            <p className="mt-3 text-sm text-[#64748B]">Loading places...</p>
+          </div>
+        ) : places.length === 0 ? (
+          // Empty state
           <div className="py-8 text-center">
             <MapPin size={24} className="mx-auto text-[#8ea183]" />
             <p className="mt-2 text-sm text-[#64748B]">No nearby places found</p>
           </div>
         ) : (
+          // Places list
           places.map((place) => (
             <NearbyPlaceCard key={place.id} place={place} />
           ))

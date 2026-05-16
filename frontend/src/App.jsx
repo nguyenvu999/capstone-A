@@ -4,6 +4,7 @@ import ProtectedRoute from "./features/auth/components/ProtectedRoute"
 import LoginPage from "./features/auth/pages/LoginPage"
 import AuthCallbackPage from "./features/auth/pages/AuthCallbackPage"
 import MapPage from "./features/map/pages/MapPage"
+import PlaceDetailPage from "./features/place/pages/PlaceDetailPage"
 
 function App() {
   return (
@@ -23,6 +24,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <MapPage />
+              </ProtectedRoute>
+            }
+          />
+
+           <Route
+            path="/place/:id"
+            element={
+              <ProtectedRoute>
+                <PlaceDetailPage />
               </ProtectedRoute>
             }
           />

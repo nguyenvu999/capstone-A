@@ -1,396 +1,366 @@
+// RegisterPlaceDrawer.jsx
+// Drawer để user đăng ký place mới
+// Flow: Hiển thị warning về auto-fill → scroll xuống → form Add Place Manually
+
 import { useState } from "react"
-import { Search, X, MapPin, AlertCircle, Plus } from "lucide-react"
+import { X, MapPin, AlertCircle, Check, Utensils, Wine, Eye, Gamepad2, Users } from "lucide-react"
+import { CATEGORY_DEFINITIONS, PRICE_LEVELS } from "../constants/mapConstants"
+import { createPlace, uploadPlaceImages } from "../api/placesApi"
+import { isDuplicateError, getExistingPlaceFromError } from "../utils/duplicateDetection"
+import DuplicatePlaceModal from "./DuplicatePlaceModal"
+import ImageUpload from "./ImageUpload"
 
-// Mock Google search results
-const mockGoogleResults = [
-  {
-    id: "g1",
-    name: "Pho King Good",
-    address: "123 Nguyen Hue, District 1, HCMC",
-    rating: 4.6,
-    reviewCount: 234,
-  },
-  {
-    id: "g2",
-    name: "Hanoi Rocks Bar",
-    address: "45 Le Loi, District 1, HCMC",
-    rating: 4.3,
-    reviewCount: 156,
-  },
-  {
-    id: "g3",
-    name: "Ben Thanh Market",
-    address: "78 Le Loi, District 1, HCMC",
-    rating: 4.4,
-    reviewCount: 892,
-  },
-]
 
-function RegisterPlaceDrawer({ isOpen, onClose }) {
-  const [step, setStep] = useState("search") // search | found | manual
-  const [searchQuery, setSearchQuery] = useState("")
-  const [searchResults, setSearchResults] = useState([])
-  const [selectedResult, setSelectedResult] = useState(null)
-  const [hasSearched, setHasSearched] = useState(false)
+// Map icon names sang components
+const iconMap = {
+  Utensils,
+  Wine,
+  Eye,
+  Gamepad2,
+  Users,
+}
 
-  const handleSearch = (query) => {
-    setSearchQuery(query)
-    if (query.trim()) {
-      const filtered = mockGoogleResults.filter((r) =>
-        r.name.toLowerCase().includes(query.toLowerCase())
-      )
-      setSearchResults(filtered)
-      setHasSearched(true)
-    } else {
-      setSearchResults([])
-      setHasSearched(false)
-    }
-  }
-
-  const handleSelectResult = (result) => {
-    setSelectedResult(result)
-    setStep("found")
-  }
-
-  const handleNotFound = () => {
-    setStep("manual")
-    setSelectedResult(null)
-  }
-
-  const handleSubmitPlace = () => {
-    console.log("Submitting place:", selectedResult)
-    onClose()
-  }
-
-  const handleClose = () => {
-    setStep("search")
-    setSearchQuery("")
-    setSearchResults([])
-    setSelectedResult(null)
-    setHasSearched(false)
-    onClose()
-  }
+function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
+  // Form state
+  const [placeName, setPlaceName] = useState("")
+  const [address, setAddress] = useState("")
+  const [city, setCity] = useState("Ho Chi Minh City")
+  const [description, setDescription] = useState("")
+  const [selectedCategories, setSelectedCategories] = useState([])
+  const [selectedPrice, setSelectedPrice] = useState("$$")
+  const [openingHours, setOpeningHours] = useState("")
+  const [images, setImages] = useState([])
+  
+  // Location state
+  const [locationMode, setLocationMode] = useState("address") // "address" | "map"
+  const [latitude, setLatitude] = useState(10.7769)
+  const [longitude, setLongitude] = useState(106.7009)
+  
+  // UI state
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errors, setErrors] = useState({})
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  const [duplicatePlace, setDuplicatePlace] = useState(null)
 
   if (!isOpen) return null
 
+  // Toggle category selection (multi-select)
+  const toggleCategory = (categoryId) => {
+    setSelectedCategories((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
+    )
+  }
+
+  // Validate form
+  const validateForm = () => {
+    const newErrors = {}
+    
+    if (!placeName.trim()) {
+      newErrors.placeName = "Place name is required"
+    }
+    
+    if (!address.trim()) {
+      newErrors.address = "Address is required"
+    }
+    
+    if (selectedCategories.length === 0) {
+      newErrors.categories = "Please select at least one category"
+    }
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
+  // Handle form submit
+  const handleSubmit = async () => {
+    if (!validateForm()) return
+    
+    setIsSubmitting(true)
+    
+    try {
+      // Map price level string to number
+      const priceLevelMap = { "$": 1, "$$": 2, "$$$": 3, "$$$$": 4 }
+      
+      // Prepare place data
+      const placeData = {
+        name: placeName.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        latitude,
+        longitude,
+        price_level: priceLevelMap[selectedPrice],
+        description: description.trim() || null,
+        category_ids: selectedCategories, // Backend sẽ map string IDs sang numeric IDs
+        business_status: "open",
+      }
+      
+      // Call API để tạo place
+      const response = await createPlace(placeData)
+      const createdPlace = response.data
+      
+      // Nếu có ảnh, upload riêng
+      if (images.length > 0) {
+        await uploadPlaceImages(createdPlace.id, images)
+      }
+      
+      // Success — đóng drawer và trigger refresh map
+      if (onPlaceAdded) {
+        onPlaceAdded(createdPlace)
+      }
+      handleClose()
+      
+    } catch (error) {
+      // Check nếu là duplicate error
+      if (isDuplicateError(error)) {
+        const existingPlace = getExistingPlaceFromError(error)
+        setDuplicatePlace(existingPlace)
+        setShowDuplicateModal(true)
+      } else {
+        // Other errors
+        console.error('Failed to create place:', error)
+        setErrors({ submit: 'Failed to create place. Please try again.' })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Reset form và đóng drawer
+  const handleClose = () => {
+    setPlaceName("")
+    setAddress("")
+    setCity("Ho Chi Minh City")
+    setDescription("")
+    setSelectedCategories([])
+    setSelectedPrice("$$")
+    setOpeningHours("")
+    setImages([])
+    setLocationMode("address")
+    setLatitude(10.7769)
+    setLongitude(106.7009)
+    setErrors({})
+    onClose()
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-[#D4E5C4] bg-white p-4">
-          <h2 className="text-lg font-bold text-[#001910]">Register Place</h2>
-          <button
-            onClick={handleClose}
-            className="rounded-md p-1 transition hover:bg-[#F0F5ED]"
-          >
-            <X size={20} />
-          </button>
-        </div>
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+        <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          {/* Header */}
+          <div className="flex shrink-0 items-center justify-between border-b border-[#D4E5C4] bg-white p-4">
+            <h2 className="text-lg font-bold text-[#001910]">Register Place</h2>
+            <button
+              onClick={handleClose}
+              className="rounded-md p-1 transition hover:bg-[#F0F5ED]"
+            >
+              <X size={20} />
+            </button>
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* STEP: Search */}
-          {step === "search" && (
-            <div className="space-y-4">
-              <p className="text-sm text-[#64748B]">
-                Search for an existing place from Google Maps. If not found, you can add it manually.
-              </p>
-
-              {/* Search input */}
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
-                  size={18}
-                />
-                <input
-                  type="text"
-                  placeholder="Search restaurant, bar, sight..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="h-[44px] w-full rounded-xl border border-[#D4E5C4] bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#355e1d]"
-                />
-              </div>
-
-              {/* Search results */}
-              {hasSearched && searchResults.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase text-[#64748B]">
-                    Found Places
-                  </p>
-                  {searchResults.map((result) => (
-                    <button
-                      key={result.id}
-                      onClick={() => handleSelectResult(result)}
-                      className="w-full rounded-lg border border-[#D4E5C4] p-3 text-left transition hover:border-[#355e1d] hover:bg-[#355e1d]/5"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-[#001910]">
-                            {result.name}
-                          </h4>
-                          <p className="mt-1 flex items-center gap-1 text-sm text-[#64748B]">
-                            <MapPin size={14} />
-                            {result.address}
-                          </p>
-                          {result.rating && (
-                            <p className="mt-1 text-xs text-[#64748B]">
-                              ⭐ {result.rating} ({result.reviewCount} reviews)
-                            </p>
-                          )}
-                        </div>
-                        <Plus
-                          size={18}
-                          className="ml-2 mt-1 shrink-0 text-[#355e1d]"
-                        />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* No results */}
-              {hasSearched && searchResults.length === 0 && (
-                <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                  <AlertCircle
-                    size={18}
-                    className="mt-0.5 shrink-0 text-amber-600"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-amber-900">
-                      Place not found
-                    </p>
-                    <p className="mt-1 text-sm text-amber-800">
-                      We couldn't find this place in Google Maps.
-                    </p>
-                    <button
-                      onClick={handleNotFound}
-                      className="mt-2 text-sm font-medium text-amber-600 underline hover:text-amber-700"
-                    >
-                      Add it manually instead
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Manual add CTA */}
-              {!hasSearched && (
-                <button
-                  onClick={handleNotFound}
-                  className="w-full rounded-lg border-2 border-dashed border-[#D4E5C4] p-3 text-center transition hover:border-[#355e1d] hover:bg-[#355e1d]/5"
-                >
-                  <p className="text-sm font-medium text-[#64748B]">
-                    Can't find the place?
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-[#355e1d]">
-                    Add it manually
-                  </p>
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* STEP: Found — auto-filled */}
-          {step === "found" && selectedResult && (
-            <div className="space-y-4">
-              <div className="flex gap-2 rounded-lg border border-green-200 bg-green-50 p-3">
-                <span className="font-medium text-green-600">✓ Place found!</span>
-                <p className="text-sm text-green-700">
-                  Details auto-filled from Google Maps.
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Warning về auto-fill feature */}
+            <div className="mb-6 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-medium text-amber-900">
+                  Auto-fill feature is under development
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Please scroll down to add place manually.
                 </p>
               </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Place Name
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={selectedResult.name}
-                    disabled
-                    className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] bg-[#F0F5ED] px-4 text-sm text-[#64748B]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={selectedResult.address}
-                    disabled
-                    className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] bg-[#F0F5ED] px-4 text-sm text-[#64748B]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Category
-                  </label>
-                  <select className="mt-1 w-full rounded-xl border border-[#D4E5C4] bg-white px-3 py-2 text-sm">
-                    <option>Restaurant</option>
-                    <option>Bar</option>
-                    <option>Sight</option>
-                    <option>Entertainment</option>
-                    <option>Team Event</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Price Level
-                  </label>
-                  <select className="mt-1 w-full rounded-xl border border-[#D4E5C4] bg-white px-3 py-2 text-sm">
-                    <option>$</option>
-                    <option>$$</option>
-                    <option>$$$</option>
-                    <option>$$$$</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Why do you recommend this?
-                  </label>
-                  <textarea
-                    className="mt-1 w-full resize-none rounded-xl border border-[#D4E5C4] px-3 py-2 text-sm"
-                    rows={3}
-                    placeholder="Share your experience..."
-                  />
-                </div>
-              </div>
             </div>
-          )}
 
-          {/* STEP: Manual add */}
-          {step === "manual" && (
+            {/* Form: Add Place Manually */}
             <div className="space-y-4">
-              <p className="text-sm text-[#64748B]">
-                Add the place details manually. Only the address is required.
-              </p>
+              {/* Place Name */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  Place Name <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Pizza 4P's"
+                  value={placeName}
+                  onChange={(e) => setPlaceName(e.target.value)}
+                  className={`mt-1 h-[44px] w-full rounded-xl border ${
+                    errors.placeName ? 'border-red-500' : 'border-[#D4E5C4]'
+                  } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
+                />
+                {errors.placeName && (
+                  <p className="mt-1 text-xs text-red-600">{errors.placeName}</p>
+                )}
+              </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Place Name *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. My Favorite Cafe"
-                    className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] px-4 text-sm outline-none transition focus:border-[#355e1d]"
-                  />
+              {/* Address */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  Address <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter full address..."
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className={`mt-1 h-[44px] w-full rounded-xl border ${
+                    errors.address ? 'border-red-500' : 'border-[#D4E5C4]'
+                  } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
+                />
+                {errors.address && (
+                  <p className="mt-1 text-xs text-red-600">{errors.address}</p>
+                )}
+              </div>
+
+              {/* City */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  City <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] px-4 text-sm outline-none transition focus:border-[#355e1d]"
+                />
+              </div>
+
+              {/* Categories (multi-select) */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  Category <span className="text-red-600">*</span>
+                </label>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {CATEGORY_DEFINITIONS.map((cat) => {
+                    const Icon = iconMap[cat.icon]
+                    const isSelected = selectedCategories.includes(cat.id)
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => toggleCategory(cat.id)}
+                        className={`flex flex-col items-center justify-center gap-2 rounded-lg border p-3 transition-all ${
+                          isSelected
+                            ? 'border-[#355e1d] bg-[#355e1d]/10'
+                            : 'border-[#D4E5C4] hover:border-[#355e1d]/50'
+                        }`}
+                      >
+                        {isSelected && (
+                          <Check size={14} className="absolute top-1 right-1 text-[#355e1d]" />
+                        )}
+                        <Icon size={20} className={isSelected ? 'text-[#355e1d]' : 'text-[#64748B]'} />
+                        <span className={`text-xs ${isSelected ? 'text-[#355e1d] font-medium' : 'text-[#64748B]'}`}>
+                          {cat.label}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
+                {errors.categories && (
+                  <p className="mt-1 text-xs text-red-600">{errors.categories}</p>
+                )}
+              </div>
 
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Address *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter full address..."
-                    className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] px-4 text-sm outline-none transition focus:border-[#355e1d]"
-                  />
-                  <p className="mt-1 text-xs text-[#64748B]">
-                    Enter the full address of the place
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Category
-                  </label>
-                  <select className="mt-1 w-full rounded-xl border border-[#D4E5C4] bg-white px-3 py-2 text-sm">
-                    <option>Restaurant</option>
-                    <option>Bar</option>
-                    <option>Sight</option>
-                    <option>Entertainment</option>
-                    <option>Team Event</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Price Level
-                  </label>
-                  <select className="mt-1 w-full rounded-xl border border-[#D4E5C4] bg-white px-3 py-2 text-sm">
-                    <option>$</option>
-                    <option>$$</option>
-                    <option>$$$</option>
-                    <option>$$$$</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Business Status
-                  </label>
-                  <select className="mt-1 w-full rounded-xl border border-[#D4E5C4] bg-white px-3 py-2 text-sm">
-                    <option value="open">Open</option>
-                    <option value="temporarily_closed">Temporarily closed</option>
-                    <option value="permanently_closed">Permanently closed</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-[#001910]">
-                    Why do you recommend this?
-                  </label>
-                  <textarea
-                    className="mt-1 w-full resize-none rounded-xl border border-[#D4E5C4] px-3 py-2 text-sm"
-                    rows={3}
-                    placeholder="Share your experience..."
-                  />
+              {/* Price Level */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  Price Level <span className="text-red-600">*</span>
+                </label>
+                <div className="mt-2 flex gap-2">
+                  {PRICE_LEVELS.map((price) => {
+                    const isSelected = selectedPrice === price
+                    return (
+                      <button
+                        key={price}
+                        type="button"
+                        onClick={() => setSelectedPrice(price)}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                          isSelected
+                            ? 'border-[#355e1d] bg-[#355e1d] text-white'
+                            : 'border-[#D4E5C4] text-[#64748B] hover:border-[#355e1d]/50'
+                        }`}
+                      >
+                        {price}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* Footer actions */}
-        <div className="flex shrink-0 gap-2 border-t border-[#D4E5C4] bg-white p-4">
-          {step === "search" && (
+              {/* Description */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  Description
+                </label>
+                <textarea
+                  placeholder="Why do you recommend this place?"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="mt-1 w-full resize-none rounded-xl border border-[#D4E5C4] px-3 py-2 text-sm outline-none transition focus:border-[#355e1d]"
+                  rows={3}
+                />
+              </div>
+
+              {/* Opening Hours (optional) */}
+              <div>
+                <label className="text-sm font-medium text-[#001910]">
+                  Opening Hours <span className="text-[#64748B] font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., 10:00 - 22:00"
+                  value={openingHours}
+                  onChange={(e) => setOpeningHours(e.target.value)}
+                  className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] px-4 text-sm outline-none transition focus:border-[#355e1d]"
+                />
+              </div>
+
+              {/* Photos (placeholder — future sprint) */}
+                            {/* Photos */}
+              <ImageUpload
+                images={images}
+                onChange={setImages}
+                maxImages={5}
+                maxSizeMB={5}
+              />
+            </div>
+
+            {/* Submit error */}
+            {errors.submit && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm text-red-800">{errors.submit}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex shrink-0 gap-2 border-t border-[#D4E5C4] bg-white p-4">
             <button
               onClick={handleClose}
               className="flex-1 rounded-full border border-[#D4E5C4] px-4 py-2.5 text-sm font-medium text-[#001910] transition hover:bg-[#F0F5ED]"
             >
               Cancel
             </button>
-          )}
-
-          {step === "found" && (
-            <>
-              <button
-                onClick={() => setStep("search")}
-                className="flex-1 rounded-full border border-[#D4E5C4] px-4 py-2.5 text-sm font-medium text-[#001910] transition hover:bg-[#F0F5ED]"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleSubmitPlace}
-                className="flex-1 rounded-full bg-[#355e1d] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#2d4f18]"
-              >
-                Submit Place
-              </button>
-            </>
-          )}
-
-          {step === "manual" && (
-            <>
-              <button
-                onClick={() => setStep("search")}
-                className="flex-1 rounded-full border border-[#D4E5C4] px-4 py-2.5 text-sm font-medium text-[#001910] transition hover:bg-[#F0F5ED]"
-              >
-                Back
-              </button>
-              <button className="flex-1 rounded-full bg-[#355e1d] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#2d4f18]">
-                Add Manually
-              </button>
-            </>
-          )}
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="flex-1 rounded-full bg-[#355e1d] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#2d4f18] disabled:opacity-50"
+            >
+              {isSubmitting ? 'Submitting...' : 'Add Place'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Duplicate Place Modal */}
+      <DuplicatePlaceModal
+        isOpen={showDuplicateModal}
+        onClose={() => setShowDuplicateModal(false)}
+        existingPlace={duplicatePlace}
+      />
+    </>
   )
 }
 
