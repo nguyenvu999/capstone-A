@@ -21,16 +21,16 @@ function App() {
           {/* PROTECTED ROUTES */}
           <Route
             path="/map"
-            element={
+            element = {
               <ProtectedRoute>
                 <MapPage />
               </ProtectedRoute>
             }
           />
 
-           <Route
+          <Route
             path="/place/:id"
-            element={
+            element = {
               <ProtectedRoute>
                 <PlaceDetailPage />
               </ProtectedRoute>
@@ -45,4 +45,4 @@ function App() {
   )
 }
 
-export default App
+export default App;

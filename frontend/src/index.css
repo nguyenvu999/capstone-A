@@ -2,8 +2,16 @@
 @import "tailwindcss";
 @import 'leaflet/dist/leaflet.css';
 
+/* Leaflet z-index fix */
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 400 !important;
+}
+
 html,
 body,
 #root {
   font-family: "Nunito Sans", sans-serif;
 }
+

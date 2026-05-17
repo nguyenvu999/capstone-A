@@ -116,20 +116,104 @@
 
 // export default MapArea
 
-import { MapPin } from "lucide-react"
+// import { MapPin } from "lucide-react"
 
-function MapArea() {
+//function MapArea() {
+//  return (
+//    <div className="flex h-full w-full items-center justify-center rounded-[24px] border border-[#E0E0E0] bg-[#F5F5F5]">
+//      <div className="px-6 text-center">
+//        <MapPin size={40} className="mx-auto text-[#999]" />
+//       <p className="mt-4 text-lg font-medium text-[#1B2A4A]">
+//          Interactive Map Area
+//        </p>
+//        <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[#666]">
+//          Map will appear here (Leaflet integration pending)
+//      </p>
+//      </div>
+//    </div>
+//  )
+//}
+
+//export default MapArea
+// MapArea.jsx
+// Hiển thị Leaflet map bằng vanilla JS (không dùng react-leaflet)
+
+import { useEffect, useRef } from "react"
+import L from "leaflet"
+import "leaflet/dist/leaflet.css"
+
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png"
+import markerIcon from "leaflet/dist/images/marker-icon.png"
+import markerShadow from "leaflet/dist/images/marker-shadow.png"
+
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+})
+
+function MapArea({ places = [] }) {
+  const mapContainerRef = useRef(null)  
+  const mapRef = useRef(null)           
+  const markersRef = useRef([])         
+
+  useEffect(() => {
+    if (mapRef.current) return
+
+    const map = L.map(mapContainerRef.current, {
+      center: [10.7769, 106.7009],  
+      zoom: 14,
+      zoomControl: true,
+    })
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map)
+
+    mapRef.current = map
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    markersRef.current.forEach((marker) => {
+      map.removeLayer(marker)
+    })
+    markersRef.current = []
+
+    places.forEach((place) => {
+      const marker = L.marker([place.latitude, place.longitude])
+        .addTo(map)
+        .bindPopup(`
+          <div style="min-width: 150px;">
+            <strong>${place.name}</strong><br/>
+            ${place.address || ''}
+          </div>
+        `)
+
+      markersRef.current.push(marker)
+    })
+
+    if (places.length > 0) {
+      const bounds = L.latLngBounds(
+        places.map((p) => [p.latitude, p.longitude])
+      )
+      map.fitBounds(bounds, { padding: [50, 50] })
+    }
+  }, [places])
+
   return (
-    <div className="flex h-full w-full items-center justify-center rounded-[24px] border border-[#E0E0E0] bg-[#F5F5F5]">
-      <div className="px-6 text-center">
-        <MapPin size={40} className="mx-auto text-[#999]" />
-        <p className="mt-4 text-lg font-medium text-[#1B2A4A]">
-          Interactive Map Area
-        </p>
-        <p className="mx-auto mt-2 max-w-md text-sm leading-7 text-[#666]">
-          Map will appear here (Leaflet integration pending)
-        </p>
-      </div>
+    <div className="h-full w-full">
+      <div ref={mapContainerRef} className="h-full w-full rounded-xl" />
     </div>
   )
 }
