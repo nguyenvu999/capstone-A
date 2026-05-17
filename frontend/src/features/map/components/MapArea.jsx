@@ -134,18 +134,21 @@
 //  )
 //}
 
-//export default MapArea
+
 // MapArea.jsx
-// Hiển thị Leaflet map bằng vanilla JS (không dùng react-leaflet)
+// Hiển thị Leaflet map bằng vanilla JS
+// Hiển thị markers cho places và search results
 
 import { useEffect, useRef } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 
+// Import marker icons
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png"
 import markerIcon from "leaflet/dist/images/marker-icon.png"
 import markerShadow from "leaflet/dist/images/marker-shadow.png"
 
+// Fix Leaflet default icon paths
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
@@ -153,16 +156,18 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 })
 
-function MapArea({ places = [] }) {
-  const mapContainerRef = useRef(null)  
-  const mapRef = useRef(null)           
-  const markersRef = useRef([])         
+function MapArea({ places = [], isLoading, searchLocation }) {
+  const mapContainerRef = useRef(null)
+  const mapRef = useRef(null)
+  const markersRef = useRef([])
+  const searchMarkerRef = useRef(null)
 
+  // Initialize map khi component mount
   useEffect(() => {
     if (mapRef.current) return
 
     const map = L.map(mapContainerRef.current, {
-      center: [10.7769, 106.7009],  
+      center: [10.7769, 106.7009],
       zoom: 14,
       zoomControl: true,
     })
@@ -181,15 +186,18 @@ function MapArea({ places = [] }) {
     }
   }, [])
 
+  // Update markers khi places thay đổi
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
 
+    // Xóa tất cả markers cũ
     markersRef.current.forEach((marker) => {
       map.removeLayer(marker)
     })
     markersRef.current = []
 
+    // Thêm markers mới cho mỗi place
     places.forEach((place) => {
       const marker = L.marker([place.latitude, place.longitude])
         .addTo(map)
@@ -203,6 +211,7 @@ function MapArea({ places = [] }) {
       markersRef.current.push(marker)
     })
 
+    // Nếu có places, fit map bounds để hiển thị tất cả
     if (places.length > 0) {
       const bounds = L.latLngBounds(
         places.map((p) => [p.latitude, p.longitude])
@@ -210,6 +219,38 @@ function MapArea({ places = [] }) {
       map.fitBounds(bounds, { padding: [50, 50] })
     }
   }, [places])
+
+  // Zoom đến vị trí search
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !searchLocation) return
+
+    // Xóa search marker cũ
+    if (searchMarkerRef.current) {
+      map.removeLayer(searchMarkerRef.current)
+    }
+
+    // Tạo icon màu đỏ cho search result
+    const redIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    })
+
+    // Tạo marker mới cho search result
+    searchMarkerRef.current = L.marker([searchLocation.lat, searchLocation.lng], {
+      icon: redIcon
+    })
+      .addTo(map)
+      .bindPopup(`<strong>${searchLocation.name}</strong>`)
+      .openPopup()
+
+    // Zoom đến vị trí
+    map.setView([searchLocation.lat, searchLocation.lng], 16)
+  }, [searchLocation])
 
   return (
     <div className="h-full w-full">
