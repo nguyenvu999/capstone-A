@@ -1,4 +1,11 @@
 {
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/.well-known/microsoft-identity-association",
+      "destination": "/microsoft-identity-association.json"
+    }
+  ],
   "headers": [
     {
       "source": "/.well-known/microsoft-identity-association",
@@ -8,12 +15,6 @@
           "value": "application/json"
         }
       ]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/.well-known/microsoft-identity-association",
-      "destination": "/microsoft-identity-association.json"
     }
   ]
 }
