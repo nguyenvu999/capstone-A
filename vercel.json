@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/.well-known/microsoft-identity-association",
+      "destination": "/microsoft-identity-association.json"
+    }
+  ]
+}
