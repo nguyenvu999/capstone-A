@@ -171,6 +171,10 @@
 // MapPage.jsx
 // Trang chính hiển thị map, filters, nearby places
 
+// MapPage.jsx
+// Trang chính hiển thị map, filters, nearby places
+// VERSION: Có GPS tracking để lấy current location
+
 import { useState, useEffect, useRef } from "react"
 import MapNavbar from "../components/MapNavbar"
 import FilterSidebar from "../components/FilterSidebar"
@@ -181,51 +185,116 @@ import { getPlaces } from "../api/placesApi"
 import { DEFAULT_MAP_CENTER, DEFAULT_NEARBY_RADIUS } from "../constants/mapConstants"
 
 function MapPage() {
-  // Places data
+  // ==================== STATE ====================
+  
+  // Places data - danh sách places từ API
   const [places, setPlaces] = useState([])
   const [totalPlaces, setTotalPlaces] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Filters
+  // Filters - lưu các điều kiện lọc từ FilterSidebar
   const [filters, setFilters] = useState({})
 
-  // Search location từ navbar
+  // User location - vị trí GPS hiện tại của user
+  const [userLocation, setUserLocation] = useState(null)
+
+  // Search location - vị trí được search từ navbar
   const [searchLocation, setSearchLocation] = useState(null)
 
-  // UI state
+  // UI state - hiển thị drawer register place
   const [showRegisterPlace, setShowRegisterPlace] = useState(false)
 
   // Ref để tránh fetch lặp lại khi mount
   const hasFetchedRef = useRef(false)
 
-  // Fetch lần đầu khi mount
+  // ==================== EFFECTS ====================
+
+  // Effect 1: Theo dõi GPS location của user liên tục (như code Khang)
   useEffect(() => {
-    if (!hasFetchedRef.current) {
-      hasFetchedRef.current = true
-      fetchPlaces()
+    // Kiểm tra browser có hỗ trợ geolocation không
+    if (!navigator.geolocation) {
+      console.warn('Geolocation is not supported by this browser.')
+      // Fallback: dùng tọa độ mặc định (HCMC center)
+      setUserLocation({
+        lat: DEFAULT_MAP_CENTER.lat,
+        lng: DEFAULT_MAP_CENTER.lng,
+      })
+      return
+    }
+
+    // Theo dõi vị trí liên tục (watchPosition thay vì getCurrentPosition)
+    const watchId = navigator.geolocation.watchPosition(
+      // Success callback - mỗi khi vị trí thay đổi
+      (position) => {
+        const userPos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        }
+        console.log('User location updated:', userPos)
+        setUserLocation(userPos)
+      },
+      // Error callback - khi bị lỗi (user deny permission, timeout, etc.)
+      (error) => {
+        console.error('Geolocation error:', error)
+        // Fallback: dùng tọa độ mặc định (HCMC center)
+        setUserLocation({
+          lat: DEFAULT_MAP_CENTER.lat,
+          lng: DEFAULT_MAP_CENTER.lng,
+        })
+      },
+      // Options - cấu hình tracking
+      {
+        enableHighAccuracy: true,  // Ưu tiên GPS thay vì WiFi/IP
+        timeout: 15000,             // Timeout sau 15 giây nếu không lấy được GPS
+        maximumAge: 5000            // Cache vị trí tối đa 5 giây
+      }
+    )
+
+    // Cleanup: dừng tracking khi component unmount
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
     }
   }, [])
 
-  // Fetch lại khi filters thay đổi (chỉ sau lần đầu)
+  // Effect 2: Fetch places khi có user location (lần đầu tiên)
   useEffect(() => {
+    // Chỉ fetch khi:
+    // 1. Chưa fetch lần nào
+    // 2. Đã có user location
+    if (!hasFetchedRef.current && userLocation) {
+      hasFetchedRef.current = true
+      fetchPlaces()
+    }
+  }, [userLocation])
+
+  // Effect 3: Fetch lại khi filters thay đổi (sau lần đầu)
+  useEffect(() => {
+    // Chỉ fetch khi đã fetch lần đầu rồi
     if (hasFetchedRef.current && Object.keys(filters).length > 0) {
       fetchPlaces()
     }
   }, [filters])
 
-  // Fetch places từ API
+  // ==================== FUNCTIONS ====================
+
+  // Hàm fetch places từ API
   const fetchPlaces = async () => {
     setIsLoading(true)
     try {
+      // Gọi API với params:
+      // - lat/lng: vị trí user (hoặc center mặc định)
+      // - radius: bán kính tìm kiếm (5000m = 5km)
+      // - filters: category, price, status, minRating, search
       const response = await getPlaces({
-        lat: DEFAULT_MAP_CENTER.lat,
-        lng: DEFAULT_MAP_CENTER.lng,
+        lat: userLocation?.lat || DEFAULT_MAP_CENTER.lat,
+        lng: userLocation?.lng || DEFAULT_MAP_CENTER.lng,
         radius: DEFAULT_NEARBY_RADIUS,
         ...filters,
       })
 
       console.log('API Response:', response)
 
+      // Backend có thể trả về { data: [...] } hoặc [...] trực tiếp
       const placesData = response.data || response || []
       setPlaces(placesData)
       setTotalPlaces(response.total || placesData.length)
@@ -245,16 +314,19 @@ function MapPage() {
 
   // Handle search từ MapNavbar
   const handleSearch = (searchData) => {
+    // searchData = { name, lat, lng }
     if (searchData && searchData.lat && searchData.lng) {
       // Zoom map đến vị trí search
       setSearchLocation(searchData)
     }
   }
 
-  // Handle place added
+  // Handle place added - refresh places sau khi user thêm place mới
   const handlePlaceAdded = () => {
-    fetchPlaces() // Refresh places
+    fetchPlaces()
   }
+
+  // ==================== RENDER ====================
 
   return (
     <div className='flex h-screen flex-col overflow-hidden [font-family:"Nunito_Sans",sans-serif]'>
@@ -288,6 +360,7 @@ function MapPage() {
           <MapArea 
             places={places} 
             isLoading={isLoading}
+            userLocation={userLocation}
             searchLocation={searchLocation}
           />
         </div>

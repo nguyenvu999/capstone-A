@@ -1,5 +1,6 @@
 // RegisterPlaceDrawer.jsx
-// Drawer để user đăng ký place mới với search location
+// Drawer để user đăng ký place mới
+// VERSION: Cho phép nhập lat/lng thủ công nếu không tìm được location
 
 import { useState } from "react"
 import { X, MapPin, AlertCircle, Check, Utensils, Wine, Eye, Gamepad2, Users } from "lucide-react"
@@ -18,7 +19,8 @@ const iconMap = {
 }
 
 function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
-  // Form state
+  // ==================== FORM STATE ====================
+  
   const [placeName, setPlaceName] = useState("")
   const [address, setAddress] = useState("")
   const [city, setCity] = useState("Ho Chi Minh City")
@@ -28,14 +30,22 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
   const [openingHours, setOpeningHours] = useState("")
   const [images, setImages] = useState([])
   
-  // Location search state
+  // ==================== LOCATION STATE ====================
+  
+  // Location search state - tìm kiếm địa điểm qua Nominatim
   const [locationSearch, setLocationSearch] = useState("")
   const [locationResults, setLocationResults] = useState([])
   const [showLocationResults, setShowLocationResults] = useState(false)
-  const [latitude, setLatitude] = useState(10.7769)
-  const [longitude, setLongitude] = useState(106.7009)
   
-  // UI state
+  // Coordinates - có thể từ search hoặc nhập thủ công
+  const [latitude, setLatitude] = useState("")
+  const [longitude, setLongitude] = useState("")
+  
+  // Manual input mode - cho phép nhập lat/lng thủ công
+  const [manualMode, setManualMode] = useState(false)
+  
+  // ==================== UI STATE ====================
+  
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState({})
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
@@ -43,10 +53,13 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
 
   if (!isOpen) return null
 
-  // Search location qua Nominatim
+  // ==================== FUNCTIONS ====================
+
+  // Search location qua Nominatim API
   const handleLocationSearch = async (query) => {
     setLocationSearch(query)
     
+    // Chỉ search khi query >= 3 ký tự
     if (query.length < 3) {
       setLocationResults([])
       setShowLocationResults(false)
@@ -72,9 +85,18 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
     
     setPlaceName(shortName)
     setAddress(result.display_name)
-    setLatitude(parseFloat(result.lat))
-    setLongitude(parseFloat(result.lon))
+    setLatitude(parseFloat(result.lat).toFixed(7))
+    setLongitude(parseFloat(result.lon).toFixed(7))
     setLocationSearch(result.display_name)
+    setShowLocationResults(false)
+    setManualMode(false) // Tắt manual mode khi chọn từ search
+  }
+
+  // Toggle manual input mode
+  const handleEnableManualMode = () => {
+    setManualMode(true)
+    setLocationSearch("")
+    setLocationResults([])
     setShowLocationResults(false)
   }
 
@@ -95,8 +117,8 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
       newErrors.placeName = "Place name is required"
     }
     
-    if (!address.trim()) {
-      newErrors.address = "Please search and select a location"
+    if (!latitude || !longitude) {
+      newErrors.location = "Please search for a location or enter coordinates manually"
     }
     
     if (selectedCategories.length === 0) {
@@ -118,10 +140,10 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
       
       const placeData = {
         name: placeName.trim(),
-        address: address.trim(),
+        address: address.trim() || `${latitude}, ${longitude}`,
         city: city.trim(),
-        latitude,
-        longitude,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
         price_level: priceLevelMap[selectedPrice],
         description: description.trim() || null,
         category_ids: selectedCategories,
@@ -170,11 +192,14 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
     setImages([])
     setLocationSearch("")
     setLocationResults([])
-    setLatitude(10.7769)
-    setLongitude(106.7009)
+    setLatitude("")
+    setLongitude("")
+    setManualMode(false)
     setErrors({})
     onClose()
   }
+
+  // ==================== RENDER ====================
 
   return (
     <>
@@ -191,53 +216,105 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4">
             <div className="space-y-4">
+              
               {/* Search Location */}
-              <div>
-                <label className="text-sm font-medium text-[#001910]">
-                  Search Location <span className="text-red-600">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search Landmark 81, Pizza 4P's..."
-                    value={locationSearch}
-                    onChange={(e) => handleLocationSearch(e.target.value)}
-                    className={`mt-1 h-[44px] w-full rounded-xl border ${
-                      errors.address ? 'border-red-500' : 'border-[#D4E5C4]'
-                    } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
-                  />
+              {!manualMode && (
+                <div>
+                  <label className="text-sm font-medium text-[#001910]">
+                    Search Location <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Search Landmark 81, Pizza 4P's..."
+                      value={locationSearch}
+                      onChange={(e) => handleLocationSearch(e.target.value)}
+                      className={`mt-1 h-[44px] w-full rounded-xl border ${
+                        errors.location ? 'border-red-500' : 'border-[#D4E5C4]'
+                      } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
+                    />
 
-                  {/* Search results */}
-                  {showLocationResults && locationResults.length > 0 && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setShowLocationResults(false)} />
-                      <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-[#D4E5C4] bg-white shadow-xl">
-                        {locationResults.map((result, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => handleSelectLocation(result)}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-[#F0F5ED] border-b border-[#D4E5C4] last:border-0"
-                          >
-                            <div className="flex items-start gap-2">
-                              <MapPin size={14} className="mt-1 shrink-0 text-[#355e1d]" />
-                              <span className="text-[#001910] text-xs">{result.display_name}</span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </>
+                    {/* Search results */}
+                    {showLocationResults && locationResults.length > 0 && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowLocationResults(false)} />
+                        <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-[#D4E5C4] bg-white shadow-xl">
+                          {locationResults.map((result, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => handleSelectLocation(result)}
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-[#F0F5ED] border-b border-[#D4E5C4] last:border-0"
+                            >
+                              <div className="flex items-start gap-2">
+                                <MapPin size={14} className="mt-1 shrink-0 text-[#355e1d]" />
+                                <span className="text-[#001910] text-xs">{result.display_name}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Button: Cannot find location → manual mode */}
+                  <button
+                    type="button"
+                    onClick={handleEnableManualMode}
+                    className="mt-2 text-xs text-[#355e1d] hover:underline"
+                  >
+                    Can't find your location? Enter coordinates manually
+                  </button>
+                </div>
+              )}
+
+              {/* Manual Input: Lat/Lng */}
+              {manualMode && (
+                <div>
+                  <label className="text-sm font-medium text-[#001910]">
+                    Manual Coordinates <span className="text-red-600">*</span>
+                  </label>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Latitude (e.g., 10.7769)"
+                        value={latitude}
+                        onChange={(e) => setLatitude(e.target.value)}
+                        className={`h-[44px] w-full rounded-xl border ${
+                          errors.location ? 'border-red-500' : 'border-[#D4E5C4]'
+                        } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Longitude (e.g., 106.7009)"
+                        value={longitude}
+                        onChange={(e) => setLongitude(e.target.value)}
+                        className={`h-[44px] w-full rounded-xl border ${
+                          errors.location ? 'border-red-500' : 'border-[#D4E5C4]'
+                        } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Button: Back to search mode */}
+                  <button
+                    type="button"
+                    onClick={() => setManualMode(false)}
+                    className="mt-2 text-xs text-[#355e1d] hover:underline"
+                  >
+                    ← Back to search
+                  </button>
+                  
+                  {errors.location && (
+                    <p className="mt-1 text-xs text-red-600">{errors.location}</p>
                   )}
                 </div>
-                {errors.address && (
-                  <p className="mt-1 text-xs text-red-600">{errors.address}</p>
-                )}
-                <p className="mt-1 text-xs text-[#64748B]">
-                  Search for a real place name or landmark
-                </p>
-              </div>
+              )}
 
-              {/* Place Name (auto-filled) */}
+              {/* Place Name */}
               <div>
                 <label className="text-sm font-medium text-[#001910]">
                   Place Name <span className="text-red-600">*</span>
@@ -246,7 +323,7 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
                   type="text"
                   value={placeName}
                   onChange={(e) => setPlaceName(e.target.value)}
-                  placeholder="Auto-filled from search"
+                  placeholder="Enter place name"
                   className={`mt-1 h-[44px] w-full rounded-xl border ${
                     errors.placeName ? 'border-red-500' : 'border-[#D4E5C4]'
                   } px-4 text-sm outline-none transition focus:border-[#355e1d]`}
@@ -256,8 +333,8 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
                 )}
               </div>
 
-              {/* Address (readonly) */}
-              {address && (
+              {/* Address (readonly nếu từ search, editable nếu manual) */}
+              {address && !manualMode && (
                 <div>
                   <label className="text-sm font-medium text-[#001910]">
                     Address
@@ -265,6 +342,21 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
                   <div className="mt-1 rounded-xl border border-[#D4E5C4] bg-[#F0F5ED] px-4 py-2 text-sm text-[#64748B]">
                     {address}
                   </div>
+                </div>
+              )}
+
+              {manualMode && (
+                <div>
+                  <label className="text-sm font-medium text-[#001910]">
+                    Address <span className="text-[#64748B] font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="Enter address manually"
+                    className="mt-1 h-[44px] w-full rounded-xl border border-[#D4E5C4] px-4 text-sm outline-none transition focus:border-[#355e1d]"
+                  />
                 </div>
               )}
 

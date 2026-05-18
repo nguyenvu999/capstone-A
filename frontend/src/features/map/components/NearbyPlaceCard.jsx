@@ -59,11 +59,7 @@ function NearbyPlaceCard({ place }) {
             {place.categories.map((cat) => (
               <span
                 key={cat.id}
-                className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                style={{
-                  backgroundColor: `${cat.color || '#355e1d'}20`,
-                  color: cat.color || '#355e1d',
-                }}
+                className="rounded-full bg-[#355e1d]/10 px-2 py-0.5 text-[10px] font-medium text-[#355e1d]"
               >
                 {cat.name}
               </span>
