@@ -146,7 +146,8 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
         longitude: parseFloat(longitude),
         price_level: priceLevelMap[selectedPrice],
         description: description.trim() || null,
-        category_ids: selectedCategories,
+        category_ids: selectedCategories.map(String), // ✅ fix UUID here
+
         business_status: "open",
       }
       

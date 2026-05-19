@@ -1,18 +1,24 @@
 package com.example.netsuggest.places.entity;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
 @Table(name = "places")
 public class Place {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID) // Để Hibernate tự sinh UUID
+    @Column(name = "id", length = 36, nullable = false)
+    private String id;
 
     private String name;
+
+    @Column(columnDefinition = "TEXT")
     private String description;
+
     private String address;
     private String city;
     private Double latitude;
@@ -22,43 +28,48 @@ public class Place {
     private Integer priceLevel;
 
     @Column(name = "business_status")
-    private String businessStatus = "open";
+    private String businessStatus;
 
-    private String source = "manual";
-    private Double rating = 0.0;
+    private String source;
+    private Double rating;
 
     @Column(name = "review_count")
-    private Integer reviewCount = 0;
+    private Integer reviewCount;
 
-    @Column(name = "created_by_id")
-    private Long createdById = 5L;
+    @Column(name = "created_by_id", length = 36)
+    private String createdById;
 
     @Column(name = "created_by_name")
-    private String createdByName = "Khanh Tran";
+    private String createdByName;
 
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt;
 
-    @ManyToMany
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "place_categories",
-        joinColumns = @JoinColumn(name = "place_id"),
-        inverseJoinColumns = @JoinColumn(name = "category_id")
+        joinColumns = @JoinColumn(name = "place_id", referencedColumnName = "id"),
+        inverseJoinColumns = @JoinColumn(name = "category_id", referencedColumnName = "id")
     )
     private List<Category> categories;
 
-    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("place")
     private List<PlaceImage> images;
 
-    // Constructors
+    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnoreProperties("place")
+    private List<Review> reviews;
+
+    // CONSTRUCTOR TRỐNG HOÀN TOÀN - Để khớp hoàn toàn với hệ thống và nhận giá trị từ DB/Service
     public Place() {}
 
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    // Getters & Setters
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -93,8 +104,8 @@ public class Place {
     public Integer getReviewCount() { return reviewCount; }
     public void setReviewCount(Integer reviewCount) { this.reviewCount = reviewCount; }
 
-    public Long getCreatedById() { return createdById; }
-    public void setCreatedById(Long createdById) { this.createdById = createdById; }
+    public String getCreatedById() { return createdById; }
+    public void setCreatedById(String createdById) { this.createdById = createdById; }
 
     public String getCreatedByName() { return createdByName; }
     public void setCreatedByName(String createdByName) { this.createdByName = createdByName; }
@@ -110,4 +121,7 @@ public class Place {
 
     public List<PlaceImage> getImages() { return images; }
     public void setImages(List<PlaceImage> images) { this.images = images; }
+
+    public List<Review> getReviews() { return reviews; }
+    public void setReviews(List<Review> reviews) { this.reviews = reviews; }
 }

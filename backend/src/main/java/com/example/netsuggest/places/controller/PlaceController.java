@@ -15,7 +15,7 @@ public class PlaceController {
 
     @Autowired private PlaceService placeService;
 
-    // 1. GET /places (Đồng bộ ánh xạ từ params sang Service)
+    // 1. GET /places
     @GetMapping
     public ResponseEntity<?> getPlaces(
             @RequestParam(required = false) List<String> category,
@@ -34,10 +34,11 @@ public class PlaceController {
 
     // 2. GET /places/:id
     @GetMapping("/{id}")
-    public ResponseEntity<?> getPlaceDetail(@PathVariable Long id) {
+    public ResponseEntity<?> getPlaceDetail(@PathVariable String id) {
         Map<String, Object> detail = placeService.getPlaceDetail(id);
         if (detail == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "not_found", "message", "Place not found"));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "not_found", "message", "Place not found"));
         }
         return ResponseEntity.ok(detail);
     }
@@ -46,19 +47,21 @@ public class PlaceController {
     @PostMapping
     public ResponseEntity<?> createPlace(@RequestBody Map<String, Object> body) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(placeService.createPlace(body));
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(placeService.createPlace(body));
         } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "error", "duplicate_place",
-                "message", "This place may already exist",
-                "existing_place", placeService.getExistingDuplicateInfo(body)
-            ));
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of(
+                        "error", "duplicate_place",
+                        "message", "This place may already exist",
+                        "existing_place", placeService.getExistingDuplicateInfo(body)
+                    ));
         }
     }
 
     // 4. POST /places/:id/images
     @PostMapping("/{id}/images")
-    public ResponseEntity<?> uploadImages(@PathVariable Long id, @RequestParam("images") MultipartFile[] files) {
+    public ResponseEntity<?> uploadImages(@PathVariable String id, @RequestParam("images") MultipartFile[] files) {
         if (files == null || files.length == 0) {
             return ResponseEntity.badRequest().body(Map.of("message", "No files uploaded"));
         }
@@ -68,7 +71,7 @@ public class PlaceController {
     // 5. GET /places/:id/reviews
     @GetMapping("/{id}/reviews")
     public ResponseEntity<?> getReviews(
-            @PathVariable Long id,
+            @PathVariable String id,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "15") int limit) {
         return ResponseEntity.ok(placeService.getReviews(id, page, limit));
@@ -76,14 +79,12 @@ public class PlaceController {
 
     // 6. POST /places/:id/reviews
     @PostMapping("/{id}/reviews")
-    public ResponseEntity<?> addReview(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> addReview(@PathVariable String id, @RequestBody Map<String, Object> body) {
         try {
             return ResponseEntity.status(HttpStatus.CREATED).body(placeService.addReview(id, body));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "error", "already_reviewed",
-                "message", e.getMessage()
-            ));
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "already_reviewed", "message", e.getMessage()));
         }
     }
 }

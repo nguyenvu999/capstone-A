@@ -2,15 +2,23 @@ package com.example.netsuggest.places.service;
 
 import com.example.netsuggest.places.entity.*;
 import com.example.netsuggest.places.repository.*;
+import com.example.netsuggest.auth.entity.User;
+import com.example.netsuggest.auth.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -20,16 +28,57 @@ public class PlaceService {
     @Autowired private ReviewRepository reviewRepository;
     @Autowired private CategoryRepository categoryRepository;
     @Autowired private PlaceImageRepository placeImageRepository;
+    @Autowired private UserRepository userRepository;
+
+    /**
+     * Lấy thông tin User thực tế từ Database thông qua Email trong Session
+     */
+    private Map<String, String> getCurrentUserInfo() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Map<String, String> userInfo = new HashMap<>();
+
+        if (authentication != null && authentication.isAuthenticated() 
+                && !"anonymousUser".equals(authentication.getName())) {
+            
+            Object principal = authentication.getPrincipal();
+            
+            if (principal instanceof OAuth2User) {
+                OAuth2User oauth2User = (OAuth2User) principal;
+                Map<String, Object> attributes = oauth2User.getAttributes();
+
+                // Lấy email từ token của Microsoft đăng nhập
+                String email = null;
+                if (attributes.containsKey("email") && attributes.get("email") != null) {
+                    email = attributes.get("email").toString();
+                } else if (attributes.containsKey("preferred_username") && attributes.get("preferred_username") != null) {
+                    email = attributes.get("preferred_username").toString();
+                }
+
+                // Truy vấn thẳng xuống bảng users dựa trên email để lấy ID thật của ứng dụng
+                if (email != null && !email.isEmpty()) {
+                    Optional<User> appUserOpt = userRepository.findByEmail(email);
+                    if (appUserOpt.isPresent()) {
+                        User appUser = appUserOpt.get();
+                        userInfo.put("id", appUser.getId()); 
+                        userInfo.put("name", appUser.getFullName());
+                        return userInfo;
+                    }
+                }
+            }
+        }
+
+        // Nếu không tìm thấy session hoặc user chưa đồng bộ, trả về rỗng/null để hệ thống tự biết xử lý
+        userInfo.put("id", null);
+        userInfo.put("name", null);
+        return userInfo;
+    }
 
     public Map<String, Object> getPlaces(List<String> categories, List<Integer> prices, String status, 
                                          Double minRating, Double lat, Double lng, Double radius, 
                                          String search, int page, int limit) {
         
         Pageable pageable = PageRequest.of(page - 1, limit);
-        
-        // Nếu truyền radius mét từ Postman (ví dụ: 5000), chia 1000 thành km. Nếu null mặc định là 5km
         Double radiusKm = (radius != null) ? radius / 1000.0 : 5.0;
-
         boolean hasPrices = (prices != null && !prices.isEmpty());
         boolean hasCategories = (categories != null && !categories.isEmpty());
 
@@ -40,13 +89,11 @@ public class PlaceService {
         for (Place p : resultPage.getContent()) {
             Double distance = null;
             if (lat != null && lng != null && p.getLatitude() != null && p.getLongitude() != null) {
-                // Tính khoảng cách Haversine trực tiếp bằng Java để đảm bảo chính xác và hiệu năng
                 distance = calculateHaversine(lat, lng, p.getLatitude(), p.getLongitude());
             }
             outList.add(mapToPlaceJson(p, distance));
         }
 
-        // Sắp xếp danh sách kết quả theo khoảng cách từ gần đến xa nếu có tọa độ đầu vào
         if (lat != null && lng != null) {
             outList.sort((m1, m2) -> {
                 Double d1 = (Double) m1.get("distance");
@@ -61,18 +108,18 @@ public class PlaceService {
     }
 
     private Double calculateHaversine(double lat1, double lon1, double lat2, double lon2) {
-        double EarthRadius = 6371.0; // km
+        double EarthRadius = 6371.0;
         double dLat = Math.toRadians(lat2 - lat1);
         double dLon = Math.toRadians(lon2 - lon1);
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
                    Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return Math.round((EarthRadius * c) * 10.0) / 10.0; // Làm tròn 1 chữ số thập phân giống code cũ của bạn
+        return Math.round((EarthRadius * c) * 10.0) / 10.0;
     }
 
-    public Map<String, Object> getPlaceDetail(Long id) {
-        Place p = placeRepository.findById(id).orElse(null);
+    public Map<String, Object> getPlaceDetail(String placeId) {
+        Place p = placeRepository.findById(placeId).orElse(null);
         if (p == null) return null;
 
         Map<String, Object> baseData = mapToPlaceJson(p, null);
@@ -87,7 +134,7 @@ public class PlaceService {
             hours.add(hourMap);
         }
 
-        List<Object[]> distRows = reviewRepository.getRatingDistribution(id);
+        List<Object[]> distRows = reviewRepository.getRatingDistribution(placeId);
         Map<String, Long> dist = new HashMap<>(Map.of("1", 0L, "2", 0L, "3", 0L, "4", 0L, "5", 0L));
         for (Object[] r : distRows) {
             if (r[0] != null) {
@@ -95,53 +142,88 @@ public class PlaceService {
             }
         }
 
-        return Map.of(
-            "data", baseData,
-            "opening_hours", hours,
-            "rating_distribution", dist
-        );
+        return Map.of("data", baseData, "opening_hours", hours, "rating_distribution", dist);
     }
 
     @Transactional
     public Map<String, Object> createPlace(Map<String, Object> body) {
-        String name = (String) body.get("name");
-        String address = (String) body.get("address");
-        String city = (String) body.get("city");
+        try {
+            String name = body.get("name") != null ? body.get("name").toString().trim() : null;
+            String address = body.get("address") != null ? body.get("address").toString().trim() : null;
+            String city = body.get("city") != null ? body.get("city").toString().trim() : null;
 
-        List<Place> duplicates = placeRepository.findDuplicatePlace(name, address, city);
-        if (!duplicates.isEmpty()) {
-            throw new IllegalStateException("duplicate");
+            if (name == null || address == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Name and Address are required!");
+            }
+
+            List<Place> duplicates = placeRepository.findDuplicatePlace(name, address, city);
+            if (!duplicates.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "duplicate");
+            }
+
+            Place p = new Place();
+            p.setName(name);
+            p.setAddress(address);
+            p.setCity(city);
+            p.setDescription(body.get("description") != null ? body.get("description").toString() : "");
+            
+            p.setBusinessStatus(body.get("business_status") != null ? body.get("business_status").toString() : "open");
+            p.setSource("manual");
+            p.setRating(0.0);
+            p.setReviewCount(0);
+            p.setCreatedAt(LocalDateTime.now());
+            p.setUpdatedAt(LocalDateTime.now());
+
+            // Thực hiện gán dữ liệu User sạch từ DB
+            Map<String, String> currentUser = getCurrentUserInfo();
+            if (currentUser.get("id") == null) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bạn cần đăng nhập trước khi tạo địa điểm!");
+            }
+            p.setCreatedById(currentUser.get("id")); 
+            p.setCreatedByName(currentUser.get("name"));
+
+            if (body.get("latitude") != null) p.setLatitude(Double.parseDouble(body.get("latitude").toString()));
+            if (body.get("longitude") != null) p.setLongitude(Double.parseDouble(body.get("longitude").toString()));
+            p.setPriceLevel(body.get("price_level") != null ? Integer.parseInt(body.get("price_level").toString()) : 0);
+
+            Object catIdsObj = body.get("category_ids");
+            if (catIdsObj instanceof List<?>) {
+                List<?> rawList = (List<?>) catIdsObj;
+                List<String> catIds = new ArrayList<>();
+                for (Object obj : rawList) {
+                    if (obj != null) catIds.add(obj.toString());
+                }
+                if (!catIds.isEmpty()) {
+                    p.setCategories(categoryRepository.findAllById(catIds));
+                }
+            }
+
+            Place saved = placeRepository.save(p);
+            return mapToPlaceJson(saved, null);
+
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            System.err.println("--- ERROR DURING PLACE CREATION ---");
+            e.printStackTrace(); 
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Database operational error: " + e.getMessage());
         }
-
-        Place p = new Place();
-        p.setName(name);
-        p.setAddress(address);
-        p.setCity(city);
-        p.setDescription((String) body.get("description"));
-        p.setLatitude(Double.parseDouble(body.get("latitude").toString()));
-        p.setLongitude(Double.parseDouble(body.get("longitude").toString()));
-        p.setPriceLevel(Integer.parseInt(body.get("price_level").toString()));
-
-        List<String> catIds = (List<String>) body.get("category_ids");
-        if (catIds != null) {
-            p.setCategories(categoryRepository.findAllById(catIds));
-        }
-
-        Place saved = placeRepository.save(p);
-        return mapToPlaceJson(saved, null);
     }
 
     public Map<String, Object> getExistingDuplicateInfo(Map<String, Object> body) {
-        List<Place> duplicates = placeRepository.findDuplicatePlace(
-            (String) body.get("name"), (String) body.get("address"), (String) body.get("city"));
+        String name = body.get("name") != null ? body.get("name").toString() : null;
+        String address = body.get("address") != null ? body.get("address").toString().trim() : null;
+        String city = body.get("city") != null ? body.get("city").toString().trim() : null;
+
+        List<Place> duplicates = placeRepository.findDuplicatePlace(name, address, city);
         if (duplicates.isEmpty()) return Map.of();
         Place ep = duplicates.get(0);
         return Map.of("id", ep.getId(), "name", ep.getName(), "address", ep.getAddress());
     }
 
     @Transactional
-    public List<Map<String, Object>> uploadImages(Long placeId, MultipartFile[] files) {
-        Place p = placeRepository.findById(placeId).orElseThrow(() -> new IllegalArgumentException("Not found"));
+    public List<Map<String, Object>> uploadImages(String placeId, MultipartFile[] files) {
+        Place p = placeRepository.findById(placeId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Place not found"));
         List<Map<String, Object>> savedList = new ArrayList<>();
         try {
             String uploadDir = "uploads/";
@@ -167,7 +249,7 @@ public class PlaceService {
         return savedList;
     }
 
-    public Map<String, Object> getReviews(Long placeId, int page, int limit) {
+    public Map<String, Object> getReviews(String placeId, int page, int limit) {
         Pageable pageable = PageRequest.of(page - 1, limit);
         Page<Review> reviewPage = reviewRepository.findByPlaceIdOrderByIdDesc(placeId, pageable);
 
@@ -175,41 +257,51 @@ public class PlaceService {
         for (Review r : reviewPage.getContent()) {
             list.add(Map.of(
                 "id", r.getId(),
-                "user", Map.of("id", r.getUserId(), "name", r.getUserName(), "avatar_url", Optional.ofNullable(null)),
+                "user", Map.of("id", r.getUserId(), "name", r.getUserName() != null ? r.getUserName() : "Anonymous", "avatar_url", Optional.ofNullable(null)),
                 "rating", r.getRating(),
-                "comment", r.getComment(),
-                "helpful_count", r.getHelpfulCount(),
-                "created_at", r.getCreatedAt().toString()
+                "comment", r.getComment() != null ? r.getComment() : "",
+                "helpful_count", r.getHelpfulCount() != null ? r.getHelpfulCount() : 0,
+                "created_at", r.getCreatedAt() != null ? r.getCreatedAt().toString() : ""
             ));
         }
         return Map.of("data", list, "total", reviewPage.getTotalElements(), "page", page, "limit", limit);
     }
 
     @Transactional
-    public Map<String, Object> addReview(Long placeId, Map<String, Object> body) {
-        Long mockUserId = 5L;
-        List<Review> existing = reviewRepository.findByPlaceIdAndUserId(placeId, mockUserId);
+    public Map<String, Object> addReview(String placeId, Map<String, Object> body) {
+        Map<String, String> currentUser = getCurrentUserInfo();
+        String currentUserId = currentUser.get("id");
+
+        if (currentUserId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Bạn cần đăng nhập trước khi bình luận!");
+        }
+
+        List<Review> existing = reviewRepository.findByPlaceIdAndUserId(placeId, currentUserId);
         if (!existing.isEmpty()) {
-            throw new IllegalArgumentException("You have already reviewed this place");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You have already reviewed this place");
         }
 
         Review r = new Review();
         r.setPlaceId(placeId);
+        r.setUserId(currentUserId);
+        r.setUserName(currentUser.get("name"));
         r.setRating(Integer.parseInt(body.get("rating").toString()));
         r.setComment((String) body.get("comment"));
+        r.setHelpfulCount(0);
+        r.setCreatedAt(LocalDateTime.now());
         Review saved = reviewRepository.save(r);
 
-        Place p = placeRepository.findById(placeId).orElseThrow();
-        
+        Place p = placeRepository.findById(placeId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Place not found"));
+
         Page<Review> allReviewsPage = reviewRepository.findByPlaceIdOrderByIdDesc(placeId, Pageable.unpaged());
         List<Review> allReviews = allReviewsPage.getContent();
-        
+
         double avg = allReviews.stream().mapToInt(Review::getRating).average().orElse(0.0);
         p.setReviewCount(allReviews.size());
         p.setRating(Math.round(avg * 10.0) / 10.0);
         placeRepository.save(p);
 
-        return Map.of("id", saved.getId(), "rating", saved.getRating(), "comment", saved.getComment(), "created_at", saved.getCreatedAt().toString());
+        return Map.of("id", saved.getId(), "rating", saved.getRating(), "comment", saved.getComment() != null ? saved.getComment() : "", "created_at", saved.getCreatedAt().toString());
     }
 
     private Map<String, Object> mapToPlaceJson(Place p, Double distance) {
@@ -218,14 +310,14 @@ public class PlaceService {
         json.put("name", p.getName());
         json.put("description", p.getDescription() != null ? p.getDescription() : "");
         json.put("address", p.getAddress());
-        json.put("city", p.getCity());
+        json.put("city", p.getCity() != null ? p.getCity() : "");
         json.put("latitude", p.getLatitude());
         json.put("longitude", p.getLongitude());
-        json.put("price_level", p.getPriceLevel());
-        json.put("business_status", p.getBusinessStatus());
-        json.put("source", p.getSource());
-        json.put("rating", p.getRating());
-        json.put("review_count", p.getReviewCount());
+        json.put("price_level", p.getPriceLevel() != null ? p.getPriceLevel() : 0);
+        json.put("business_status", p.getBusinessStatus() != null ? p.getBusinessStatus() : "open");
+        json.put("source", p.getSource() != null ? p.getSource() : "manual");
+        json.put("rating", p.getRating() != null ? p.getRating() : 0.0);
+        json.put("review_count", p.getReviewCount() != null ? p.getReviewCount() : 0);
         json.put("distance", distance != null ? distance : 0.0);
         json.put("created_at", p.getCreatedAt() != null ? p.getCreatedAt().toString() : "");
 

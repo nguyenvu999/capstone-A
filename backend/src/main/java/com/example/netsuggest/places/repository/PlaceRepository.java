@@ -11,7 +11,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface PlaceRepository extends JpaRepository<Place, Long> {
+public interface PlaceRepository extends JpaRepository<Place, String> {
 
     @Query(value = "SELECT p.* FROM places p " +
             "WHERE (:search IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.address) LIKE LOWER(CONCAT('%', :search, '%'))) " +
@@ -41,6 +41,7 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("radiusKm") Double radiusKm,
             Pageable pageable);
 
-    @Query(value = "SELECT * FROM places WHERE city = :city AND (similarity(LOWER(name), LOWER(:name)) >= 0.8 AND similarity(LOWER(address), LOWER(:address)) >= 0.8) LIMIT 1", nativeQuery = true)
+    // Đã sửa: Thay thế hàm similarity() của Postgres bằng câu lệnh so sánh LOWER chuỗi tiêu chuẩn để chạy được trên mọi database
+    @Query(value = "SELECT * FROM places WHERE city = :city AND LOWER(name) = LOWER(:name) AND LOWER(address) = LOWER(:address) LIMIT 1", nativeQuery = true)
     List<Place> findDuplicatePlace(@Param("name") String name, @Param("address") String address, @Param("city") String city);
 }

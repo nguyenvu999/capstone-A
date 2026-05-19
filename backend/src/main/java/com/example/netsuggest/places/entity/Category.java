@@ -1,62 +1,34 @@
 package com.example.netsuggest.places.entity;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import java.util.List;
 
 @Entity
 @Table(name = "categories")
 public class Category {
-    
+
     @Id
-    private String id; // Khóa chính dạng chuỗi (Ví dụ: "restaurant", "cafe", "bar")
+    @Column(length = 50, nullable = false)
+    private String id;
+
     private String name;
     private String icon;
     private String color;
 
-    // Constructor mặc định (Bắt buộc phải có đối với JPA Entity)
-    public Category() {
-    }
+    @ManyToMany(mappedBy = "categories")
+    private List<Place> places;
 
-    // Constructor có tham số đầy đủ để tiện khởi tạo nhanh nếu cần
-    public Category(String id, String name, String icon, String color) {
-        this.id = id;
-        this.name = name;
-        this.icon = icon;
-        this.color = color;
-    }
+    public Category() {}
 
-    // --- GETTERS AND SETTERS ---
-    
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getIcon() {
-        return icon;
-    }
-
-    public void setIcon(String icon) {
-        this.icon = icon;
-    }
-
-    public String getColor() {
-        return color;
-    }
-
-    public void setColor(String color) {
-        this.color = color;
-    }
+    // Getters & Setters
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getIcon() { return icon; }
+    public void setIcon(String icon) { this.icon = icon; }
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
+    public List<Place> getPlaces() { return places; }
+    public void setPlaces(List<Place> places) { this.places = places; }
 }
