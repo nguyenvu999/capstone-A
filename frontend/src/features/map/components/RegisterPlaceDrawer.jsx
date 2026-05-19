@@ -68,7 +68,7 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
 
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=vn`
+        `https://corsproxy.io/?${encodeURIComponent(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=5&countrycodes=vn`)}`
       )
       const data = await response.json()
       setLocationResults(data)
@@ -166,6 +166,9 @@ function RegisterPlaceDrawer({ isOpen, onClose, onPlaceAdded }) {
         onPlaceAdded(createdPlace)
       }
       handleClose()
+
+      // Force reload page để refresh places
+      window.location.reload()
       
     } catch (error) {
       if (isDuplicateError(error)) {
