@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { createClient } from "@supabase/supabase-js"
 
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png"
 import markerIcon from "leaflet/dist/images/marker-icon.png"
@@ -14,40 +13,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 })
 
-const supabase = createClient(
-  "https://qnnieipjsshmubeabmos.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubmllaXBqc3NobXViZWFibW9zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MDYwNzcsImV4cCI6MjA5NDE4MjA3N30.P3XQVnmapCJk1PVEZI3vGbAoKaq4FciJXHYQak85C8Y"
-)
 
-// Export supabase + position so other components can use them
-export { supabase }
-export let currentGPSPosition = null
-
-export async function loadSavedLocations() {
-  const { data, error } = await supabase
-    .from("saved_locations")
-    .select("*")
-    .order("created_at", { ascending: false })
-  if (error) { console.error(error); return [] }
-  return data ?? []
-}
-
-export async function saveLocation(name, lat, lng) {
-  const { error } = await supabase
-    .from("saved_locations")
-    .insert({ name, lat, lng })
-  if (error) { console.error(error); return false }
-  return true
-}
-
-export async function deleteLocation(id) {
-  const { error } = await supabase
-    .from("saved_locations")
-    .delete()
-    .eq("id", id)
-  if (error) { console.error(error); return false }
-  return true
-}
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371
