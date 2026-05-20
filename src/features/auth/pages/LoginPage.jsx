@@ -1,16 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext"; // IMPORT AUTH CONTEXT
 import Logo from "../../../shared/ui/Logo";
 import MicrosoftSignInButton from "../components/MicrosoftSignInButton";
 import { getMicrosoftSSOStartUrl } from "../api/authApi";
 
 function LoginPage() {
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const { user, loading } = useAuth(); // Lấy thông tin user hiện tại
+  const navigate = useNavigate();
+
+  // FIX TẠI ĐÂY: Nếu user đã đăng nhập mà cố tình quay lại trang /login (nhấn Back)
+  // Hệ thống lập tức đẩy đi bằng replace: true để xóa trang login khỏi lịch sử duyệt web
+  useEffect(() => {
+    if (!loading && user) {
+      navigate("/map", { replace: true });
+    }
+  }, [user, loading, navigate]);
 
   const handleMicrosoftSignIn = () => {
     setIsRedirecting(true);
-    // Chỉ khi bấm nút mới nhảy sang Backend
     window.location.href = getMicrosoftSSOStartUrl();
   };
+
+  // Nếu đang kiểm tra session thì tạm thời không hiện form đăng nhập để tránh nháy giao diện
+  if (loading || user) {
+    return null; 
+  }
 
   return (
     <div className='min-h-screen flex items-center justify-center bg-[#94AB71] px-4'>

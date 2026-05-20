@@ -4,11 +4,11 @@
 // Danh sách categories
 // Dùng để render checkboxes trong FilterSidebar và category selector trong RegisterPlaceDrawer
 export const CATEGORY_DEFINITIONS = [
-  { id: "restaurant", label: "Restaurants", icon: "Utensils"},
-  { id: "bar", label: "Bars", icon: "Wine"},
-  { id: "sight", label: "Sights", icon: "Eye"},
-  { id: "entertainment", label: "Entertainment", icon: "Gamepad2"},
-  { id: "team_event", label: "Team Events", icon: "Users"},
+  { id: "restaurant", label: "Restaurants", icon: "Utensils", color: "#F97316" },
+  { id: "bar", label: "Bars", icon: "Wine", color: "#8B5CF6" },
+  { id: "sight", label: "Sights", icon: "Eye", color: "#3B82F6" },
+  { id: "entertainment", label: "Entertainment", icon: "Gamepad2", color: "#EC4899" },
+  { id: "team_event", label: "Team Events", icon: "Users", color: "#10B981" },
 ]
 
 // Danh sách mức giá
