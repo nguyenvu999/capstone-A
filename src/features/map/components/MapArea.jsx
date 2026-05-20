@@ -1,4 +1,4 @@
-```jsx
+
 // MapArea.jsx
 // Hiển thị Leaflet map bằng vanilla JS
 // Hiển thị markers cho places và search results
@@ -181,4 +181,4 @@ function MapArea({ places = [], isLoading, searchLocation }) {
 }
 
 export default MapArea
-```
+
