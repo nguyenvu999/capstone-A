@@ -1,158 +1,184 @@
-import { useEffect, useRef, useState } from "react"
+```jsx
+// MapArea.jsx
+// Hiển thị Leaflet map bằng vanilla JS
+// Hiển thị markers cho places và search results
+
+import useUserLocation from "../hooks/useUserLocation"
+import { useEffect, useRef } from "react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
-import { createClient } from "@supabase/supabase-js"
 
+// Import marker icons
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png"
 import markerIcon from "leaflet/dist/images/marker-icon.png"
 import markerShadow from "leaflet/dist/images/marker-shadow.png"
 
+// Fix Leaflet default icon paths
 delete L.Icon.Default.prototype._getIconUrl
+
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
 })
 
-const supabase = createClient(
-  "https://qnnieipjsshmubeabmos.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFubmllaXBqc3NobXViZWFibW9zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MDYwNzcsImV4cCI6MjA5NDE4MjA3N30.P3XQVnmapCJk1PVEZI3vGbAoKaq4FciJXHYQak85C8Y"
-)
+function MapArea({ places = [], isLoading, searchLocation }) {
+  const mapContainerRef = useRef(null)
+  const mapRef = useRef(null)
+  const markersRef = useRef([])
+  const searchMarkerRef = useRef(null)
 
-// Export supabase + position so other components can use them
-export { supabase }
-export let currentGPSPosition = null
+  const userLocation = useUserLocation()
+  const userMarkerRef = useRef(null)
+  const hasCenteredRef = useRef(false)
 
-export async function loadSavedLocations() {
-  const { data, error } = await supabase
-    .from("saved_locations")
-    .select("*")
-    .order("created_at", { ascending: false })
-  if (error) { console.error(error); return [] }
-  return data ?? []
-}
-
-export async function saveLocation(name, lat, lng) {
-  const { error } = await supabase
-    .from("saved_locations")
-    .insert({ name, lat, lng })
-  if (error) { console.error(error); return false }
-  return true
-}
-
-export async function deleteLocation(id) {
-  const { error } = await supabase
-    .from("saved_locations")
-    .delete()
-    .eq("id", id)
-  if (error) { console.error(error); return false }
-  return true
-}
-
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-export function formatDistance(km) {
-  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(2)} km`
-}
-
-export function getDistanceFrom(userPos, lat, lng) {
-  if (!userPos) return null
-  return haversineKm(userPos.lat, userPos.lng, lat, lng)
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
-export default function MapArea() {
-  const mapDivRef       = useRef(null)
-  const mapRef          = useRef(null)
-  const userMarkerRef   = useRef(null)
-  const savedMarkersRef = useRef([])
-  const hasCenteredRef  = useRef(false)
-
-  const [savedLocations, setSavedLocations] = useState([])
-
-  // Init map
+  // Initialize map khi component mount
   useEffect(() => {
     if (mapRef.current) return
-    const map = L.map(mapDivRef.current).setView([10.7769, 106.7009], 13)
-L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-  {
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-  }
-).addTo(map)
+
+    const map = L.map(mapContainerRef.current, {
+      center: [10.7769, 106.7009],
+      zoom: 14,
+      zoomControl: true,
+    })
+
+    L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }
+    ).addTo(map)
+
     mapRef.current = map
-    return () => { map.remove(); mapRef.current = null }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
+    }
   }, [])
 
-  // GPS tracking
-  useEffect(() => {
-    if (!navigator.geolocation) return
-    const watchId = navigator.geolocation.watchPosition(
-      ({ coords }) => {
-        const { latitude: lat, longitude: lng } = coords
-        currentGPSPosition = { lat, lng }
-
-        const map = mapRef.current
-        if (!map) return
-
-        if (!userMarkerRef.current) {
-      const pulseIcon = L.divIcon({
-  className: "",
-  html: `<div class="pulse-marker"></div>`,
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-})
-
-userMarkerRef.current = L.marker([lat, lng], {
-  icon: pulseIcon,
-})
-  .addTo(map)
-  .bindPopup("📍 You are here")
-        } else {
-          userMarkerRef.current.setLatLng([lat, lng])
-        }
-
-        if (!hasCenteredRef.current) {
-          map.setView([lat, lng], 15)
-          hasCenteredRef.current = true
-        }
-      },
-      (err) => console.error(err),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
-    )
-    return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
-
-  // Load locations
-  useEffect(() => {
-    loadSavedLocations().then(setSavedLocations)
-  }, [])
-
-  // Sync markers
+  // Update markers khi places thay đổi
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    savedMarkersRef.current.forEach((m) => map.removeLayer(m))
-    savedMarkersRef.current = []
-    savedLocations.forEach((loc) => {
-      const m = L.marker([loc.lat, loc.lng]).addTo(map).bindPopup(`<strong>${loc.name}</strong>`)
-      savedMarkersRef.current.push(m)
+
+    // Xóa tất cả markers cũ
+    markersRef.current.forEach((marker) => {
+      map.removeLayer(marker)
     })
-  }, [savedLocations])
+
+    markersRef.current = []
+
+    // Thêm markers mới cho mỗi place
+    places.forEach((place) => {
+      const marker = L.marker([place.latitude, place.longitude])
+        .addTo(map)
+        .bindPopup(`
+          <div style="min-width: 150px;">
+            <strong>${place.name}</strong><br/>
+            ${place.address || ""}
+          </div>
+        `)
+
+      markersRef.current.push(marker)
+    })
+
+    // Nếu có places, fit map bounds để hiển thị tất cả
+    if (places.length > 0) {
+      const bounds = L.latLngBounds(
+        places.map((p) => [p.latitude, p.longitude])
+      )
+
+      map.fitBounds(bounds, { padding: [50, 50] })
+    }
+  }, [places])
+
+  // Zoom đến vị trí search
+  useEffect(() => {
+    const map = mapRef.current
+
+    if (!map || !searchLocation) return
+
+    // Xóa search marker cũ
+    if (searchMarkerRef.current) {
+      map.removeLayer(searchMarkerRef.current)
+    }
+
+    // Tạo icon màu đỏ cho search result
+    const redIcon = L.icon({
+      iconUrl:
+        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+      shadowUrl:
+        "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+    })
+
+    // Tạo marker mới cho search result
+    searchMarkerRef.current = L.marker(
+      [searchLocation.lat, searchLocation.lng],
+      {
+        icon: redIcon,
+      }
+    )
+      .addTo(map)
+      .bindPopup(`<strong>${searchLocation.name}</strong>`)
+      .openPopup()
+
+    // Zoom đến vị trí
+    map.setView([searchLocation.lat, searchLocation.lng], 16)
+  }, [searchLocation])
+
+  // Hiển thị user location
+  useEffect(() => {
+    const map = mapRef.current
+
+    if (!map || !userLocation) return
+
+    const pulseIcon = L.divIcon({
+      className: "",
+      html: `<div class="pulse-marker"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    })
+
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = L.marker(
+        [userLocation.lat, userLocation.lng],
+        {
+          icon: pulseIcon,
+        }
+      )
+        .addTo(map)
+        .bindPopup("📍 You are here")
+    } else {
+      userMarkerRef.current.setLatLng([
+        userLocation.lat,
+        userLocation.lng,
+      ])
+    }
+
+    // Chỉ center map 1 lần
+    if (!hasCenteredRef.current) {
+      map.setView([userLocation.lat, userLocation.lng], 15)
+      hasCenteredRef.current = true
+    }
+  }, [userLocation])
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={mapDivRef} className="h-full w-full" />
+    <div className="h-full w-full">
+      <div
+        ref={mapContainerRef}
+        className="h-full w-full rounded-xl"
+      />
     </div>
   )
 }
+
+export default MapArea
+```
