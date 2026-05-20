@@ -1,10 +1,6 @@
-// FilterSidebar.jsx
-// Sidebar chứa các filters: category, price, status, rating
-// Khi user thay đổi filter → gọi callback onFilterChange để parent component fetch data mới
-
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Eye, Utensils, Wine, Gamepad2, Users, Star } from "lucide-react"
-import { CATEGORY_DEFINITIONS, PRICE_LEVELS } from "../constants/mapConstants"
+import { categoryDefinitions, priceLevels } from "../data/mockPlaces"
 
 // Map icon name sang component
 const iconMap = {
@@ -15,26 +11,11 @@ const iconMap = {
   Users,
 }
 
-function FilterSidebar({ totalPlaces = 0, filteredPlaces = 0, onFilterChange }) {
+function FilterSidebar({ totalPlaces = 0, filteredPlaces = 0 }) {
   const [selectedCategories, setSelectedCategories] = useState([])
   const [selectedPrices, setSelectedPrices] = useState([])
   const [minRating, setMinRating] = useState(0)
   const [statusFilter, setStatusFilter] = useState("all")
-
-  // Khi filters thay đổi, gọi callback để parent component biết
-  useEffect(() => {
-    if (onFilterChange) {
-      const filters = {
-        category: selectedCategories.length > 0 ? selectedCategories.join(',') : null,
-        price: selectedPrices.length > 0 ? selectedPrices.join(',') : null,
-        status: statusFilter !== 'all' ? statusFilter : null,
-        minRating: minRating > 0 ? minRating : 0,
-      }
-      
-      onFilterChange(filters)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategories, selectedPrices, minRating, statusFilter])
 
   const toggleCategory = (id) => {
     setSelectedCategories((prev) =>
@@ -76,7 +57,7 @@ function FilterSidebar({ totalPlaces = 0, filteredPlaces = 0, onFilterChange }) 
             Category (Multi-select)
           </h3>
           <div className="space-y-2">
-            {CATEGORY_DEFINITIONS.map((cat) => {
+            {categoryDefinitions.map((cat) => {
               const Icon = iconMap[cat.icon] || Eye
               const isChecked = selectedCategories.includes(cat.id)
               return (
@@ -115,7 +96,7 @@ function FilterSidebar({ totalPlaces = 0, filteredPlaces = 0, onFilterChange }) 
             Price Level
           </h3>
           <div className="flex gap-2">
-            {PRICE_LEVELS.map((price) => {
+            {priceLevels.map((price) => {
               const isActive = selectedPrices.includes(price)
               return (
                 <button
