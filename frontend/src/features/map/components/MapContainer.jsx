@@ -199,18 +199,29 @@ export default function MapContainer({
       if (!lat || !lng) return;
 
       const el = document.createElement("div");
-      el.className = "w-7 h-7 rounded-full border border-white shadow-md flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
+      el.className = "w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
       
-      if (place.latitude !== undefined) {
-        el.innerHTML = `📍`;
-        el.style.backgroundColor = "#ef4444"; 
-        el.style.fontSize = "12px";
-      } else {
-        el.style.backgroundColor = place.icon_background_color || "#2563eb"; 
-        if (place.icon) {
-          el.innerHTML = `<img src="${place.icon}" style="width:14px; filter:brightness(0) invert(1)" />`;
+      const isSupabase = place.latitude !== undefined;
+      const category = (place.category || "").toLowerCase();
+      const isTrackAsiaRestaurant = place.types?.includes("restaurant") || place.types?.includes("food");
+
+      // KIỂM TRA ĐIỀU KIỆN RESTAURANT ĐỂ ĐỔI ICON ẢNH
+      if (category === "restaurant" || (!isSupabase && isTrackAsiaRestaurant)) {
+        el.style.backgroundColor = "#ea580c"; 
+        el.innerHTML = `<img src="/restaurant-icon.jpg" style="width: 18px; height: 18px; object-fit: contain;" />`;
+      } 
+      else {
+        if (isSupabase) {
+          el.innerHTML = `📍`;
+          el.style.backgroundColor = "#ef4444"; 
+          el.style.fontSize = "12px";
         } else {
-          el.innerHTML = `🏢`;
+          el.style.backgroundColor = place.icon_background_color || "#3b82f6"; 
+          if (place.icon) {
+            el.innerHTML = `<img src="${place.icon}" style="width:14px; filter:brightness(0) invert(1)" />`;
+          } else {
+            el.innerHTML = `🏢`;
+          }
         }
       }
 
@@ -229,7 +240,7 @@ export default function MapContainer({
     });
   }, [categoryResults]);
 
-  // 4. Di chuyển camera đến vị trí đang chọn (FlyTo)
+  // 4. Di chuyển camera đến vị trí đang chọn (ĐÃ FIX: Dùng lại pin_map_dot.svg từ thư mục public)
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
@@ -237,14 +248,14 @@ export default function MapContainer({
     mapRef.current.flyTo({ center: [Number(lng), Number(lat)], zoom: 15, essential: true });
     focusMarkerRef.current?.remove();
     
+    // Tạo cấu trúc thẻ div chứa ảnh SVG thay thế cho emoji 🎯 cũ
     const pin = document.createElement("div");
-    pin.innerHTML = "🎯";
-    pin.style.fontSize = "26px";
-    pin.style.cursor = "pointer";
+    pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md transition-transform";
+    pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
       .setLngLat([Number(lng), Number(lat)])
-      .setPopup(new trackasiagl.Popup({ offset: [0, -20] }).setHTML(`<b>${name || "Điểm Đang Chọn"}</b><br/>${address || ""}`))
+      .setPopup(new trackasiagl.Popup({ offset: [0, -32] }).setHTML(`<b>${name || "Điểm Đang Chọn"}</b><br/>${address || ""}`))
       .addTo(mapRef.current)
       .togglePopup();
       
