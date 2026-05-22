@@ -135,30 +135,60 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. Quét API Track-Asia ngoài đồng bộ
+  // 2. KÍCH HOẠT LOGIC GỌI NGẦM TẤT CẢ CATEGORIES ĐỂ DISPLAY ALL CHUẨN XÁC VỊ TRÍ
   useEffect(() => {
     if (!mapRef.current) return;
 
     const [lng, lat] = userCoordsRef.current;
 
-    // TRƯỜNG HỢP A: Khi mới tải trang / Không chọn danh mục -> Quét toàn bộ điểm xung quanh 5km
+    // TRƯỜNG HỢP A: DISPLAY ALL -> Gọi đồng thời các danh mục quan trọng để lấy data chuẩn vị trí
     if (!activeCategory) {
-      fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&key=${apiKey}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.results) {
-            const apiItems = data.results.filter(
-              apiItem => !allPlaces.some(sb => sb.name.toLowerCase() === apiItem.name.toLowerCase())
-            );
-            onCategoryResultsChange([...allPlaces, ...apiItems]);
-          }
+      // Định nghĩa các loại danh mục bạn muốn quét ngầm chung quanh 5km
+      const targetTypes = ["restaurant", "pharmacy", "hospital", "school", "lodging", "amusement_park"];
+      
+      const fetchPromises = targetTypes.map(type =>
+        fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&type=${type}&key=${apiKey}`)
+          .then(res => res.json())
+          .catch(() => ({ results: [] }))
+      );
+
+      Promise.all(fetchPromises)
+        .then(resultsArray => {
+          // Gộp tất cả các mảng kết quả đơn lẻ lại thành một mảng khổng lồ
+          let combinedApiResults = [];
+          resultsArray.forEach(data => {
+            if (data.results) combinedApiResults = [...combinedApiResults, ...data.results];
+          });
+
+          // Chuẩn hóa cấu trúc tọa độ phẳng phẳng cho toàn bộ item thu về
+          const formattedApiItems = combinedApiResults.map(item => {
+            const itemLat = Number(item.geometry?.location?.lat || item.lat);
+            const itemLng = Number(item.geometry?.location?.lng || item.lng);
+            return { ...item, latitude: itemLat, longitude: itemLng };
+          }).filter(item => !isNaN(item.latitude) && !isNaN(item.longitude));
+
+          // Lọc loại bỏ trùng lặp tuyệt đối (trùng id hoặc trùng cả tên lẫn vị trí sát nhau)
+          const uniqueApiItems = [];
+          formattedApiItems.forEach(item => {
+            const isDuplicate = uniqueApiItems.some(existing => existing.place_id === item.place_id || (existing.name.toLowerCase() === item.name.toLowerCase() && Math.abs(existing.latitude - item.latitude) < 0.0001))
+              || allPlaces.some(sb => sb.name.toLowerCase() === item.name.toLowerCase() && Math.abs(Number(sb.latitude) - item.latitude) < 0.0001);
+            
+            if (!isDuplicate) {
+              uniqueApiItems.push(item);
+            }
+          });
+
+          onCategoryResultsChange([...allPlaces, ...uniqueApiItems]);
         })
-        .catch((err) => console.error("Lỗi quét tổng hợp Track-Asia:", err));
+        .catch((err) => {
+          console.error("Lỗi quét ngầm đa danh mục:", err);
+          onCategoryResultsChange(allPlaces);
+        });
         
       return; 
     }
 
-    // TRƯỜNG HỢP B: Khi click chọn danh mục rõ ràng
+    // TRƯỜNG HỢP B: Khi user tick chọn một danh mục cụ thể
     let trackAsiaType = activeCategory;
     if (activeCategory === "entertainment") trackAsiaType = "amusement_park";
     if (activeCategory === "government") trackAsiaType = "local_government_office";
@@ -167,19 +197,33 @@ export default function MapContainer({
     fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&type=${trackAsiaType}&key=${apiKey}`)
       .then(res => res.json())
       .then(data => {
+        const supabaseFilteredItems = allPlaces.filter(
+          item => item.category?.toLowerCase() === activeCategory.toLowerCase()
+        );
+
         if (data.results) {
-          const supabaseFilteredItems = allPlaces.filter(
-            item => item.category?.toLowerCase() === activeCategory.toLowerCase()
-          );
-          
-          const apiItems = data.results.filter(
+          const formattedApiItems = data.results.map(item => {
+            const itemLat = Number(item.geometry?.location?.lat || item.lat);
+            const itemLng = Number(item.geometry?.location?.lng || item.lng);
+            return { ...item, latitude: itemLat, longitude: itemLng };
+          }).filter(item => !isNaN(item.latitude) && !isNaN(item.longitude));
+
+          const apiItems = formattedApiItems.filter(
             apiItem => !supabaseFilteredItems.some(sb => sb.name.toLowerCase() === apiItem.name.toLowerCase())
           );
           
           onCategoryResultsChange([...supabaseFilteredItems, ...apiItems]);
+        } else {
+          onCategoryResultsChange(supabaseFilteredItems);
         }
       })
-      .catch((err) => console.error("Lỗi lọc danh mục Track-Asia:", err));
+      .catch((err) => {
+        console.error("Lỗi lọc danh mục đơn lẻ Track-Asia:", err);
+        const supabaseFilteredItems = allPlaces.filter(
+          item => item.category?.toLowerCase() === activeCategory.toLowerCase()
+        );
+        onCategoryResultsChange(supabaseFilteredItems);
+      });
 
   }, [activeCategory, apiKey, allPlaces]);
 
@@ -193,19 +237,19 @@ export default function MapContainer({
     if (!categoryResults || categoryResults.length === 0) return;
 
     categoryResults.forEach(place => {
-      const lat = Number(place.latitude || place.geometry?.location?.lat);
-      const lng = Number(place.longitude || place.geometry?.location?.lng);
+      const lat = Number(place.latitude);
+      const lng = Number(place.longitude);
 
-      if (!lat || !lng) return;
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
       const el = document.createElement("div");
       el.className = "w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
       
-      const isSupabase = place.latitude !== undefined;
+      const isSupabase = place.id !== undefined; 
       const category = (place.category || "").toLowerCase();
       const isTrackAsiaRestaurant = place.types?.includes("restaurant") || place.types?.includes("food");
 
-      // KIỂM TRA ĐIỀU KIỆN RESTAURANT ĐỂ ĐỔI ICON ẢNH
+      // HIỂN THỊ ICON NHÀ HÀNG CUSTOM
       if (category === "restaurant" || (!isSupabase && isTrackAsiaRestaurant)) {
         el.style.backgroundColor = "#ea580c"; 
         el.innerHTML = `<img src="/restaurant-icon.jpg" style="width: 18px; height: 18px; object-fit: contain;" />`;
@@ -240,7 +284,7 @@ export default function MapContainer({
     });
   }, [categoryResults]);
 
-  // 4. Di chuyển camera đến vị trí đang chọn (ĐÃ FIX: Dùng lại pin_map_dot.svg từ thư mục public)
+  // 4. Camera di chuyển đến vị trí Focus (Giữ nguyên pin_map_dot.svg)
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
@@ -248,7 +292,6 @@ export default function MapContainer({
     mapRef.current.flyTo({ center: [Number(lng), Number(lat)], zoom: 15, essential: true });
     focusMarkerRef.current?.remove();
     
-    // Tạo cấu trúc thẻ div chứa ảnh SVG thay thế cho emoji 🎯 cũ
     const pin = document.createElement("div");
     pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md transition-transform";
     pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
