@@ -1,32 +1,48 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext"; // IMPORT AUTH CONTEXT
+import { useAuth } from "../context/AuthContext";
+import { signInWithEmail, signUpWithEmail } from "../api/authApi";
 import Logo from "../../../shared/ui/Logo";
-import MicrosoftSignInButton from "../components/MicrosoftSignInButton";
-import { getMicrosoftSSOStartUrl } from "../api/authApi";
 
 function LoginPage() {
-  const [isRedirecting, setIsRedirecting] = useState(false);
-  const { user, loading } = useAuth(); // Lấy thông tin user hiện tại
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isRegister, setIsRegister] = useState(false); // Mode toggle giữa đăng nhập & đăng ký
+  const [isSubmiting, setIsSubmiting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  // FIX TẠI ĐÂY: Nếu user đã đăng nhập mà cố tình quay lại trang /login (nhấn Back)
-  // Hệ thống lập tức đẩy đi bằng replace: true để xóa trang login khỏi lịch sử duyệt web
   useEffect(() => {
     if (!loading && user) {
       navigate("/map", { replace: true });
     }
   }, [user, loading, navigate]);
 
-  const handleMicrosoftSignIn = () => {
-    setIsRedirecting(true);
-    window.location.href = getMicrosoftSSOStartUrl();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmiting(true);
+    setErrorMsg("");
+
+    try {
+      if (isRegister) {
+        const { error } = await signUpWithEmail(email, password);
+        if (error) throw error;
+        alert("Sign up successful! Please check your email for confirmation (if enabled).");
+        setIsRegister(false);
+      } else {
+        const { error } = await signInWithEmail(email, password);
+        if (error) throw error;
+      }
+    } catch (err) {
+      setErrorMsg(err.message || "An error occurred. Please try again.");
+    } finally {
+      setIsSubmiting(false);
+    }
   };
 
-  // Nếu đang kiểm tra session thì tạm thời không hiện form đăng nhập để tránh nháy giao diện
-  if (loading || user) {
-    return null; 
-  }
+  if (loading || user) return null; 
 
   return (
     <div className='min-h-screen flex items-center justify-center bg-[#94AB71] px-4'>
@@ -35,14 +51,67 @@ function LoginPage() {
           <Logo />
         </div>
         <div className="text-center">
-          <h1 className="mb-2 text-2xl font-bold">Sign in to NetSuggest</h1>
-          <p className="mb-8 text-sm text-[#5f6a60]">Use your Microsoft account</p>
+          <h1 className="mb-2 text-2xl font-bold">
+            {isRegister ? "Create an account" : "Sign in to NetSuggest"}
+          </h1>
+          <p className="mb-6 text-sm text-[#5f6a60]">
+            {isRegister ? "Sign up with your email" : "Use your email and password"}
+          </p>
           
-          <MicrosoftSignInButton
-            onClick={handleMicrosoftSignIn}
-            isLoading={isRedirecting}
-          />
+          {errorMsg && (
+            <div className="mb-4 rounded-lg bg-red-50 p-2.5 text-left text-xs font-medium text-red-600">
+              ⚠️ {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4 text-left">
+            <div>
+              <label className="text-xs font-semibold text-gray-600">Email Address</label>
+              <input 
+                type="email" 
+                required 
+                value={email} 
+                onChange={e => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600">Password</label>
+              <input 
+                type="password" 
+                required 
+                value={password} 
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
+              />
+            </div>
+            
+            <button
+              type="submit"
+              disabled={isSubmiting}
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#355e1d] px-4 text-base font-medium text-white transition hover:bg-[#2d4f18] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSubmiting ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Processing...
+                </>
+              ) : (
+                isRegister ? "Sign Up" : "Sign In"
+              )}
+            </button>
+          </form>
           
+          <button 
+            type="button"
+            onClick={() => { setIsRegister(!isRegister); setErrorMsg(""); }}
+            className="mt-6 text-xs font-semibold text-[#355e1d] hover:underline transition"
+          >
+            {isRegister ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
+          </button>
+
           <p className="mt-6 text-xs text-[#6b746c]">
             Only authorized company users can access this platform.
           </p>

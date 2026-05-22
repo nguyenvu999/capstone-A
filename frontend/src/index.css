@@ -1,12 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
-@import 'leaflet/dist/leaflet.css';
+@import "trackasia-gl/dist/trackasia-gl.css";
 
-/* Leaflet map layers */
-.leaflet-pane,
-.leaflet-top,
-.leaflet-bottom {
-  z-index: 10 !important;  
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght=400;500;600;700;800&display=swap');
+
+/* Cấu hình Font và biến hệ thống theo chuẩn Tailwind v4 */
+@theme {
+  --font-sans: "Nunito Sans", sans-serif;
 }
 
 header {
@@ -16,6 +15,28 @@ header {
 html,
 body,
 #root {
-  font-family: "Nunito Sans", sans-serif;
+  font-family: var(--font-sans);
 }
 
+/* ==========================================================================
+   CUSTOM COMPONENT STYLES (TRACK-ASIA SIDEBAR)
+   ========================================================================== */
+
+/* Tùy chỉnh thanh cuộn cho danh sách gợi ý địa điểm (Autocomplete dropdown) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}

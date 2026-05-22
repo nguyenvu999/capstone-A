@@ -1,20 +1,18 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import PageLoader from "../../../shared/ui/PageLoader";
-import { saveRedirectAfterLogin } from "../utils/redirectAfterLogin";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
-    return <PageLoader text="Verifying your session..." />;
+    return <PageLoader text="Verifying your secure session..." />;
   }
 
   if (!user) {
-    const intendedPath = `${location.pathname}${location.search}${location.hash}`;
-    saveRedirectAfterLogin(intendedPath);
-    return <Navigate to="/login" replace />;
+    // Lưu lại vị trí đang cố truy cập lỡ sau khi đăng nhập bắt quay về đúng chỗ cũ
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return children;

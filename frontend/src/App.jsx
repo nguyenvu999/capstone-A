@@ -1,27 +1,31 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
-import { AuthProvider } from "./features/auth/context/AuthContext"
-import ProtectedRoute from "./features/auth/components/ProtectedRoute"
-import LoginPage from "./features/auth/pages/LoginPage"
-import AuthCallbackPage from "./features/auth/pages/AuthCallbackPage"
-import MapPage from "./features/map/pages/MapPage"
-import PlaceDetailPage from "./features/place/pages/PlaceDetailPage"
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider, useAuth } from "./features/auth/context/AuthContext";
+import ProtectedRoute from "./features/auth/components/ProtectedRoute";
+import LoginPage from "./features/auth/pages/LoginPage";
+import PageLoader from "./shared/ui/PageLoader";
+
+// IMPORT CÁC PAGES CHUẨN TỪ FOLDER MAP MỚI TẠO
+import MapPage from "./features/map/pages/MapPage";
+import PlaceDetailPage from "./features/map/pages/PlaceDetailPage";
+
+function RootRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader text="Loading application..." />;
+  return user ? <Navigate to="/map" replace /> : <Navigate to="/login" replace />;
+}
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Root route: luôn đưa về login */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-
-          {/* PUBLIC ROUTES */}
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-          {/* PROTECTED ROUTES */}
+          {/* CÁC ROUTE ĐƯỢC BẢO VỆ ĐÃ TRỎ ĐÚNG FILE COMPONENT MỚI */}
           <Route
             path="/map"
-            element = {
+            element={
               <ProtectedRoute>
                 <MapPage />
               </ProtectedRoute>
@@ -30,19 +34,18 @@ function App() {
 
           <Route
             path="/place/:id"
-            element = {
+            element={
               <ProtectedRoute>
                 <PlaceDetailPage />
               </ProtectedRoute>
             }
           />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
-  )
+  );
 }
 
 export default App;

@@ -9,7 +9,7 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro  # Đọc trực tiếp thư mục dist bạn vừa build bằng tay
     depends_on:
       - backend-1
       - backend-2
@@ -22,12 +22,10 @@ services:
     container_name: netsuggest-backend-1
     environment:
       - SERVER_ID=backend-1
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
       - SPRING_DATASOURCE_USERNAME=postgres.xomvatjznjjqplifhkej
       - SPRING_DATASOURCE_PASSWORD=Tg9ABbc1yP8nh5DT
-      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_ID=da72c7a0-2675-4aa8-808f-0ad8b61ca0f7
-      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_SECRET=rs_8Q~H-DsydyvCFuJ_IJXmEQzxiNlgTfduiKcZM
-      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_SCOPE=openid, profile, email
+      - SUPABASE_JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvbXZhdGp6bmpqcXBsaWZoa2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzg3MjAsImV4cCI6MjA5MTc1NDcyMH0.gNiIeYjipqcQJvJNwa2l6YmaMpv8dMxoc0SiYbZos3g
     networks:
       - netsuggest-net
 
@@ -37,12 +35,10 @@ services:
     container_name: netsuggest-backend-2
     environment:
       - SERVER_ID=backend-2
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0
       - SPRING_DATASOURCE_USERNAME=postgres.xomvatjznjjqplifhkej
       - SPRING_DATASOURCE_PASSWORD=Tg9ABbc1yP8nh5DT
-      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_ID=da72c7a0-2675-4aa8-808f-0ad8b61ca0f7
-      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_CLIENT_SECRET=rs_8Q~H-DsydyvCFuJ_IJXmEQzxiNlgTfduiKcZM
-      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_MICROSOFT_SCOPE=openid, profile, email
+      - SUPABASE_JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvbXZhdGp6bmpqcXBsaWZoa2VqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNzg3MjAsImV4cCI6MjA5MTc1NDcyMH0.gNiIeYjipqcQJvJNwa2l6YmaMpv8dMxoc0SiYbZos3g
     networks:
       - netsuggest-net
 

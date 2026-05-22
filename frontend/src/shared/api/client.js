@@ -1,22 +1,20 @@
 import axios from "axios";
+import { supabase } from "../../features/auth/api/supabaseClient";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost/api",
-  withCredentials: true, // Quan trọng để gửi Cookie
+  withCredentials: true
 });
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Phát tín hiệu cho AuthContext
-      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
-      if (window.location.pathname !== "/login") {
-        window.location.replace("/login");
-      }
-    }
-    return Promise.reject(error);
+// Axios Interceptor: Tự động móc Token từ Supabase ném vào Header Authorization
+api.interceptors.request.use(async (config) => {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+}, (error) => Promise.reject(error));
 
 export default api;

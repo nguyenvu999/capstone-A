@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useCallback, useMemo, useEffect } from "react";
-import { logout, getMe } from "../api/authApi";
+import { createContext, useContext, useState, useEffect, useMemo } from "react";
+import { supabase } from "../api/supabaseClient";
 
 const AuthContext = createContext(null);
 
@@ -7,48 +7,33 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. Khôi phục session khi F5 hoặc mở tab mới
   useEffect(() => {
-    async function initializeAuth() {
-      try {
-        const userData = await getMe();
-        // Nếu getMe trả về dữ liệu trực tiếp, dùng userData. Nếu bọc trong .data thì dùng userData.data
-        const actualData = userData?.data || userData;
-        if (actualData) setUser(actualData);
-      } catch (error) {
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-    initializeAuth();
-  }, []);
-
-  // 2. Hàm nạp dữ liệu tức thì sau khi Login thành công
-  const finishLogin = useCallback((userData) => {
-    const actualData = userData?.data || userData;
-    if (actualData) {
-      setUser(actualData);
+    // Kiểm tra session cũ khi F5 tab
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       setLoading(false);
-    }
+    });
+
+    // Lắng nghe thay đổi auth (login/logout) thời gian thực
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const logoutUser = useCallback(async () => {
-    try {
-      await logout();
-    } finally {
-      setUser(null);
-      window.location.replace("/login");
-    }
-  }, []);
+  const logoutUser = async () => {
+    await supabase.auth.signOut();
+    window.location.replace("/login");
+  };
 
   const value = useMemo(() => ({
     user, 
     loading, 
-    finishLogin, 
     logoutUser, 
     isAuthenticated: !!user
-  }), [user, loading, finishLogin, logoutUser]);
+  }), [user, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
