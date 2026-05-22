@@ -6,13 +6,14 @@ export default function MapContainer({
   apiKey, 
   activeCategory, 
   focusedLocation, 
+  categoryResults, // Lấy trực tiếp mảng này từ MapPage làm nguồn dữ liệu chuẩn để vẽ
   onCategoryResultsChange,
   setFocusedLocation,   
   setShowRegisterForm   
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef([]);               
+  const markersRef = useRef([]);              
   const focusMarkerRef = useRef(null);         
   const userLocationMarkerRef = useRef(null);  
   const userCoordsRef = useRef([106.694945, 10.769034]); 
@@ -133,7 +134,6 @@ export default function MapContainer({
       getUserCurrentLocation(true);
     });
 
-    // MAP CLICK CAPTURE
     mapRef.current.on("click", (e) => {
       const { lng, lat } = e.lngLat;
       
@@ -141,12 +141,11 @@ export default function MapContainer({
         return; 
       }
 
-      onCategoryResultsChange([]); 
       setFocusedLocation({
         lat: lat,
         lng: lng,
         name: "",
-        address: `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`
+        address: `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`
       });
       setShowRegisterForm(true);
     });
@@ -157,41 +156,84 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. Category Search
+  // 2. Fetch dữ liệu từ API Track-Asia bổ trợ khi chọn danh mục
   useEffect(() => {
-    if (!mapRef.current) return;
-    if (!activeCategory) {
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-      return;
-    }
+    if (!mapRef.current || !activeCategory) return;
 
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
     const [lng, lat] = userCoordsRef.current;
     
-    fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=3000&type=${activeCategory}&key=${apiKey}`)
+    // Khớp danh mục Entertainment sang amusement_park chuẩn của API Map
+    let trackAsiaType = activeCategory;
+    if (activeCategory === "entertainment") trackAsiaType = "amusement_park";
+    if (activeCategory === "government") trackAsiaType = "local_government_office";
+    if (activeCategory === "education") trackAsiaType = "school";
+
+    fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=3000&type=${trackAsiaType}&key=${apiKey}`)
       .then(res => res.json())
       .then(data => {
         if (data.results) {
-          onCategoryResultsChange(data.results);
-          data.results.forEach(place => {
-            const el = document.createElement("div");
-            el.className = "w-7 h-7 rounded-full border border-white shadow-md flex items-center justify-center cursor-pointer";
-            el.style.backgroundColor = place.icon_background_color || "#3b82f6";
-            el.innerHTML = `<img src="${place.icon}" style="width:14px; filter:brightness(0) invert(1)" />`;
-            
-            const m = new trackasiagl.Marker({ element: el })
-              .setLngLat([place.geometry.location.lng, place.geometry.location.lat])
-              .addTo(mapRef.current);
-            markersRef.current.push(m);
+          // Trộn chung dữ liệu hiện tại (đã có Supabase) với dữ liệu API bên ngoài về
+          onCategoryResultsChange(prev => {
+            const supabaseItems = prev.filter(item => item.latitude !== undefined);
+            // Loại bỏ trùng tên để tránh sinh trùng marker
+            const apiItems = data.results.filter(apiItem => !supabaseItems.some(sb => sb.name === apiItem.name));
+            return [...supabaseItems, ...apiItems];
           });
         }
       })
       .catch((err) => console.error("Nearby search error:", err));
-  }, [activeCategory, apiKey, onCategoryResultsChange]);
+  }, [activeCategory, apiKey]);
 
-  // 3. Camera Fly To & Pointer Focus
+  // 3. VÒNG LẶP RENDER MARKER ĐỒNG BỘ: Chạy mỗi khi mảng danh sách kết quả thay đổi
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Xóa toàn bộ Marker danh mục cũ
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    if (!categoryResults || categoryResults.length === 0) return;
+
+    categoryResults.forEach(place => {
+      // Đọc linh hoạt tọa độ phẳng (Supabase) hoặc cấu trúc sâu (Track-Asia API)
+      const lat = Number(place.latitude || place.geometry?.location?.lat);
+      const lng = Number(place.longitude || place.geometry?.location?.lng);
+
+      if (!lat || !lng) return;
+
+      const el = document.createElement("div");
+      el.className = "w-7 h-7 rounded-full border border-white shadow-md flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
+      
+      // Tạo màu sắc và icon đồng bộ dựa vào nguồn dữ liệu
+      el.style.backgroundColor = place.icon_background_color || "#2563eb"; 
+      
+      if (place.icon) {
+        el.innerHTML = `<img src="${place.icon}" style="width:14px; filter:brightness(0) invert(1)" />`;
+      } else {
+        // Fallback icon ghim mặc định cho dữ liệu Supabase tự chế
+        el.innerHTML = `📍`;
+        el.style.backgroundColor = "#ef4444";
+      }
+
+      el.addEventListener("click", (e) => {
+        e.stopPropagation(); // Không ăn click lan ra Map nền
+        setFocusedLocation({
+          lat: lat,
+          lng: lng,
+          name: place.name,
+          address: place.address || place.formatted_address || place.vicinity
+        });
+      });
+
+      const m = new trackasiagl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(mapRef.current);
+        
+      markersRef.current.push(m);
+    });
+  }, [categoryResults]);
+
+  // 4. Camera Fly To & Pointer Focus khi click hàng loạt
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
@@ -212,17 +254,16 @@ export default function MapContainer({
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
       .setLngLat([Number(lng), Number(lat)])
-      .setPopup(new trackasiagl.Popup({ offset: [0, -36] }).setHTML(`<b>${name || "Selected Point"}</b><br/>${address || ""}`))
+      .setPopup(new trackasiagl.Popup({ offset: [0, -36] }).setHTML(`<b>${name || "Điểm Đang Chọn"}</b><br/>${address || ""}`))
       .addTo(mapRef.current)
       .togglePopup();
       
-  }, [focusedLocation?.lat, focusedLocation?.lng, focusedLocation]);
+  }, [focusedLocation?.lat, focusedLocation?.lng]);
 
   return (
     <div className="relative h-full w-full">
       <div ref={mapContainerRef} className="h-full w-full" />
       
-      {/* Recenter GPS Button */}
       <button 
         onClick={handleRecenter}
         className="absolute bottom-6 right-6 z-50 p-3 bg-white hover:bg-gray-50 text-blue-600 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 group"

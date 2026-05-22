@@ -14,7 +14,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
+import jakarta.servlet.http.Cookie;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.Arrays;
 
@@ -30,25 +30,32 @@ public class SecurityConfig {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
-            
-            // Ép hệ thống chạy Stateless hoàn toàn không tạo Session Cookie
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            
             .authorizeHttpRequests(auth -> auth
-                // Cho phép mở cổng lấy danh sách bản đồ Track-Asia thoải mái công khai
                 .requestMatchers("/api/places/**", "/places/**").permitAll()
-                // Bất kỳ hành động lấy thông tin cá nhân hay viết review đều cần Token
                 .anyRequest().authenticated()
             )
-            
-            // Xóa sổ Redirect 302 lỗi CORS cũ, trả chuẩn mã lỗi mạng 401 Unauthorized
             .exceptionHandling(exception -> exception
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             )
-            
-            // Sử dụng bộ Resource Server lọc JWT tự động
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.decoder(jwtDecoder()))
+                .bearerTokenResolver(request -> {
+                    // Bước 1: Thử tìm Token trong Header Authorization chuẩn trước
+                    String bearerToken = request.getHeader("Authorization");
+                    if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+                        return bearerToken.substring(7);
+                    }
+                    // Bước 2: Dự phòng nếu Frontend gửi qua HttpOnly Cookie tên là "access_token"
+                    if (request.getCookies() != null) {
+                        for (Cookie cookie : request.getCookies()) {
+                            if ("access_token".equals(cookie.getName())) {
+                                return cookie.getValue();
+                            }
+                        }
+                    }
+                    return null;
+                })
             );
             
         return http.build();
@@ -63,10 +70,11 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost", "http://localhost:3000", "http://localhost:5173"));
+        // Điền chính xác cổng chạy Client local của bạn để tránh lỗi CORS khi truyền Cookie
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:3000 , http://localhost"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(true); // Bắt buộc bằng True để trình duyệt chấp nhận Cookie nhận về
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

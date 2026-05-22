@@ -1,23 +1,58 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import MapContainer from "../components/MapContainer"; 
 import MapSidebar from "../components/MapSidebar";
 import RegisterPlaceForm from "../components/RegisterPlaceForm";
+import { supabase } from "../../auth/api/supabaseClient"; 
 import { Plus } from "lucide-react";
 
 export default function MapPage() {
   const [activeCategory, setActiveCategory] = useState(null);
-  const [categoryResults, setCategoryResults] = useState([]);
+  const [allPlaces, setAllPlaces] = useState([]); 
+  const [categoryResults, setCategoryResults] = useState([]); 
   const [focusedLocation, setFocusedLocation] = useState(null);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
 
   const API_KEY = "fbe052e2f17788443245e0c54f3084b0a2";
 
+  const fetchPlacesFromSupabase = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("places")
+        .select("*"); 
+
+      if (error) throw error;
+
+      if (data) {
+        setAllPlaces(data);
+        setCategoryResults(data); 
+      }
+    } catch (err) {
+      console.error("Lỗi khi fetch dữ liệu từ Supabase:", err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlacesFromSupabase();
+  }, []);
+
   const handleSelectCategory = (category) => {
     setActiveCategory(category);
+    if (!category) {
+      setCategoryResults(allPlaces);
+    } else {
+      // Lọc danh sách dữ liệu Supabase cục bộ dựa vào id tiếng anh viết thường
+      const filtered = allPlaces.filter(
+        (item) => item.category?.toLowerCase() === category.toLowerCase()
+      );
+      setCategoryResults(filtered);
+    }
   };
 
   const handleSetFocusedLocation = (location) => {
     setFocusedLocation(location);
+    if (location && location.isConfirmed) {
+      fetchPlacesFromSupabase();
+    }
   };
 
   const handleOpenRegisterForm = () => {
@@ -26,26 +61,26 @@ export default function MapPage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden">
-      {/* Left Sidebar */}
       <MapSidebar 
         apiKey={API_KEY}
         onSelectCategory={handleSelectCategory}
         categoryResults={categoryResults}
         setCategoryResults={setCategoryResults}
         setFocusedLocation={handleSetFocusedLocation}
+        focusedLocation={focusedLocation} 
+        allPlaces={allPlaces} 
       />
       
-      {/* Map Main Container */}
       <MapContainer 
         apiKey={API_KEY}
         activeCategory={activeCategory}
         focusedLocation={focusedLocation}
+        categoryResults={categoryResults} 
         onCategoryResultsChange={setCategoryResults}
-        setFocusedLocation={setFocusedLocation}
+        setFocusedLocation={handleSetFocusedLocation}
         setShowRegisterForm={setShowRegisterForm}
       />
 
-      {/* Floating Register Action Button (Top Right) */}
       {!showRegisterForm && (
         <button 
           onClick={handleOpenRegisterForm}
@@ -57,12 +92,11 @@ export default function MapPage() {
         </button>
       )}
 
-      {/* Register Place Form Modal (Sliding from Right) */}
       {showRegisterForm && (
         <RegisterPlaceForm 
           apiKey={API_KEY}
           focusedLocation={focusedLocation}
-          setFocusedLocation={setFocusedLocation}
+          setFocusedLocation={handleSetFocusedLocation} 
           onClose={() => setShowRegisterForm(false)}
         />
       )}

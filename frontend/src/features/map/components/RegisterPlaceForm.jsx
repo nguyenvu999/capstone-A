@@ -2,6 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { X, Save, Search, MapPin } from "lucide-react";
 
+// Danh sách Categories tương ứng với bộ icon phân loại hệ thống của bạn
+const CATEGORIES = [
+  { id: "restaurant", name: "🍽️ Restaurant" },
+  { id: "hotel", name: "🏨 Hotel" },
+  { id: "market", name: "🛒 Market" },
+  { id: "pharmacy", name: "💊 Pharmacy" },
+  { id: "entertainment", name: "🎉 Entertainment" },
+  { id: "bank", name: "🏦 Bank" }
+];
+
 export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose }) {
   const [formData, setFormData] = useState({
     name: "",
@@ -13,6 +23,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     price_level: 1,
     business_status: "open",
     source: "manual",
+    category: "restaurant", // Giá trị danh mục mặc định ban đầu
   });
   
   const [addressQuery, setAddressQuery] = useState("");
@@ -21,7 +32,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [loading, setLoading] = useState(false);
   const suggestionRef = useRef(null);
 
-  // Sync with map selection if user clicks on the map
+  // Lắng nghe và đồng bộ dữ liệu khi User click trực tiếp tọa độ trên Map hoặc đổi địa điểm
   useEffect(() => {
     if (focusedLocation) {
       setFormData((prev) => ({
@@ -30,6 +41,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         address: focusedLocation.address || prev.address,
         latitude: focusedLocation.lat || prev.latitude,
         longitude: focusedLocation.lng || prev.longitude,
+        category: focusedLocation.category || prev.category, 
       }));
       if (focusedLocation.address && !focusedLocation.address.startsWith("Coordinates:")) {
         setAddressQuery(focusedLocation.address);
@@ -37,7 +49,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     }
   }, [focusedLocation]);
 
-  // Address Autocomplete Logic
+  // Logic gọi API Autocomplete của Track-Asia để gợi ý địa chỉ khi gõ chữ
   useEffect(() => {
     if (addressQuery.trim().length < 2) {
       setSuggestions([]);
@@ -56,7 +68,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     return () => clearTimeout(delayDebounce);
   }, [addressQuery, apiKey]);
 
-  // Close suggestions on outside click
+  // Đóng danh sách gợi ý địa chỉ khi click chuột ra ngoài khu vực tìm kiếm
   useEffect(() => {
     function handleClickOutside(event) {
       if (suggestionRef.current && !suggestionRef.current.contains(event.target)) {
@@ -67,6 +79,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Xử lý sự kiện khi User chọn một địa chỉ cụ thể từ danh sách gợi ý Autocomplete
   const handleSelectSuggestion = (prediction) => {
     setAddressQuery(prediction.description);
     setShowSuggestions(false);
@@ -76,30 +89,51 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       .then((data) => {
         if (data.result && data.result.geometry) {
           const loc = data.result.geometry.location;
+          const chosenName = formData.name || data.result.name;
+          const formattedAddress = data.result.formatted_address || prediction.description;
           
           setFormData((prev) => ({
             ...prev,
-            address: data.result.formatted_address || prediction.description,
+            address: formattedAddress,
             latitude: Number(loc.lat),
             longitude: Number(loc.lng),
           }));
 
+          // Đẩy thông tin tọa độ, tên địa điểm và category ra ngoài MapPage
           setFocusedLocation({
             lat: Number(loc.lat),
             lng: Number(loc.lng),
-            name: formData.name || data.result.name,
-            address: data.result.formatted_address || prediction.description,
+            name: chosenName,
+            address: formattedAddress,
+            category: formData.category, 
           });
         }
       })
       .catch((err) => console.error("Place details error:", err));
   };
 
+  // Quản lý sự thay đổi dữ liệu của các ô Input thường và Dropdown
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: value };
+      
+      // Nếu user đổi Tên hoặc đổi Category trực tiếp trên Form, cập nhật ngay ra Map 
+      // để marker hiển thị đúng trạng thái Icon thời gian thực
+      if ((name === "name" || name === "category") && prev.latitude && prev.longitude) {
+        setFocusedLocation({
+          lat: Number(prev.latitude),
+          lng: Number(prev.longitude),
+          name: name === "name" ? value : prev.name,
+          address: prev.address,
+          category: name === "category" ? value : prev.category,
+        });
+      }
+      return updated;
+    });
   };
 
+  // Xử lý gửi Form - Đẩy trực tiếp bản ghi xuống bảng `places` trên Supabase
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.latitude || !formData.longitude) {
@@ -109,14 +143,14 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     setLoading(true);
 
     try {
-      // 1. Lấy thông tin phiên đăng nhập của User hiện tại từ Supabase Auth
+      // 1. Lấy thông tin tài khoản người dùng đang đăng nhập từ hệ thống Auth Supabase
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
         console.warn("Could not retrieve logged-in user context:", authError.message);
       }
 
-      // 2. Tiến hành đẩy bản ghi lên bảng dữ liệu
+      // 2. Chèn bản ghi mới vào Supabase khớp 100% cấu trúc của SQL Schema mới
       const { error } = await supabase.from("places").insert([
         {
           name: formData.name,
@@ -128,15 +162,28 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           price_level: Number(formData.price_level),
           business_status: formData.business_status,
           source: formData.source,
-          // Gán UUID tài khoản người tạo nếu có, ngược lại để null cho khách vãng lai
-          created_by: user ? user.id : null, 
-          // 'created_at' & 'updated_at' đã được cấu hình tự động sinh DEFAULT sinh ra ở phía DB
+          category: formData.category, // Cột lưu danh mục phân loại marker
+          created_by: user ? user.id : null, // Lưu UID tài khoản
+          created_by_email: user ? user.email : null, // Lưu Email tài khoản người tạo
         },
       ]);
 
       if (error) throw error;
 
-      alert("Place registered successfully!");
+      // 3. Đổi thanh tìm kiếm địa chỉ của Form thành Tên địa điểm vừa tạo thành công
+      setAddressQuery(formData.name);
+      
+      // Đồng bộ hóa với MapPage, kích hoạt flag `isConfirmed: true` để tạo Marker cố định
+      setFocusedLocation({
+        lat: Number(formData.latitude),
+        lng: Number(formData.longitude),
+        name: formData.name,
+        address: formData.address,
+        category: formData.category,
+        isConfirmed: true 
+      });
+
+      alert("Place registered successfully with selected category!");
       if (onClose) onClose();
     } catch (error) {
       console.error("Database insert error:", error.message);
@@ -148,10 +195,10 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
   return (
     <div className="absolute top-4 right-4 z-50 w-[360px] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-100">
-      {/* Header */}
+      {/* Header Form */}
       <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
         <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Register New Place</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+        <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
           <X size={16} />
         </button>
       </div>
@@ -159,7 +206,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       {/* Form Body */}
       <form onSubmit={handleSubmit} className="p-4 flex-1 overflow-y-auto space-y-3 text-xs text-gray-700">
         
-        {/* Name Input */}
+        {/* Input Tên Địa Điểm */}
         <div>
           <label className="block font-semibold text-gray-600 mb-1">Place Name *</label>
           <input
@@ -173,7 +220,25 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           />
         </div>
 
-        {/* Address Search Input */}
+        {/* Dropdown Lựa Chọn Danh Mục (Category) */}
+        <div>
+          <label className="block font-semibold text-gray-600 mb-1">Category (Danh mục) *</label>
+          <select
+            name="category"
+            required
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-blue-500 bg-white cursor-pointer"
+            value={formData.category}
+            onChange={handleChange}
+          >
+            {CATEGORIES.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Ô Tìm Kiếm Địa Chỉ (Autocomplete) */}
         <div className="relative" ref={suggestionRef}>
           <label className="block font-semibold text-gray-600 mb-1">Search Address *</label>
           <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2">
@@ -191,7 +256,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             />
           </div>
 
-          {/* Autocomplete List */}
+          {/* Danh sách kết quả Autocomplete đổ xuống */}
           {showSuggestions && suggestions.length > 0 && (
             <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-[180px] overflow-y-auto z-50">
               {suggestions.map((item) => (
@@ -211,7 +276,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           )}
         </div>
 
-        {/* City Input */}
+        {/* Ô Nhập Thành Phố */}
         <div>
           <label className="block font-semibold text-gray-600 mb-1">City *</label>
           <input
@@ -225,7 +290,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           />
         </div>
 
-        {/* Lat & Lng Display */}
+        {/* Khối Hiển Thị Kinh Độ & Vĩ Độ (Read-Only) */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block font-semibold text-gray-600 mb-1">Latitude</label>
@@ -234,7 +299,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               step="any"
               name="latitude"
               required
-              readOnly
+              disabled
               placeholder="0.000000"
               className="w-full bg-gray-100 border border-gray-200 rounded-lg p-2 text-gray-500 cursor-not-allowed"
               value={formData.latitude}
@@ -247,7 +312,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               step="any"
               name="longitude"
               required
-              readOnly
+              disabled
               placeholder="0.000000"
               className="w-full bg-gray-100 border border-gray-200 rounded-lg p-2 text-gray-500 cursor-not-allowed"
               value={formData.longitude}
@@ -255,12 +320,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           </div>
         </div>
 
-        {/* Price Level Dropdown */}
+        {/* Mức Giá (Price Level) */}
         <div>
           <label className="block font-semibold text-gray-600 mb-1">Price Level</label>
           <select
             name="price_level"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-blue-500"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-blue-500 bg-white cursor-pointer"
             value={formData.price_level}
             onChange={handleChange}
           >
@@ -271,12 +336,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           </select>
         </div>
 
-        {/* Business Status Dropdown */}
+        {/* Trạng Thái Kinh Doanh (Business Status) */}
         <div>
           <label className="block font-semibold text-gray-600 mb-1">Business Status</label>
           <select
             name="business_status"
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-blue-500"
+            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-blue-500 bg-white cursor-pointer"
             value={formData.business_status}
             onChange={handleChange}
           >
@@ -286,7 +351,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           </select>
         </div>
 
-        {/* Description Input */}
+        {/* Ô Nhập Mô Tả (Description) */}
         <div>
           <label className="block font-semibold text-gray-600 mb-1">Description</label>
           <textarea
@@ -299,11 +364,11 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           />
         </div>
 
-        {/* Submit Button */}
+        {/* Nút Submit Lưu Dữ Liệu */}
         <button
           type="submit"
           disabled={loading}
-          className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold p-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all disabled:opacity-50"
+          className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold p-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-lg active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save size={14} />
           {loading ? "Saving..." : "Save to Supabase"}

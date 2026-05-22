@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { signInWithEmail, signUpWithEmail } from "../api/authApi";
 import Logo from "../../../shared/ui/Logo";
@@ -7,18 +7,24 @@ import Logo from "../../../shared/ui/Logo";
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isRegister, setIsRegister] = useState(false); // Mode toggle giữa đăng nhập & đăng ký
+  const [isRegister, setIsRegister] = useState(false); 
   const [isSubmiting, setIsSubmiting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Lấy trang đích dự định từ state, nếu không có thì mặc định là "/map"
+  const fromPage = location.state?.from?.pathname || "/map";
 
   useEffect(() => {
     if (!loading && user) {
-      navigate("/map", { replace: true });
+      // Dùng replace: true để ghi đè trang "/login" trong lịch sử duyệt web
+      // Giúp khi bấm Back ở trình duyệt sẽ quay lại trang trước đó (như Facebook)
+      navigate(fromPage, { replace: true });
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, navigate, fromPage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,7 +35,7 @@ function LoginPage() {
       if (isRegister) {
         const { error } = await signUpWithEmail(email, password);
         if (error) throw error;
-        alert("Sign up successful! Please check your email for confirmation (if enabled).");
+        alert("Sign up successful! Please sign in.");
         setIsRegister(false);
       } else {
         const { error } = await signInWithEmail(email, password);
@@ -42,7 +48,20 @@ function LoginPage() {
     }
   };
 
-  if (loading || user) return null; 
+  // NẾU ĐANG TẢI: Trả về trạng thái chờ, tránh chặn hoàn toàn tiến trình render
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#94AB71] text-white font-medium">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent" />
+          <p>Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Nếu đã xác thực thành công, useEffect ở trên sẽ tự động đẩy trang, tại đây trả về null để ẩn form ẩn.
+  if (user) return null; 
 
   return (
     <div className='min-h-screen flex items-center justify-center bg-[#94AB71] px-4'>
