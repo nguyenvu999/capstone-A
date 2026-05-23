@@ -143,7 +143,6 @@ export default function MapContainer({
 
     // TRƯỜNG HỢP A: DISPLAY ALL (activeCategory trống)
     if (!activeCategory) {
-      // Bổ sung đầy đủ 8 đầu mục tìm kiếm tương đương cấu trúc dữ liệu bản đồ toàn hệ thống
       const targetTypes = ["restaurant", "hotel", "supermarket", "pharmacy", "amusement_park", "local_government_office", "school", "bank"];
       
       const fetchPromises = targetTypes.map(type =>
@@ -194,7 +193,6 @@ export default function MapContainer({
     fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&type=${trackAsiaType}&key=${apiKey}`)
       .then(res => res.json())
       .then(data => {
-        // Đồng bộ hóa việc tìm kiếm của Supabase cho chính xác định danh danh mục (chấp nhận cả chuỗi con)
         const supabaseFilteredItems = allPlaces.filter(
           item => item.category?.toLowerCase() === activeCategory.toLowerCase() || 
                   (activeCategory.toLowerCase() === "government" && item.category?.toLowerCase() === "local_government_office")
@@ -226,7 +224,7 @@ export default function MapContainer({
 
   }, [activeCategory, apiKey, allPlaces]);
 
-  // 3. VÒNG LẶP DỰNG MARKER LÊN BẢN ĐỒ
+  // 3. VÒNG LẶP DỰNG MARKER LÊN BẢN ĐỒ (ĐÃ SỬA CHỐNG GIẬT & THÊM HOVER POPUP)
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -241,8 +239,9 @@ export default function MapContainer({
 
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
+      // FIX CHỐNG NHẢY: Sử dụng class "group" của Tailwind để bọc ngoài, giữ nguyên hitbox cố định
       const el = document.createElement("div");
-      el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
+      el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer group";
       
       const isSupabase = place.id !== undefined; 
       const category = (place.category || "").toLowerCase();
@@ -254,52 +253,76 @@ export default function MapContainer({
         iconHtml: `🏢`
       };
 
-      // PHÂN LOẠI LOGIC CHÈN HÌNH ẢNH ĐÚNG PHÂN HỆ
-      // A. Nhà hàng / Ẩm thực
+      // FIX CHỐNG NHẢY: Chỉ thêm class chuyển động "transition-transform duration-200 group-hover:scale-110" vào thẻ img con
+      // A. Nhà hàng / Ẩm thực (Màu cam nhạt tươi sáng)
       if (category === "restaurant" || types.includes("restaurant") || types.includes("food")) {
-        markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` };
+        markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } 
-      // B. Giáo dục (Giữ nguyên Emoji và Màu Tím)
+      // B. Giáo dục (Dùng ảnh icon)
       else if (category === "education" || types.includes("school") || types.includes("university")) {
-        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<img src="/education-icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` };
+        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<img src="/education-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } 
       // C. Y tế / Nhà thuốc
       else if (category === "pharmacy" || types.includes("pharmacy") || category === "hospital" || types.includes("hospital") || types.includes("health")) {
-        markerConfig = { bgColor: "#10b981", iconHtml: `<img src="/medical_map_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+        markerConfig = { bgColor: "#10b981", iconHtml: `<img src="/medical_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
       } 
       // D. Giải trí / Công viên / Khu vui chơi
       else if (category === "entertainment" || types.includes("amusement_park") || types.includes("tourist_attraction")) {
-        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
       } 
-      // E. Khách sạn / Nơi lưu trú
+      // E. Khách sạn / Nơi lưu trú (Màu xanh dương nhạt)
       else if (category === "hotel" || category === "lodging" || types.includes("lodging") || types.includes("hotel")) {
-        markerConfig = { bgColor: "#87CEEB", iconHtml: `<img src="/lodging_map_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+        markerConfig = { bgColor: "#87CEEB", iconHtml: `<img src="/lodging_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
       } 
       // F. Cơ quan hành chính / Nhà nước
       else if (category === "government" || category === "local_government_office" || types.includes("local_government_office")) {
-        markerConfig = { bgColor: "#64748b", iconHtml: `<img src="/local_government_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+        markerConfig = { bgColor: "#64748b", iconHtml: `<img src="/local_government_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
       }
-      // G. Siêu thị / Trung tâm mua sắm (Dùng ảnh tương tự như nhà hàng)
+      // G. Siêu thị / Trung tâm mua sắm
       else if (category === "supermarket" || types.includes("supermarket") || types.includes("grocery_or_supermarket") || types.includes("shopping_mall")) {
-        markerConfig = { bgColor: "#a855f7", iconHtml: `<img src="/supermarket_icon.png" style="width: 24px; height: 24px; object-fit: contain;" alt="Supermarket"/>` };
+        markerConfig = { bgColor: "#a855f7", iconHtml: `<img src="/supermarket_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" alt="Supermarket"/>` };
       }
-      // H. Ngân hàng / ATM (Dùng ảnh tương tự như nhà hàng)
+      // H. Ngân hàng / ATM (Màu vàng cát/be sáng từ ảnh)
       else if (category === "bank" || types.includes("bank") || types.includes("atm")) {
-        markerConfig = { bgColor: "#EEE8AA", iconHtml: `<img src="/bank_icon.png" style="width: 24px; height: 24px; object-fit: contain;" alt="Bank"/>` };
+        markerConfig = { bgColor: "#FFE74A", iconHtml: `<img src="/bank_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" alt="Bank"/>` };
       }
 
       // Áp dụng CSS style và HTML icon
       el.style.backgroundColor = markerConfig.bgColor;
       el.innerHTML = markerConfig.iconHtml;
 
-      // Phân biệt viền vàng cho các điểm VIP lưu trong Supabase (Chỉ áp dụng với điểm Giáo dục giữ emoji)
+      // Phân biệt viền vàng cho các điểm VIP lưu trong Supabase
       if (isSupabase && category === "education") {
         el.style.borderColor = "#fbbf24";
         el.style.boxShadow = "0 0 10px rgba(251, 191, 36, 0.6)";
       }
 
+      // HIỂN THỊ THÔNG TIN KHI HOVER: Khởi tạo Popup thu nhỏ không nút đóng, hiển thị nội dung gọn gàng
+      const hoverPopup = new trackasiagl.Popup({ 
+        offset: [0, -20], 
+        closeButton: false, 
+        closeOnClick: false 
+      }).setHTML(`
+        <div class="p-1.5 max-w-xs text-slate-800">
+          <div class="font-bold text-xs line-clamp-1">${place.name || "Địa điểm"}</div>
+          <div class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">${place.address || place.formatted_address || place.vicinity || ""}</div>
+        </div>
+      `);
+
+      // Sự kiện di chuột vào (mouseenter)
+      el.addEventListener("mouseenter", () => {
+        hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current);
+      });
+
+      // Sự kiện di chuột ra (mouseleave)
+      el.addEventListener("mouseleave", () => {
+        hoverPopup.remove();
+      });
+
+      // Sự kiện Click chọn địa điểm
       el.addEventListener("click", (e) => {
         e.stopPropagation();
+        hoverPopup.remove(); // Ẩn popup hover tạm thời khi đã click chọn hẳn
         setFocusedLocation({
           lat: lat,
           lng: lng,
@@ -308,12 +331,16 @@ export default function MapContainer({
         });
       });
 
-      const m = new trackasiagl.Marker({ element: el }).setLngLat([lng, lat]).addTo(mapRef.current);
+      // FIX CHỐNG NHẢY: Cấu hình anchor: "center" cố định tâm tuyệt đối cho marker tròn
+      const m = new trackasiagl.Marker({ element: el, anchor: "center" })
+        .setLngLat([lng, lat])
+        .addTo(mapRef.current);
+
       markersRef.current.push(m);
     });
   }, [categoryResults]);
 
-  // 4. Camera di chuyển đến vị trí Focus (Giữ nguyên pin_map_dot.svg)
+  // 4. Camera di chuyển đến vị trí Focus
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
