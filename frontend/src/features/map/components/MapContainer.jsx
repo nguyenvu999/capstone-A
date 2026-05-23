@@ -135,16 +135,16 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. KÍCH HOẠT LOGIC GỌI NGẦM TẤT CẢ CATEGORIES ĐỂ DISPLAY ALL CHUẨN XÁC VỊ TRÍ
+  // 2. Logic gọi ngầm đồng bộ đa danh mục khi hiển thị Tất cả (Display All) hoặc danh mục cụ thể
   useEffect(() => {
     if (!mapRef.current) return;
 
     const [lng, lat] = userCoordsRef.current;
 
-    // TRƯỜNG HỢP A: DISPLAY ALL -> Gọi đồng thời các danh mục quan trọng để lấy data chuẩn vị trí
+    // TRƯỜNG HỢP A: DISPLAY ALL (activeCategory trống)
     if (!activeCategory) {
-      // Định nghĩa các loại danh mục bạn muốn quét ngầm chung quanh 5km
-      const targetTypes = ["restaurant", "pharmacy", "hospital", "school", "lodging", "amusement_park"];
+      // Bổ sung đầy đủ 8 đầu mục tìm kiếm tương đương cấu trúc dữ liệu bản đồ toàn hệ thống
+      const targetTypes = ["restaurant", "hotel", "supermarket", "pharmacy", "amusement_park", "local_government_office", "school", "bank"];
       
       const fetchPromises = targetTypes.map(type =>
         fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&type=${type}&key=${apiKey}`)
@@ -154,20 +154,17 @@ export default function MapContainer({
 
       Promise.all(fetchPromises)
         .then(resultsArray => {
-          // Gộp tất cả các mảng kết quả đơn lẻ lại thành một mảng khổng lồ
           let combinedApiResults = [];
           resultsArray.forEach(data => {
             if (data.results) combinedApiResults = [...combinedApiResults, ...data.results];
           });
 
-          // Chuẩn hóa cấu trúc tọa độ phẳng phẳng cho toàn bộ item thu về
           const formattedApiItems = combinedApiResults.map(item => {
             const itemLat = Number(item.geometry?.location?.lat || item.lat);
             const itemLng = Number(item.geometry?.location?.lng || item.lng);
             return { ...item, latitude: itemLat, longitude: itemLng };
           }).filter(item => !isNaN(item.latitude) && !isNaN(item.longitude));
 
-          // Lọc loại bỏ trùng lặp tuyệt đối (trùng id hoặc trùng cả tên lẫn vị trí sát nhau)
           const uniqueApiItems = [];
           formattedApiItems.forEach(item => {
             const isDuplicate = uniqueApiItems.some(existing => existing.place_id === item.place_id || (existing.name.toLowerCase() === item.name.toLowerCase() && Math.abs(existing.latitude - item.latitude) < 0.0001))
@@ -188,17 +185,19 @@ export default function MapContainer({
       return; 
     }
 
-    // TRƯỜNG HỢP B: Khi user tick chọn một danh mục cụ thể
-    let trackAsiaType = activeCategory;
-    if (activeCategory === "entertainment") trackAsiaType = "amusement_park";
-    if (activeCategory === "government") trackAsiaType = "local_government_office";
-    if (activeCategory === "education") trackAsiaType = "school";
+    // TRƯỜNG HỢP B: Khi một danh mục cụ thể được bấm chọn
+    let trackAsiaType = activeCategory.toLowerCase();
+    if (trackAsiaType === "entertainment") trackAsiaType = "amusement_park";
+    if (trackAsiaType === "government") trackAsiaType = "local_government_office";
+    if (trackAsiaType === "education") trackAsiaType = "school";
 
     fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&type=${trackAsiaType}&key=${apiKey}`)
       .then(res => res.json())
       .then(data => {
+        // Đồng bộ hóa việc tìm kiếm của Supabase cho chính xác định danh danh mục (chấp nhận cả chuỗi con)
         const supabaseFilteredItems = allPlaces.filter(
-          item => item.category?.toLowerCase() === activeCategory.toLowerCase()
+          item => item.category?.toLowerCase() === activeCategory.toLowerCase() || 
+                  (activeCategory.toLowerCase() === "government" && item.category?.toLowerCase() === "local_government_office")
         );
 
         if (data.results) {
@@ -227,7 +226,7 @@ export default function MapContainer({
 
   }, [activeCategory, apiKey, allPlaces]);
 
-  // 3. Vòng lặp dựng Marker lên bản đồ
+  // 3. VÒNG LẶP DỰNG MARKER LÊN BẢN ĐỒ
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -243,30 +242,60 @@ export default function MapContainer({
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
       const el = document.createElement("div");
-      el.className = "w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
+      el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer transition-transform hover:scale-110";
       
       const isSupabase = place.id !== undefined; 
       const category = (place.category || "").toLowerCase();
-      const isTrackAsiaRestaurant = place.types?.includes("restaurant") || place.types?.includes("food");
+      const types = place.types || [];
 
-      // HIỂN THỊ ICON NHÀ HÀNG CUSTOM
-      if (category === "restaurant" || (!isSupabase && isTrackAsiaRestaurant)) {
-        el.style.backgroundColor = "#ea580c"; 
-        el.innerHTML = `<img src="/restaurant-icon.jpg" style="width: 18px; height: 18px; object-fit: contain;" />`;
+      // Định nghĩa cấu hình hiển thị mặc định
+      let markerConfig = {
+        bgColor: "#3b82f6", 
+        iconHtml: `🏢`
+      };
+
+      // PHÂN LOẠI LOGIC CHÈN HÌNH ẢNH ĐÚNG PHÂN HỆ
+      // A. Nhà hàng / Ẩm thực
+      if (category === "restaurant" || types.includes("restaurant") || types.includes("food")) {
+        markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` };
       } 
-      else {
-        if (isSupabase) {
-          el.innerHTML = `📍`;
-          el.style.backgroundColor = "#ef4444"; 
-          el.style.fontSize = "12px";
-        } else {
-          el.style.backgroundColor = place.icon_background_color || "#3b82f6"; 
-          if (place.icon) {
-            el.innerHTML = `<img src="${place.icon}" style="width:14px; filter:brightness(0) invert(1)" />`;
-          } else {
-            el.innerHTML = `🏢`;
-          }
-        }
+      // B. Giáo dục (Giữ nguyên Emoji và Màu Tím)
+      else if (category === "education" || types.includes("school") || types.includes("university")) {
+        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<img src="/education-icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` };
+      } 
+      // C. Y tế / Nhà thuốc
+      else if (category === "pharmacy" || types.includes("pharmacy") || category === "hospital" || types.includes("hospital") || types.includes("health")) {
+        markerConfig = { bgColor: "#10b981", iconHtml: `<img src="/medical_map_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+      } 
+      // D. Giải trí / Công viên / Khu vui chơi
+      else if (category === "entertainment" || types.includes("amusement_park") || types.includes("tourist_attraction")) {
+        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+      } 
+      // E. Khách sạn / Nơi lưu trú
+      else if (category === "hotel" || category === "lodging" || types.includes("lodging") || types.includes("hotel")) {
+        markerConfig = { bgColor: "#87CEEB", iconHtml: `<img src="/lodging_map_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+      } 
+      // F. Cơ quan hành chính / Nhà nước
+      else if (category === "government" || category === "local_government_office" || types.includes("local_government_office")) {
+        markerConfig = { bgColor: "#64748b", iconHtml: `<img src="/local_government_icon.png" style="width: 24px; height: 24px; object-fit: contain;" />` }; 
+      }
+      // G. Siêu thị / Trung tâm mua sắm (Dùng ảnh tương tự như nhà hàng)
+      else if (category === "supermarket" || types.includes("supermarket") || types.includes("grocery_or_supermarket") || types.includes("shopping_mall")) {
+        markerConfig = { bgColor: "#a855f7", iconHtml: `<img src="/supermarket_icon.png" style="width: 24px; height: 24px; object-fit: contain;" alt="Supermarket"/>` };
+      }
+      // H. Ngân hàng / ATM (Dùng ảnh tương tự như nhà hàng)
+      else if (category === "bank" || types.includes("bank") || types.includes("atm")) {
+        markerConfig = { bgColor: "#EEE8AA", iconHtml: `<img src="/bank_icon.png" style="width: 24px; height: 24px; object-fit: contain;" alt="Bank"/>` };
+      }
+
+      // Áp dụng CSS style và HTML icon
+      el.style.backgroundColor = markerConfig.bgColor;
+      el.innerHTML = markerConfig.iconHtml;
+
+      // Phân biệt viền vàng cho các điểm VIP lưu trong Supabase (Chỉ áp dụng với điểm Giáo dục giữ emoji)
+      if (isSupabase && category === "education") {
+        el.style.borderColor = "#fbbf24";
+        el.style.boxShadow = "0 0 10px rgba(251, 191, 36, 0.6)";
       }
 
       el.addEventListener("click", (e) => {

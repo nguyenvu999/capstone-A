@@ -121,6 +121,16 @@ export default function MapSidebar({ apiKey, onSelectCategory, activeCategory, c
     }
   };
 
+  const handleCategoryClick = (categoryId) => {
+    setSearchQuery("");
+    // Nếu click lại vào category đang active thì tắt đi (quay về Display All)
+    if (activeCategory === categoryId) {
+      onSelectCategory(null);
+    } else {
+      onSelectCategory(categoryId);
+    }
+  };
+
   return (
     <div className="absolute top-4 left-4 z-50 w-[360px] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
       <div className="p-4 border-b border-gray-100 relative" ref={suggestionRef}>
@@ -167,7 +177,7 @@ export default function MapSidebar({ apiKey, onSelectCategory, activeCategory, c
             return (
               <button 
                 key={cat.id} 
-                onClick={() => { setSearchQuery(""); onSelectCategory(cat.id); }} 
+                onClick={() => handleCategoryClick(cat.id)} 
                 className={`flex flex-col items-center gap-1 p-1.5 rounded-xl transition-all border ${
                   isSelected ? "bg-white border-blue-500 shadow-md ring-1 ring-blue-500" : "border-transparent hover:bg-white hover:shadow-sm"
                 }`}
