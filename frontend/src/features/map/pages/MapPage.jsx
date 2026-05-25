@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import MapContainer from "../components/MapContainer"; 
 import MapSidebar from "../components/MapSidebar";
 import RegisterPlaceForm from "../components/RegisterPlaceForm";
+import Navbar from "../components/Navbar"; // Thêm dòng import Navbar mới
+import { useAuth } from "../../auth/context/AuthContext"; // Thêm dòng import hook Auth
 import { supabase } from "../../auth/api/supabaseClient"; 
-import { Plus } from "lucide-react";
 
-// Hàm tính khoảng cách giữa 2 tọa độ (Haversine công thức) trả về đơn vị km
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Bán kính Trái Đất
+  const R = 6371; 
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -21,23 +21,22 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
 };
 
 export default function MapPage() {
+  const { user, logoutUser } = useAuth(); // Lấy thông tin user hiện tại và hàm đăng xuất hệ thống
   const [activeCategory, setActiveCategory] = useState(null);
-  const [allPlaces, setAllPlaces] = useState([]); // Lưu toàn bộ địa điểm trong bán kính 5km
-  const [categoryResults, setCategoryResults] = useState([]); // Lưu địa điểm hiển thị sau lọc
+  const [allPlaces, setAllPlaces] = useState([]); 
+  const [categoryResults, setCategoryResults] = useState([]); 
   const [focusedLocation, setFocusedLocation] = useState(null);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
-  const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); // [lng, lat] mặc định
+  const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); 
 
   const API_KEY = "fbe052e2f17788443245e0c54f3084b0a2";
 
-  // Hàm tải dữ liệu từ Supabase kết hợp lọc bán kính 5km
   const fetchPlacesFromSupabase = async (userCoords = currentUserCoords, currentCat = activeCategory) => {
     try {
       const { data, error } = await supabase.from("places").select("*"); 
       if (error) throw error;
 
       if (data) {
-        // Lọc những địa điểm nằm trong phạm vi 5km từ tọa độ user
         const placesWithin5Km = data.filter((item) => {
           const lat = Number(item.latitude);
           const lng = Number(item.longitude);
@@ -47,10 +46,8 @@ export default function MapPage() {
           return distance <= 5; 
         });
 
-        // Lưu mảng 5km gốc
         setAllPlaces(placesWithin5Km);
         
-        // Cập nhật hiển thị dựa theo danh mục hiện tại
         if (currentCat) {
           const filtered = placesWithin5Km.filter(
             (item) => item.category?.toLowerCase() === currentCat.toLowerCase()
@@ -65,7 +62,6 @@ export default function MapPage() {
     }
   };
 
-  // Kích hoạt chạy khi định vị user thành công từ MapContainer truyền lên
   const handleUserLocationDetected = (coords) => {
     setCurrentUserCoords(coords);
     fetchPlacesFromSupabase(coords, activeCategory);
@@ -73,11 +69,9 @@ export default function MapPage() {
 
   const handleSelectCategory = (category) => {
     if (activeCategory === category || !category) {
-      // HỦY LỌC: Quay về hiển thị tất cả các điểm Supabase trong bán kính 5km
       setActiveCategory(null);
       setCategoryResults(allPlaces);
     } else {
-      // BẬT BỘ LỌC: Chỉ lọc từ mảng 5km gốc ban đầu
       setActiveCategory(category);
       const filtered = allPlaces.filter(
         (item) => item.category?.toLowerCase() === category.toLowerCase()
@@ -94,40 +88,43 @@ export default function MapPage() {
   };
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden">
-      <MapSidebar 
-        apiKey={API_KEY}
-        onSelectCategory={handleSelectCategory}
-        activeCategory={activeCategory}
-        categoryResults={categoryResults}
-        setCategoryResults={setCategoryResults}
-        setFocusedLocation={handleSetFocusedLocation}
-        focusedLocation={focusedLocation} 
-        currentUserCoords={currentUserCoords}
-      />
+    // Thêm khoảng đệm pt-16 (padding-top: 64px) cho toàn bộ trang để không bị Navbar đè lên nội dung map bên dưới
+    <div className="relative h-screen w-screen overflow-hidden pt-16">
       
-      <MapContainer 
-        apiKey={API_KEY}
-        activeCategory={activeCategory}
-        focusedLocation={focusedLocation}
-        categoryResults={categoryResults} 
-        onCategoryResultsChange={setCategoryResults}
-        setFocusedLocation={handleSetFocusedLocation}
-        setShowRegisterForm={setShowRegisterForm}
-        onUserLocationDetected={handleUserLocationDetected}
-        allPlaces={allPlaces} // Truyền thêm biến này xuống Map để giữ đồng bộ dữ liệu gốc khi quét API ngoài
+      {/* 1. Giao diện Navbar điều khiển vị trí đầu trang */}
+      <Navbar 
+        user={user}
+        onSignOut={logoutUser}
+        onRegisterClick={() => setShowRegisterForm(true)}
       />
 
-      {!showRegisterForm && (
-        <button 
-          onClick={() => setShowRegisterForm(true)}
-          className="absolute top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl font-bold text-xs transition-all active:scale-95 group"
-        >
-          <Plus size={16} className="group-hover:rotate-90 transition-transform duration-200" />
-          <span>Register a Place</span>
-        </button>
-      )}
+      {/* 2. Khối nội dung chính của Map và Sidebar */}
+      <div className="w-full h-full relative flex overflow-hidden">
+        <MapSidebar 
+          apiKey={API_KEY}
+          onSelectCategory={handleSelectCategory}
+          activeCategory={activeCategory}
+          categoryResults={categoryResults}
+          setCategoryResults={setCategoryResults}
+          setFocusedLocation={handleSetFocusedLocation}
+          focusedLocation={focusedLocation} 
+          currentUserCoords={currentUserCoords}
+        />
+        
+        <MapContainer 
+          apiKey={API_KEY}
+          activeCategory={activeCategory}
+          focusedLocation={focusedLocation}
+          categoryResults={categoryResults} 
+          onCategoryResultsChange={setCategoryResults}
+          setFocusedLocation={handleSetFocusedLocation}
+          setShowRegisterForm={setShowRegisterForm}
+          onUserLocationDetected={handleUserLocationDetected}
+          allPlaces={allPlaces} 
+        />
+      </div>
 
+      {/* 3. Form Đăng ký địa điểm hiển thị đè đắp lớp layer trên cùng */}
       {showRegisterForm && (
         <RegisterPlaceForm 
           apiKey={API_KEY}

@@ -91,7 +91,7 @@ export default function MapContainer({
     );
   };
 
-  // 1. Khởi tạo Bản đồ
+  // 1. Khởi tạo Bản đồ & Cập nhật Logic Click để tự lấy Địa chỉ từ Tọa độ
   useEffect(() => {
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
@@ -115,18 +115,61 @@ export default function MapContainer({
       getUserCurrentLocation(true);
     });
 
+    // ĐÃ FIX: Click Bản đồ tự động gọi API Geocode tìm địa chỉ chữ thực tế gần nhất
     mapRef.current.on("click", (e) => {
       const { lng, lat } = e.lngLat;
       if (e.originalEvent.target.closest('.user-pulse-marker') || e.originalEvent.target.closest('img') || e.originalEvent.target.closest('.rounded-full')) {
         return; 
       }
-      setFocusedLocation({
-        lat: lat,
-        lng: lng,
-        name: "",
-        address: `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`
-      });
-      setShowRegisterForm(true);
+
+      // Gọi API Geocode của Track-Asia theo chuẩn tài liệu cung cấp
+      fetch(`https://maps.track-asia.com/api/v2/geocode/json?result_type=street_address&latlng=${lat},${lng}&key=${apiKey}&new_admin=true&include_old_admin=true&size=1&radius=100`)
+        .then((res) => res.json())
+        .then((data) => {
+          let detectedAddress = `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          let detectedCity = "";
+
+          if (data.status === "OK" && data.results && data.results.length > 0) {
+            const topPlace = data.results[0];
+            detectedAddress = topPlace.formatted_address || topPlace.name || detectedAddress;
+
+            // Vòng lặp bóc tách tên Thành phố / Tỉnh từ mảng components nếu có
+            if (topPlace.address_components) {
+              const cityComp = topPlace.address_components.find(comp => 
+                comp.types.includes("administrative_area_level_1") || comp.types.includes("province")
+              );
+              if (cityComp) detectedCity = cityComp.long_name;
+            }
+            
+            // Fallback nếu không bóc được từ components thì lấy cụm từ cuối của chuỗi address
+            if (!detectedCity && detectedAddress.includes(",")) {
+              const parts = detectedAddress.split(",");
+              detectedCity = parts[parts.length - 1].trim();
+            }
+          }
+
+          // Cập nhật State chuyển giao dữ liệu hoàn chỉnh cho Form nhận diện liền
+          setFocusedLocation({
+            lat: lat,
+            lng: lng,
+            name: "",
+            address: detectedAddress,
+            city: detectedCity
+          });
+          setShowRegisterForm(true);
+        })
+        .catch((err) => {
+          console.error("Geocoding click error:", err);
+          // Fallback khi mất mạng hoặc API lỗi
+          setFocusedLocation({
+            lat: lat,
+            lng: lng,
+            name: "",
+            address: `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+            city: ""
+          });
+          setShowRegisterForm(true);
+        });
     });
 
     return () => {
@@ -135,16 +178,13 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. Logic gọi ngầm đồng bộ đa danh mục khi hiển thị Tất cả (Display All) hoặc danh mục cụ thể
+  // 2. Logic gọi ngầm đồng bộ đa danh mục (Giữ nguyên)
   useEffect(() => {
     if (!mapRef.current) return;
-
     const [lng, lat] = userCoordsRef.current;
 
-    // TRƯỜNG HỢP A: DISPLAY ALL (activeCategory trống)
     if (!activeCategory) {
       const targetTypes = ["restaurant", "hotel", "supermarket", "pharmacy", "amusement_park", "local_government_office", "school", "bank"];
-      
       const fetchPromises = targetTypes.map(type =>
         fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?location=${lat},${lng}&radius=5000&type=${type}&key=${apiKey}`)
           .then(res => res.json())
@@ -169,9 +209,7 @@ export default function MapContainer({
             const isDuplicate = uniqueApiItems.some(existing => existing.place_id === item.place_id || (existing.name.toLowerCase() === item.name.toLowerCase() && Math.abs(existing.latitude - item.latitude) < 0.0001))
               || allPlaces.some(sb => sb.name.toLowerCase() === item.name.toLowerCase() && Math.abs(Number(sb.latitude) - item.latitude) < 0.0001);
             
-            if (!isDuplicate) {
-              uniqueApiItems.push(item);
-            }
+            if (!isDuplicate) uniqueApiItems.push(item);
           });
 
           onCategoryResultsChange([...allPlaces, ...uniqueApiItems]);
@@ -184,7 +222,6 @@ export default function MapContainer({
       return; 
     }
 
-    // TRƯỜNG HỢP B: Khi một danh mục cụ thể được bấm chọn
     let trackAsiaType = activeCategory.toLowerCase();
     if (trackAsiaType === "entertainment") trackAsiaType = "amusement_park";
     if (trackAsiaType === "government") trackAsiaType = "local_government_office";
@@ -221,10 +258,9 @@ export default function MapContainer({
         );
         onCategoryResultsChange(supabaseFilteredItems);
       });
-
   }, [activeCategory, apiKey, allPlaces]);
 
-  // 3. VÒNG LẶP DỰNG MARKER LÊN BẢN ĐỒ (ĐÃ SỬA CHỐNG GIẬT & THÊM HOVER POPUP)
+  // 3. Vòng lặp dựng Marker lên bản đồ (Giữ nguyên)
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -236,10 +272,8 @@ export default function MapContainer({
     categoryResults.forEach(place => {
       const lat = Number(place.latitude);
       const lng = Number(place.longitude);
-
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
-      // FIX CHỐNG NHẢY: Sử dụng class "group" của Tailwind để bọc ngoài, giữ nguyên hitbox cố định
       const el = document.createElement("div");
       el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer group";
       
@@ -247,61 +281,36 @@ export default function MapContainer({
       const category = (place.category || "").toLowerCase();
       const types = place.types || [];
 
-      // Định nghĩa cấu hình hiển thị mặc định
-      let markerConfig = {
-        bgColor: "#3b82f6", 
-        iconHtml: `🏢`
-      };
+      let markerConfig = { bgColor: "#3b82f6", iconHtml: `🏢` };
 
-      // FIX CHỐNG NHẢY: Chỉ thêm class chuyển động "transition-transform duration-200 group-hover:scale-110" vào thẻ img con
-      // A. Nhà hàng / Ẩm thực (Màu cam nhạt tươi sáng)
       if (category === "restaurant" || types.includes("restaurant") || types.includes("food")) {
         markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
-      } 
-      // B. Giáo dục (Dùng ảnh icon)
-      else if (category === "education" || types.includes("school") || types.includes("university")) {
+      } else if (category === "education" || types.includes("school") || types.includes("university")) {
         markerConfig = { bgColor: "#8b5cf6", iconHtml: `<img src="/education-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
-      } 
-      // C. Y tế / Nhà thuốc
-      else if (category === "pharmacy" || types.includes("pharmacy") || category === "hospital" || types.includes("hospital") || types.includes("health")) {
+      } else if (category === "pharmacy" || types.includes("pharmacy") || category === "hospital" || types.includes("hospital") || types.includes("health")) {
         markerConfig = { bgColor: "#10b981", iconHtml: `<img src="/medical_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
-      } 
-      // D. Giải trí / Công viên / Khu vui chơi
-      else if (category === "entertainment" || types.includes("amusement_park") || types.includes("tourist_attraction")) {
+      } else if (category === "entertainment" || types.includes("amusement_park") || types.includes("tourist_attraction")) {
         markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
-      } 
-      // E. Khách sạn / Nơi lưu trú (Màu xanh dương nhạt)
-      else if (category === "hotel" || category === "lodging" || types.includes("lodging") || types.includes("hotel")) {
+      } else if (category === "hotel" || category === "lodging" || types.includes("lodging") || types.includes("hotel")) {
         markerConfig = { bgColor: "#87CEEB", iconHtml: `<img src="/lodging_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
-      } 
-      // F. Cơ quan hành chính / Nhà nước
-      else if (category === "government" || category === "local_government_office" || types.includes("local_government_office")) {
+      } else if (category === "government" || category === "local_government_office" || types.includes("local_government_office")) {
         markerConfig = { bgColor: "#64748b", iconHtml: `<img src="/local_government_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
-      }
-      // G. Siêu thị / Trung tâm mua sắm
-      else if (category === "supermarket" || types.includes("supermarket") || types.includes("grocery_or_supermarket") || types.includes("shopping_mall")) {
+      } else if (category === "supermarket" || types.includes("supermarket") || types.includes("grocery_or_supermarket") || types.includes("shopping_mall")) {
         markerConfig = { bgColor: "#a855f7", iconHtml: `<img src="/supermarket_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" alt="Supermarket"/>` };
-      }
-      // H. Ngân hàng / ATM (Màu vàng cát/be sáng từ ảnh)
-      else if (category === "bank" || types.includes("bank") || types.includes("atm")) {
+      } else if (category === "bank" || types.includes("bank") || types.includes("atm")) {
         markerConfig = { bgColor: "#FFE74A", iconHtml: `<img src="/bank_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" alt="Bank"/>` };
       }
 
-      // Áp dụng CSS style và HTML icon
       el.style.backgroundColor = markerConfig.bgColor;
       el.innerHTML = markerConfig.iconHtml;
 
-      // Phân biệt viền vàng cho các điểm VIP lưu trong Supabase
       if (isSupabase && category === "education") {
         el.style.borderColor = "#fbbf24";
         el.style.boxShadow = "0 0 10px rgba(251, 191, 36, 0.6)";
       }
 
-      // HIỂN THỊ THÔNG TIN KHI HOVER: Khởi tạo Popup thu nhỏ không nút đóng, hiển thị nội dung gọn gàng
       const hoverPopup = new trackasiagl.Popup({ 
-        offset: [0, -20], 
-        closeButton: false, 
-        closeOnClick: false 
+        offset: [0, -20], closeButton: false, closeOnClick: false 
       }).setHTML(`
         <div class="p-1.5 max-w-xs text-slate-800">
           <div class="font-bold text-xs line-clamp-1">${place.name || "Địa điểm"}</div>
@@ -309,20 +318,11 @@ export default function MapContainer({
         </div>
       `);
 
-      // Sự kiện di chuột vào (mouseenter)
-      el.addEventListener("mouseenter", () => {
-        hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current);
-      });
-
-      // Sự kiện di chuột ra (mouseleave)
-      el.addEventListener("mouseleave", () => {
-        hoverPopup.remove();
-      });
-
-      // Sự kiện Click chọn địa điểm
+      el.addEventListener("mouseenter", () => hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current));
+      el.addEventListener("mouseleave", () => hoverPopup.remove());
       el.addEventListener("click", (e) => {
         e.stopPropagation();
-        hoverPopup.remove(); // Ẩn popup hover tạm thời khi đã click chọn hẳn
+        hoverPopup.remove();
         setFocusedLocation({
           lat: lat,
           lng: lng,
@@ -331,16 +331,12 @@ export default function MapContainer({
         });
       });
 
-      // FIX CHỐNG NHẢY: Cấu hình anchor: "center" cố định tâm tuyệt đối cho marker tròn
-      const m = new trackasiagl.Marker({ element: el, anchor: "center" })
-        .setLngLat([lng, lat])
-        .addTo(mapRef.current);
-
+      const m = new trackasiagl.Marker({ element: el, anchor: "center" }).setLngLat([lng, lat]).addTo(mapRef.current);
       markersRef.current.push(m);
     });
   }, [categoryResults]);
 
-  // 4. Camera di chuyển đến vị trí Focus
+  // 4. Camera di chuyển đến vị trí Focus (Giữ nguyên)
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
@@ -357,7 +353,6 @@ export default function MapContainer({
       .setPopup(new trackasiagl.Popup({ offset: [0, -32] }).setHTML(`<b>${name || "Điểm Đang Chọn"}</b><br/>${address || ""}`))
       .addTo(mapRef.current)
       .togglePopup();
-      
   }, [focusedLocation?.lat, focusedLocation?.lng]);
 
   return (
