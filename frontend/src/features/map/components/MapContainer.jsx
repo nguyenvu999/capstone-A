@@ -9,7 +9,7 @@ export default function MapContainer({
   categoryResults, 
   onCategoryResultsChange,
   setFocusedLocation,   
-  setShowRegisterForm,
+  setShowRegisterForm, // Vẫn giữ prop này để các component khác dùng (nếu có)
   onUserLocationDetected,
   allPlaces
 }) {
@@ -20,10 +20,9 @@ export default function MapContainer({
   const userLocationMarkerRef = useRef(null);  
   const userCoordsRef = useRef([106.694945, 10.769034]); // [lng, lat] mặc định
 
-  // --- HÀM BỔ TRỢ 1: Tính khoảng cách đường chim bay (Haversine) cho TOÀN BỘ danh sách ---
+  // --- HÀM BỔ TRỢ 1: Tính khoảng cách đường chim bay (Haversine) ---
   const appendDistanceToPlaces = (placesArray, userLat, userLng) => {
     if (!placesArray || placesArray.length === 0) return [];
-    
     return placesArray.map(place => {
       const pLat = Number(place.latitude || place.geometry?.location?.lat || place.lat);
       const pLng = Number(place.longitude || place.geometry?.location?.lng || place.lng);
@@ -32,8 +31,7 @@ export default function MapContainer({
         return { ...place, distanceText: "--- km" };
       }
 
-      // Công thức Haversine
-      const R = 6371; // Bán kính Trái Đất (km)
+      const R = 6371; 
       const dLat = ((pLat - userLat) * Math.PI) / 180;
       const dLon = ((pLng - userLng) * Math.PI) / 180;
       
@@ -51,12 +49,12 @@ export default function MapContainer({
         ...place, 
         latitude: pLat,
         longitude: pLng,
-        distanceText: `${distance.toFixed(1)} km` // Thêm trường distanceText vào object
+        distanceText: `${distance.toFixed(1)} km` 
       };
     });
   };
 
-  // --- HÀM BỔ TRỢ 2: Kiểm tra trùng lặp địa điểm ---
+  // --- HÀM BỔ TRỢ 2: Kiểm tra trùng lặp ---
   const isLocationDuplicate = (item, uniqueList, compareList = []) => {
     const isDupInUnique = uniqueList.some(existing => {
       const sameId = item.place_id && existing.place_id && item.place_id === existing.place_id;
@@ -65,7 +63,6 @@ export default function MapContainer({
         Math.abs(existing.longitude - item.longitude) < 0.0001;
       return sameId || sameNameAndCoords;
     });
-
     if (isDupInUnique) return true;
 
     return compareList.some(sb => {
@@ -91,24 +88,14 @@ export default function MapContainer({
       (position) => {
         const { latitude, longitude } = position.coords;
         userCoordsRef.current = [longitude, latitude]; 
-        
-        if (onUserLocationDetected) {
-          onUserLocationDetected([longitude, latitude]);
-        }
-
+        if (onUserLocationDetected) onUserLocationDetected([longitude, latitude]);
         if (!mapRef.current) return;
 
         if (shouldFlyTo) {
-          mapRef.current.flyTo({
-            center: [longitude, latitude],
-            zoom: 14,
-            essential: true,
-          });
+          mapRef.current.flyTo({ center: [longitude, latitude], zoom: 14, essential: true });
         }
 
-        if (userLocationMarkerRef.current) {
-          userLocationMarkerRef.current.remove();
-        }
+        if (userLocationMarkerRef.current) userLocationMarkerRef.current.remove();
 
         const el = document.createElement("div");
         el.className = "user-pulse-marker";
@@ -118,7 +105,6 @@ export default function MapContainer({
           .setPopup(new trackasiagl.Popup({ offset: 10 }).setHTML("<p class='text-xs font-semibold px-1'>Vị trí của bạn</p>"))
           .addTo(mapRef.current);
 
-        // Kích hoạt tính lại km cho danh sách gốc khi định vị thành công lần đầu
         const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
         onCategoryResultsChange(placesWithDistance);
       },
@@ -136,16 +122,13 @@ export default function MapContainer({
         const { latitude, longitude } = position.coords;
         userCoordsRef.current = [longitude, latitude];
         if (onUserLocationDetected) onUserLocationDetected([longitude, latitude]);
-        
         if (!mapRef.current) return;
         if (shouldFlyTo) mapRef.current.flyTo({ center: [longitude, latitude], zoom: 14 });
         if (userLocationMarkerRef.current) userLocationMarkerRef.current.remove();
 
         const el = document.createElement("div");
         el.className = "user-pulse-marker";
-        userLocationMarkerRef.current = new trackasiagl.Marker({ element: el })
-          .setLngLat([longitude, latitude])
-          .addTo(mapRef.current);
+        userLocationMarkerRef.current = new trackasiagl.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(mapRef.current);
 
         const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
         onCategoryResultsChange(placesWithDistance);
@@ -155,7 +138,7 @@ export default function MapContainer({
     );
   };
 
-  // 1. Khởi tạo Bản đồ & Nhận diện Click
+  // 1. Khởi tạo Bản đồ & Nhận diện Click (ĐÃ SỬA LOGIC KHÔNG TỰ BẬT FORM)
   useEffect(() => {
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
@@ -208,14 +191,15 @@ export default function MapContainer({
             }
           }
 
+          // ĐÃ ĐỔI: Chỉ cập nhật tọa độ đích, không kích hoạt Form Đăng ký tại đây nữa
           setFocusedLocation({
             lat: lat,
             lng: lng,
             name: "",
             address: detectedAddress,
-            city: detectedCity
+            city: detectedCity,
+            isNewCustomPoint: true // Đánh dấu đây là điểm click tự do ngoài map
           });
-          setShowRegisterForm(true);
         })
         .catch((err) => {
           console.error("Geocoding click error:", err);
@@ -224,9 +208,9 @@ export default function MapContainer({
             lng: lng,
             name: "",
             address: `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`,
-            city: ""
+            city: "",
+            isNewCustomPoint: true
           });
-          setShowRegisterForm(true);
         });
     });
 
@@ -236,12 +220,11 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. Logic quét địa điểm (API + Supabase) & tính km đồng bộ
+  // 2. Logic quét địa điểm (API + Supabase)
   useEffect(() => {
     if (!mapRef.current) return;
     const [lng, lat] = userCoordsRef.current;
 
-    // A. Nếu KHÔNG chọn danh mục (Quét ngầm đa danh mục ban đầu)
     if (!activeCategory) {
       const targetTypes = ["restaurant", "hotel", "supermarket", "pharmacy", "amusement_park", "local_government_office", "school", "bank"];
       const fetchPromises = targetTypes.map(type =>
@@ -270,21 +253,17 @@ export default function MapContainer({
             }
           });
 
-          // Trộn mảng và tính khoảng cách hàng loạt
           const combinedList = [...allPlaces, ...uniqueApiItems];
-          const finalResultWithDistance = appendDistanceToPlaces(combinedList, lat, lng);
-          
-          onCategoryResultsChange(finalResultWithDistance);
+          onCategoryResultsChange(appendDistanceToPlaces(combinedList, lat, lng));
         })
         .catch((err) => {
-          console.error("Lỗi quét ngầm đa danh mục:", err);
+          console.error("Lỗi quét ngầm:", err);
           onCategoryResultsChange(appendDistanceToPlaces(allPlaces, lat, lng));
         });
         
       return; 
     }
 
-    // B. Nếu CÓ chọn một danh mục cụ thể
     let trackAsiaType = activeCategory.toLowerCase();
     if (trackAsiaType === "entertainment") trackAsiaType = "amusement_park";
     if (trackAsiaType === "government") trackAsiaType = "local_government_office";
@@ -313,18 +292,14 @@ export default function MapContainer({
           });
           
           const combinedList = [...supabaseFilteredItems, ...uniqueApiItems];
-          const finalResultWithDistance = appendDistanceToPlaces(combinedList, lat, lng);
-          
-          onCategoryResultsChange(finalResultWithDistance);
+          onCategoryResultsChange(appendDistanceToPlaces(combinedList, lat, lng));
         } else {
           onCategoryResultsChange(appendDistanceToPlaces(supabaseFilteredItems, lat, lng));
         }
       })
       .catch((err) => {
-        console.error("Lỗi lọc danh mục đơn lẻ Track-Asia:", err);
-        const supabaseFilteredItems = allPlaces.filter(
-          item => item.category?.toLowerCase() === activeCategory.toLowerCase()
-        );
+        console.error("Lỗi lọc danh mục:", err);
+        const supabaseFilteredItems = allPlaces.filter(item => item.category?.toLowerCase() === activeCategory.toLowerCase());
         onCategoryResultsChange(appendDistanceToPlaces(supabaseFilteredItems, lat, lng));
       });
   }, [activeCategory, apiKey, allPlaces]);
@@ -332,10 +307,8 @@ export default function MapContainer({
   // 3. Vòng lặp dựng Marker lên bản đồ
   useEffect(() => {
     if (!mapRef.current) return;
-
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
-
     if (!categoryResults || categoryResults.length === 0) return;
 
     categoryResults.forEach(place => {
@@ -351,7 +324,6 @@ export default function MapContainer({
       const types = place.types || [];
 
       let markerConfig = { bgColor: "#3b82f6", iconHtml: `🏢` };
-
       if (category === "restaurant" || types.includes("restaurant") || types.includes("food")) {
         markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "education" || types.includes("school") || types.includes("university")) {
@@ -365,9 +337,9 @@ export default function MapContainer({
       } else if (category === "government" || category === "local_government_office" || types.includes("local_government_office")) {
         markerConfig = { bgColor: "#64748b", iconHtml: `<img src="/local_government_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
       } else if (category === "supermarket" || types.includes("supermarket") || types.includes("grocery_or_supermarket") || types.includes("shopping_mall")) {
-        markerConfig = { bgColor: "#a855f7", iconHtml: `<img src="/supermarket_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" alt="Supermarket"/>` };
+        markerConfig = { bgColor: "#a855f7", iconHtml: `<img src="/supermarket_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "bank" || types.includes("bank") || types.includes("atm")) {
-        markerConfig = { bgColor: "#FFE74A", iconHtml: `<img src="/bank_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" alt="Bank"/>` };
+        markerConfig = { bgColor: "#FFE74A", iconHtml: `<img src="/bank_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       }
 
       el.style.backgroundColor = markerConfig.bgColor;
@@ -378,14 +350,8 @@ export default function MapContainer({
         el.style.boxShadow = "0 0 10px rgba(251, 191, 36, 0.6)";
       }
 
-      const hoverPopup = new trackasiagl.Popup({ 
-        offset: [0, -20], closeButton: false, closeOnClick: false 
-      }).setHTML(`
-        <div class="p-1.5 max-w-xs text-slate-800">
-          <div class="font-bold text-xs line-clamp-1">${place.name || "Địa điểm"}</div>
-          <div class="text-[10px] text-gray-500 mt-0.5 line-clamp-2">${place.address || place.formatted_address || place.vicinity || ""}</div>
-        </div>
-      `);
+      const hoverPopup = new trackasiagl.Popup({ offset: [0, -20], closeButton: false, closeOnClick: false })
+        .setHTML(`<div class="p-1.5 max-w-xs text-slate-800"><div class="font-bold text-xs line-clamp-1">${place.name || "Địa điểm"}</div></div>`);
 
       el.addEventListener("mouseenter", () => hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current));
       el.addEventListener("mouseleave", () => hoverPopup.remove());
@@ -396,7 +362,8 @@ export default function MapContainer({
           lat: lat,
           lng: lng,
           name: place.name,
-          address: place.address || place.formatted_address || place.vicinity
+          address: place.address || place.formatted_address || place.vicinity,
+          isNewCustomPoint: false // Đây là điểm chính thức, có marker sẵn
         });
       });
 
@@ -414,7 +381,7 @@ export default function MapContainer({
     focusMarkerRef.current?.remove();
     
     const pin = document.createElement("div");
-    pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md transition-transform";
+    pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md";
     pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
