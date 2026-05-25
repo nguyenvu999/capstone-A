@@ -40,3 +40,15 @@ body,
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+/* Làm sạch CSS cho khung Popup theo chuẩn Google Maps */
+.custom-google-popup .mapboxgl-popup-content,
+.custom-google-popup .trackasiagl-popup-content {
+  padding: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+  border: none !important;
+}
+.custom-google-popup .mapboxgl-popup-tip,
+.custom-google-popup .trackasiagl-popup-tip {
+  border-top-color: #ffffff !important;
+}

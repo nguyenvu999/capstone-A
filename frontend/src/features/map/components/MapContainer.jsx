@@ -18,7 +18,64 @@ export default function MapContainer({
   const markersRef = useRef([]);              
   const focusMarkerRef = useRef(null);         
   const userLocationMarkerRef = useRef(null);  
-  const userCoordsRef = useRef([106.694945, 10.769034]); 
+  const userCoordsRef = useRef([106.694945, 10.769034]); // [lng, lat] mặc định
+
+  // --- HÀM BỔ TRỢ 1: Tính khoảng cách đường chim bay (Haversine) cho TOÀN BỘ danh sách ---
+  const appendDistanceToPlaces = (placesArray, userLat, userLng) => {
+    if (!placesArray || placesArray.length === 0) return [];
+    
+    return placesArray.map(place => {
+      const pLat = Number(place.latitude || place.geometry?.location?.lat || place.lat);
+      const pLng = Number(place.longitude || place.geometry?.location?.lng || place.lng);
+      
+      if (isNaN(pLat) || isNaN(pLng)) {
+        return { ...place, distanceText: "--- km" };
+      }
+
+      // Công thức Haversine
+      const R = 6371; // Bán kính Trái Đất (km)
+      const dLat = ((pLat - userLat) * Math.PI) / 180;
+      const dLon = ((pLng - userLng) * Math.PI) / 180;
+      
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((userLat * Math.PI) / 180) *
+          Math.cos((pLat * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+          
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c; 
+
+      return { 
+        ...place, 
+        latitude: pLat,
+        longitude: pLng,
+        distanceText: `${distance.toFixed(1)} km` // Thêm trường distanceText vào object
+      };
+    });
+  };
+
+  // --- HÀM BỔ TRỢ 2: Kiểm tra trùng lặp địa điểm ---
+  const isLocationDuplicate = (item, uniqueList, compareList = []) => {
+    const isDupInUnique = uniqueList.some(existing => {
+      const sameId = item.place_id && existing.place_id && item.place_id === existing.place_id;
+      const sameNameAndCoords = existing.name.toLowerCase() === item.name.toLowerCase() && 
+        Math.abs(existing.latitude - item.latitude) < 0.0001 &&
+        Math.abs(existing.longitude - item.longitude) < 0.0001;
+      return sameId || sameNameAndCoords;
+    });
+
+    if (isDupInUnique) return true;
+
+    return compareList.some(sb => {
+      const sbLat = Number(sb.latitude);
+      const sbLng = Number(sb.longitude);
+      return sb.name.toLowerCase() === item.name.toLowerCase() && 
+        Math.abs(sbLat - item.latitude) < 0.0001 &&
+        Math.abs(sbLng - item.longitude) < 0.0001;
+    });
+  };
 
   const handleRecenter = () => {
     getUserCurrentLocation(true);
@@ -60,6 +117,10 @@ export default function MapContainer({
           .setLngLat([longitude, latitude])
           .setPopup(new trackasiagl.Popup({ offset: 10 }).setHTML("<p class='text-xs font-semibold px-1'>Vị trí của bạn</p>"))
           .addTo(mapRef.current);
+
+        // Kích hoạt tính lại km cho danh sách gốc khi định vị thành công lần đầu
+        const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
+        onCategoryResultsChange(placesWithDistance);
       },
       (error) => {
         console.error("Lỗi định vị:", error);
@@ -85,13 +146,16 @@ export default function MapContainer({
         userLocationMarkerRef.current = new trackasiagl.Marker({ element: el })
           .setLngLat([longitude, latitude])
           .addTo(mapRef.current);
+
+        const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
+        onCategoryResultsChange(placesWithDistance);
       },
       (err) => console.error("Cứu hộ định vị thất bại:", err),
       { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
     );
   };
 
-  // 1. Khởi tạo Bản đồ & Cập nhật Logic Click để tự lấy Địa chỉ từ Tọa độ
+  // 1. Khởi tạo Bản đồ & Nhận diện Click
   useEffect(() => {
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
@@ -115,14 +179,12 @@ export default function MapContainer({
       getUserCurrentLocation(true);
     });
 
-    // ĐÃ FIX: Click Bản đồ tự động gọi API Geocode tìm địa chỉ chữ thực tế gần nhất
     mapRef.current.on("click", (e) => {
       const { lng, lat } = e.lngLat;
       if (e.originalEvent.target.closest('.user-pulse-marker') || e.originalEvent.target.closest('img') || e.originalEvent.target.closest('.rounded-full')) {
         return; 
       }
 
-      // Gọi API Geocode của Track-Asia theo chuẩn tài liệu cung cấp
       fetch(`https://maps.track-asia.com/api/v2/geocode/json?result_type=street_address&latlng=${lat},${lng}&key=${apiKey}&new_admin=true&include_old_admin=true&size=1&radius=100`)
         .then((res) => res.json())
         .then((data) => {
@@ -133,7 +195,6 @@ export default function MapContainer({
             const topPlace = data.results[0];
             detectedAddress = topPlace.formatted_address || topPlace.name || detectedAddress;
 
-            // Vòng lặp bóc tách tên Thành phố / Tỉnh từ mảng components nếu có
             if (topPlace.address_components) {
               const cityComp = topPlace.address_components.find(comp => 
                 comp.types.includes("administrative_area_level_1") || comp.types.includes("province")
@@ -141,14 +202,12 @@ export default function MapContainer({
               if (cityComp) detectedCity = cityComp.long_name;
             }
             
-            // Fallback nếu không bóc được từ components thì lấy cụm từ cuối của chuỗi address
             if (!detectedCity && detectedAddress.includes(",")) {
               const parts = detectedAddress.split(",");
               detectedCity = parts[parts.length - 1].trim();
             }
           }
 
-          // Cập nhật State chuyển giao dữ liệu hoàn chỉnh cho Form nhận diện liền
           setFocusedLocation({
             lat: lat,
             lng: lng,
@@ -160,7 +219,6 @@ export default function MapContainer({
         })
         .catch((err) => {
           console.error("Geocoding click error:", err);
-          // Fallback khi mất mạng hoặc API lỗi
           setFocusedLocation({
             lat: lat,
             lng: lng,
@@ -178,11 +236,12 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. Logic gọi ngầm đồng bộ đa danh mục (Giữ nguyên)
+  // 2. Logic quét địa điểm (API + Supabase) & tính km đồng bộ
   useEffect(() => {
     if (!mapRef.current) return;
     const [lng, lat] = userCoordsRef.current;
 
+    // A. Nếu KHÔNG chọn danh mục (Quét ngầm đa danh mục ban đầu)
     if (!activeCategory) {
       const targetTypes = ["restaurant", "hotel", "supermarket", "pharmacy", "amusement_park", "local_government_office", "school", "bank"];
       const fetchPromises = targetTypes.map(type =>
@@ -206,22 +265,26 @@ export default function MapContainer({
 
           const uniqueApiItems = [];
           formattedApiItems.forEach(item => {
-            const isDuplicate = uniqueApiItems.some(existing => existing.place_id === item.place_id || (existing.name.toLowerCase() === item.name.toLowerCase() && Math.abs(existing.latitude - item.latitude) < 0.0001))
-              || allPlaces.some(sb => sb.name.toLowerCase() === item.name.toLowerCase() && Math.abs(Number(sb.latitude) - item.latitude) < 0.0001);
-            
-            if (!isDuplicate) uniqueApiItems.push(item);
+            if (!isLocationDuplicate(item, uniqueApiItems, allPlaces)) {
+              uniqueApiItems.push(item);
+            }
           });
 
-          onCategoryResultsChange([...allPlaces, ...uniqueApiItems]);
+          // Trộn mảng và tính khoảng cách hàng loạt
+          const combinedList = [...allPlaces, ...uniqueApiItems];
+          const finalResultWithDistance = appendDistanceToPlaces(combinedList, lat, lng);
+          
+          onCategoryResultsChange(finalResultWithDistance);
         })
         .catch((err) => {
           console.error("Lỗi quét ngầm đa danh mục:", err);
-          onCategoryResultsChange(allPlaces);
+          onCategoryResultsChange(appendDistanceToPlaces(allPlaces, lat, lng));
         });
         
       return; 
     }
 
+    // B. Nếu CÓ chọn một danh mục cụ thể
     let trackAsiaType = activeCategory.toLowerCase();
     if (trackAsiaType === "entertainment") trackAsiaType = "amusement_park";
     if (trackAsiaType === "government") trackAsiaType = "local_government_office";
@@ -235,20 +298,26 @@ export default function MapContainer({
                   (activeCategory.toLowerCase() === "government" && item.category?.toLowerCase() === "local_government_office")
         );
 
-        if (data.results) {
+        if (data.results && data.results.length > 0) {
           const formattedApiItems = data.results.map(item => {
             const itemLat = Number(item.geometry?.location?.lat || item.lat);
             const itemLng = Number(item.geometry?.location?.lng || item.lng);
             return { ...item, latitude: itemLat, longitude: itemLng };
           }).filter(item => !isNaN(item.latitude) && !isNaN(item.longitude));
 
-          const apiItems = formattedApiItems.filter(
-            apiItem => !supabaseFilteredItems.some(sb => sb.name.toLowerCase() === apiItem.name.toLowerCase())
-          );
+          const uniqueApiItems = [];
+          formattedApiItems.forEach(item => {
+            if (!isLocationDuplicate(item, uniqueApiItems, supabaseFilteredItems)) {
+              uniqueApiItems.push(item);
+            }
+          });
           
-          onCategoryResultsChange([...supabaseFilteredItems, ...apiItems]);
+          const combinedList = [...supabaseFilteredItems, ...uniqueApiItems];
+          const finalResultWithDistance = appendDistanceToPlaces(combinedList, lat, lng);
+          
+          onCategoryResultsChange(finalResultWithDistance);
         } else {
-          onCategoryResultsChange(supabaseFilteredItems);
+          onCategoryResultsChange(appendDistanceToPlaces(supabaseFilteredItems, lat, lng));
         }
       })
       .catch((err) => {
@@ -256,11 +325,11 @@ export default function MapContainer({
         const supabaseFilteredItems = allPlaces.filter(
           item => item.category?.toLowerCase() === activeCategory.toLowerCase()
         );
-        onCategoryResultsChange(supabaseFilteredItems);
+        onCategoryResultsChange(appendDistanceToPlaces(supabaseFilteredItems, lat, lng));
       });
   }, [activeCategory, apiKey, allPlaces]);
 
-  // 3. Vòng lặp dựng Marker lên bản đồ (Giữ nguyên)
+  // 3. Vòng lặp dựng Marker lên bản đồ
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -336,7 +405,7 @@ export default function MapContainer({
     });
   }, [categoryResults]);
 
-  // 4. Camera di chuyển đến vị trí Focus (Giữ nguyên)
+  // 4. Camera di chuyển đến vị trí Focus
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
