@@ -9,7 +9,7 @@ export default function MapContainer({
   categoryResults, 
   onCategoryResultsChange,
   setFocusedLocation,   
-  setShowRegisterForm, // Vẫn giữ prop này để các component khác dùng (nếu có)
+  setShowRegisterForm, // Kept for other components if needed
   onUserLocationDetected,
   allPlaces
 }) {
@@ -18,9 +18,9 @@ export default function MapContainer({
   const markersRef = useRef([]);              
   const focusMarkerRef = useRef(null);         
   const userLocationMarkerRef = useRef(null);  
-  const userCoordsRef = useRef([106.694945, 10.769034]); // [lng, lat] mặc định
+  const userCoordsRef = useRef([106.694945, 10.769034]); // Default [lng, lat]
 
-  // --- HÀM BỔ TRỢ 1: Tính khoảng cách đường chim bay (Haversine) ---
+  // --- HELPER FUNCTION 1: Haversine Great-Circle Distance ---
   const appendDistanceToPlaces = (placesArray, userLat, userLng) => {
     if (!placesArray || placesArray.length === 0) return [];
     return placesArray.map(place => {
@@ -54,7 +54,7 @@ export default function MapContainer({
     });
   };
 
-  // --- HÀM BỔ TRỢ 2: Kiểm tra trùng lặp ---
+  // --- HELPER FUNCTION 2: Check Duplicate Locations ---
   const isLocationDuplicate = (item, uniqueList, compareList = []) => {
     const isDupInUnique = uniqueList.some(existing => {
       const sameId = item.place_id && existing.place_id && item.place_id === existing.place_id;
@@ -80,7 +80,7 @@ export default function MapContainer({
 
   const getUserCurrentLocation = (shouldFlyTo = false) => {
     if (!navigator.geolocation) {
-      alert("Trình duyệt không hỗ trợ định vị.");
+      alert("Your browser does not support geolocation.");
       return;
     }
 
@@ -102,14 +102,14 @@ export default function MapContainer({
 
         userLocationMarkerRef.current = new trackasiagl.Marker({ element: el })
           .setLngLat([longitude, latitude])
-          .setPopup(new trackasiagl.Popup({ offset: 10 }).setHTML("<p class='text-xs font-semibold px-1'>Vị trí của bạn</p>"))
+          .setPopup(new trackasiagl.Popup({ offset: 10 }).setHTML("<p class='text-xs font-semibold px-1'>Your Location</p>"))
           .addTo(mapRef.current);
 
         const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
         onCategoryResultsChange(placesWithDistance);
       },
       (error) => {
-        console.error("Lỗi định vị:", error);
+        console.error("Geolocation error:", error);
         fallbackLocation(shouldFlyTo);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -133,12 +133,12 @@ export default function MapContainer({
         const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
         onCategoryResultsChange(placesWithDistance);
       },
-      (err) => console.error("Cứu hộ định vị thất bại:", err),
+      (err) => console.error("Fallback geolocation failed:", err),
       { enableHighAccuracy: false, timeout: 5000, maximumAge: Infinity }
     );
   };
 
-  // 1. Khởi tạo Bản đồ & Nhận diện Click (ĐÃ SỬA LOGIC KHÔNG TỰ BẬT FORM)
+  // 1. Initialize Map & Click Event Handling (Does NOT auto-open form)
   useEffect(() => {
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
@@ -171,7 +171,7 @@ export default function MapContainer({
       fetch(`https://maps.track-asia.com/api/v2/geocode/json?result_type=street_address&latlng=${lat},${lng}&key=${apiKey}&new_admin=true&include_old_admin=true&size=1&radius=100`)
         .then((res) => res.json())
         .then((data) => {
-          let detectedAddress = `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          let detectedAddress = `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
           let detectedCity = "";
 
           if (data.status === "OK" && data.results && data.results.length > 0) {
@@ -191,14 +191,14 @@ export default function MapContainer({
             }
           }
 
-          // ĐÃ ĐỔI: Chỉ cập nhật tọa độ đích, không kích hoạt Form Đăng ký tại đây nữa
+          // Only updating focus location state, register form will not open automatically
           setFocusedLocation({
             lat: lat,
             lng: lng,
             name: "",
             address: detectedAddress,
             city: detectedCity,
-            isNewCustomPoint: true // Đánh dấu đây là điểm click tự do ngoài map
+            isNewCustomPoint: true // Custom pin clicked outside registered ones
           });
         })
         .catch((err) => {
@@ -207,7 +207,7 @@ export default function MapContainer({
             lat: lat,
             lng: lng,
             name: "",
-            address: `Tọa độ: ${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+            address: `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`,
             city: "",
             isNewCustomPoint: true
           });
@@ -220,7 +220,7 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. Logic quét địa điểm (API + Supabase)
+  // 2. Fetch Places Logic (API + Supabase)
   useEffect(() => {
     if (!mapRef.current) return;
     const [lng, lat] = userCoordsRef.current;
@@ -257,7 +257,7 @@ export default function MapContainer({
           onCategoryResultsChange(appendDistanceToPlaces(combinedList, lat, lng));
         })
         .catch((err) => {
-          console.error("Lỗi quét ngầm:", err);
+          console.error("Background scan error:", err);
           onCategoryResultsChange(appendDistanceToPlaces(allPlaces, lat, lng));
         });
         
@@ -298,13 +298,13 @@ export default function MapContainer({
         }
       })
       .catch((err) => {
-        console.error("Lỗi lọc danh mục:", err);
+        console.error("Category filtering error:", err);
         const supabaseFilteredItems = allPlaces.filter(item => item.category?.toLowerCase() === activeCategory.toLowerCase());
         onCategoryResultsChange(appendDistanceToPlaces(supabaseFilteredItems, lat, lng));
       });
   }, [activeCategory, apiKey, allPlaces]);
 
-  // 3. Vòng lặp dựng Marker lên bản đồ
+  // 3. Render Markers on Map Loop
   useEffect(() => {
     if (!mapRef.current) return;
     markersRef.current.forEach(m => m.remove());
@@ -351,7 +351,7 @@ export default function MapContainer({
       }
 
       const hoverPopup = new trackasiagl.Popup({ offset: [0, -20], closeButton: false, closeOnClick: false })
-        .setHTML(`<div class="p-1.5 max-w-xs text-slate-800"><div class="font-bold text-xs line-clamp-1">${place.name || "Địa điểm"}</div></div>`);
+        .setHTML(`<div class="p-1.5 max-w-xs text-slate-800"><div class="font-bold text-xs line-clamp-1">${place.name || "Location"}</div></div>`);
 
       el.addEventListener("mouseenter", () => hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current));
       el.addEventListener("mouseleave", () => hoverPopup.remove());
@@ -363,7 +363,7 @@ export default function MapContainer({
           lng: lng,
           name: place.name,
           address: place.address || place.formatted_address || place.vicinity,
-          isNewCustomPoint: false // Đây là điểm chính thức, có marker sẵn
+          isNewCustomPoint: false // Existing officially registered marker
         });
       });
 
@@ -372,7 +372,7 @@ export default function MapContainer({
     });
   }, [categoryResults]);
 
-  // 4. Camera di chuyển đến vị trí Focus
+  // 4. Camera Fly to Focused Location
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
@@ -386,7 +386,7 @@ export default function MapContainer({
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
       .setLngLat([Number(lng), Number(lat)])
-      .setPopup(new trackasiagl.Popup({ offset: [0, -32] }).setHTML(`<b>${name || "Điểm Đang Chọn"}</b><br/>${address || ""}`))
+      .setPopup(new trackasiagl.Popup({ offset: [0, -32] }).setHTML(`<b>${name || "Selected Location"}</b><br/>${address || ""}`))
       .addTo(mapRef.current)
       .togglePopup();
   }, [focusedLocation?.lat, focusedLocation?.lng]);

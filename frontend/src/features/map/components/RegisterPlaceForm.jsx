@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../auth/api/supabaseClient";
-import { X, Save, Search, MapPin } from "lucide-react";
+import { X, Check, Search, MapPin } from "lucide-react"; 
 
 const CATEGORIES = [
   { id: "restaurant", name: "Restaurant", icon: "/restaurant-icon.png", bgColor: "#fb923c" },
@@ -31,16 +31,17 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: "" }); 
   const suggestionRef = useRef(null);
 
-  // ĐÃ FIX: Nhận trực tiếp chuỗi địa chỉ chữ thực tế đã được Map Geocode sẵn
+  // Nhận trực tiếp chuỗi địa chỉ chữ thực tế đã được Map Geocode sẵn
   useEffect(() => {
     if (focusedLocation) {
       setFormData((prev) => ({
         ...prev,
         name: focusedLocation.name || prev.name,
         address: focusedLocation.address || prev.address,
-        city: focusedLocation.city || prev.city || prev.city, // Tự điền ô City nếu Map quét ra tỉnh/thành phố
+        city: focusedLocation.city || prev.city, 
         latitude: focusedLocation.lat || prev.latitude,
         longitude: focusedLocation.lng || prev.longitude,
         category: focusedLocation.category || prev.category, 
@@ -144,6 +145,14 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     });
   };
 
+  const triggerToast = (message) => {
+    setToast({ show: true, message });
+    setTimeout(() => {
+      setToast({ show: false, message: "" });
+      if (onClose) onClose(); 
+    }, 2500); // Ẩn toast và đóng form sau 2.5 giây mượt mà
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.latitude || !formData.longitude) {
@@ -156,37 +165,48 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
 
-      const { error } = await supabase.from("places").insert([
-        {
-          name: formData.name,
-          description: formData.description,
-          address: formData.address,
-          city: formData.city,
-          latitude: Number(formData.latitude),
-          longitude: Number(formData.longitude),
-          price_level: Number(formData.price_level),
-          business_status: formData.business_status,
-          source: formData.source,
-          category: formData.category, 
-          created_by: user ? user.id : null, 
-          created_by_email: user ? user.email : null, 
-        },
-      ]);
+      // FIX: Thêm .select() ở cuối để ép Supabase trả về Object dữ liệu thực tế vừa tạo kèm ID tự sinh
+      const { data: insertedData, error } = await supabase
+        .from("places")
+        .insert([
+          {
+            name: formData.name,
+            description: formData.description,
+            address: formData.address,
+            city: formData.city,
+            latitude: Number(formData.latitude),
+            longitude: Number(formData.longitude),
+            price_level: Number(formData.price_level),
+            business_status: formData.business_status,
+            source: formData.source,
+            category: formData.category, 
+            created_by: user ? user.id : null, 
+            created_by_email: user ? user.email : null, 
+          },
+        ])
+        .select(); 
 
       if (error) throw error;
 
+      const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
+
       setAddressQuery(formData.name);
+      
+      // FIX LẬP TỨC HIỂN THỊ TRÊN MAP: 
+      // Cập nhật lại focusedLocation đầy đủ thông số thật từ DB, kích hoạt trạng thái hiển thị ghim trực tiếp.
       setFocusedLocation({
+        id: savedPlace ? savedPlace.id : Date.now(), // Đảm bảo có ID để phân biệt marker cố định
         lat: Number(formData.latitude),
         lng: Number(formData.longitude),
         name: formData.name,
         address: formData.address,
         category: formData.category,
-        isConfirmed: true 
+        isConfirmed: true // Cờ đánh dấu địa điểm này đã được lưu chính thức để Map xử lý vẽ marker ngay
       });
 
-      alert("Place registered successfully with selected category!");
-      if (onClose) onClose();
+      // Kích hoạt hiển thị Pop-up bo tròn xanh lá chuẩn UI mẫu
+      triggerToast("Successfully registered place.");
+
     } catch (error) {
       console.error("Insert error:", error.message);
       alert("Failed to save place: " + error.message);
@@ -196,199 +216,219 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   };
 
   return (
-    <div className="fixed top-20 right-6 z-[999] w-[400px] bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-120px)] border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-right-10">
-      
-      <button 
-        type="button" 
-        onClick={onClose} 
-        className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors z-[1000] focus:outline-none"
-        aria-label="Close form"
-      >
-        <X size={18} />
-      </button>
-
-      <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-sm text-gray-700 custom-scrollbar">
-        
-        <div className="pb-1">
-          <h2 className="text-base font-bold text-gray-800">Register Place</h2>
-        </div>
-
-        {/* Input Tên Địa Điểm */}
-        <div>
-          <label className="block font-medium text-gray-700 mb-1.5">Place Name *</label>
-          <input
-            type="text"
-            name="name"
-            required
-            placeholder="e.g. Highlands Coffee"
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-            value={formData.name}
-            onChange={handleChange}
-          />
-        </div>
-
-        {/* Giao diện chọn Category */}
-        <div>
-          <label className="block font-medium text-gray-700 mb-2">Category (Danh mục) *</label>
-          <div className="grid grid-cols-2 gap-2">
-            {CATEGORIES.map((cat) => {
-              const isSelected = formData.category === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => handleCategorySelect(cat.id)}
-                  className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
-                    isSelected 
-                      ? "border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20 font-semibold" 
-                      : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
-                  }`}
-                >
-                  <div 
-                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white"
-                    style={{ backgroundColor: cat.bgColor }}
-                  >
-                    <img src={cat.icon} alt={cat.name} className="w-4 h-4 object-contain" />
-                  </div>
-                  <span className="text-xs text-gray-700 truncate">{cat.name}</span>
-                </button>
-              );
-            })}
+    <>
+      {/* Toast Notification Container định vị trên cùng chính giữa màn hình */}
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none">
+        <div 
+          className={`flex items-center gap-2.5 px-6 py-2.5 bg-[#2ecc71] font-semibold text-white rounded-full shadow-xl transition-all duration-300 ease-out ${
+            toast.show 
+              ? "opacity-100 translate-y-0 scale-100 visible" 
+              : "opacity-0 -translate-y-4 scale-95 invisible"
+          }`}
+        >
+          {/* Icon checkmark vòng tròn mờ nhẹ */}
+          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center p-0.5 shrink-0">
+            <Check size={14} strokeWidth={3} className="text-white" />
           </div>
+          <span className="text-[15px] tracking-wide whitespace-nowrap">{toast.message}</span>
         </div>
+      </div>
 
-        {/* Tìm kiếm địa chỉ (Tự động cập nhật nội dung chữ thực tế từ Map click) */}
-        <div className="relative" ref={suggestionRef}>
-          <label className="block font-medium text-gray-700 mb-1.5">Search Address *</label>
-          <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-blue-500 focus-within:bg-white transition-all">
-            <Search size={16} className="text-gray-400 mr-2 shrink-0" />
+      {/* Main Form container */}
+      <div className="fixed top-20 right-6 z-[999] w-[400px] bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-120px)] border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-right-10">
+        
+        <button 
+          type="button" 
+          onClick={onClose} 
+          className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors z-[1000] focus:outline-none"
+          aria-label="Close form"
+        >
+          <X size={18} />
+        </button>
+
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-sm text-gray-700 custom-scrollbar">
+          
+          <div className="pb-1">
+            <h2 className="text-base font-bold text-gray-800">Register Place</h2>
+          </div>
+
+          {/* Input Tên Địa Điểm */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-1.5">Place Name *</label>
             <input
               type="text"
-              placeholder="Type to search address..."
-              className="bg-transparent focus:outline-none w-full text-sm"
-              value={addressQuery}
-              onChange={(e) => {
-                setAddressQuery(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
+              name="name"
+              required
+              placeholder="e.g. Highlands Coffee"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              value={formData.name}
+              onChange={handleChange}
             />
           </div>
 
-          {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-2xl max-h-[200px] overflow-y-auto z-50">
-              {suggestions.map((item) => (
-                <div
-                  key={item.place_id}
-                  onClick={() => handleSelectSuggestion(item)}
-                  className="flex items-start gap-2.5 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-none"
-                >
-                  <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                  <div className="overflow-hidden">
-                    <p className="font-medium text-gray-800 truncate">{item.structured_formatting?.main_text || item.description}</p>
-                    <p className="text-xs text-gray-500 truncate">{item.structured_formatting?.secondary_text || item.description}</p>
-                  </div>
-                </div>
-              ))}
+          {/* Giao diện chọn Category */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-2">Category (Danh mục) *</label>
+            <div className="grid grid-cols-2 gap-2">
+              {CATEGORIES.map((cat) => {
+                const isSelected = formData.category === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => handleCategorySelect(cat.id)}
+                    className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                      isSelected 
+                        ? "border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20 font-semibold" 
+                        : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
+                    }`}
+                  >
+                    <div 
+                      className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white"
+                      style={{ backgroundColor: cat.bgColor }}
+                    >
+                      <img src={cat.icon} alt={cat.name} className="w-4 h-4 object-contain" />
+                    </div>
+                    <span className="text-xs text-gray-700 truncate">{cat.name}</span>
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* City (Cũng tự động ăn theo tỉnh/thành bóc được từ Map Geocode) */}
-        <div>
-          <label className="block font-medium text-gray-700 mb-1.5">City *</label>
-          <input
-            type="text"
-            name="city"
-            required
-            placeholder="e.g. Ho Chi Minh City"
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
-            value={formData.city}
-            onChange={handleChange}
-          />
-        </div>
+          {/* Tìm kiếm địa chỉ */}
+          <div className="relative" ref={suggestionRef}>
+            <label className="block font-medium text-gray-700 mb-1.5">Search Address *</label>
+            <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-blue-500 focus-within:bg-white transition-all">
+              <Search size={16} className="text-gray-400 mr-2 shrink-0" />
+              <input
+                type="text"
+                placeholder="Type to search address..."
+                className="bg-transparent focus:outline-none w-full text-sm"
+                value={addressQuery}
+                onChange={(e) => {
+                  setAddressQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+              />
+            </div>
 
-        {/* Tọa độ */}
-        <div className="grid grid-cols-2 gap-3">
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-2xl max-h-[200px] overflow-y-auto z-50">
+                {suggestions.map((item) => (
+                  <div
+                    key={item.place_id}
+                    onClick={() => handleSelectSuggestion(item)}
+                    className="flex items-start gap-2.5 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-none"
+                  >
+                    <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div className="overflow-hidden">
+                      <p className="font-medium text-gray-800 truncate">{item.structured_formatting?.main_text || item.description}</p>
+                      <p className="text-xs text-gray-500 truncate">{item.structured_formatting?.secondary_text || item.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* City */}
           <div>
-            <label className="block font-medium text-gray-700 mb-1.5">Latitude</label>
+            <label className="block font-medium text-gray-700 mb-1.5">City *</label>
             <input
-              type="number"
-              step="any"
-              name="latitude"
+              type="text"
+              name="city"
               required
-              disabled
-              className="w-full bg-gray-100 border border-gray-150 rounded-xl p-2.5 text-sm text-gray-400 cursor-not-allowed select-none"
-              value={formData.latitude}
+              placeholder="e.g. Ho Chi Minh City"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              value={formData.city}
+              onChange={handleChange}
             />
           </div>
+
+          {/* Tọa độ */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-medium text-gray-700 mb-1.5">Latitude</label>
+              <input
+                type="number"
+                step="any"
+                name="latitude"
+                required
+                disabled
+                className="w-full bg-gray-100 border border-gray-150 rounded-xl p-2.5 text-sm text-gray-400 cursor-not-allowed select-none"
+                value={formData.latitude}
+              />
+            </div>
+            <div>
+              <label className="block font-medium text-gray-700 mb-1.5">Longitude</label>
+              <input
+                type="number"
+                step="any"
+                name="longitude"
+                required
+                disabled
+                className="w-full bg-gray-100 border border-gray-150 rounded-xl p-2.5 text-sm text-gray-400 cursor-not-allowed select-none"
+                value={formData.longitude}
+              />
+            </div>
+          </div>
+
+          {/* Price Level */}
           <div>
-            <label className="block font-medium text-gray-700 mb-1.5">Longitude</label>
-            <input
-              type="number"
-              step="any"
-              name="longitude"
-              required
-              disabled
-              className="w-full bg-gray-100 border border-gray-150 rounded-xl p-2.5 text-sm text-gray-400 cursor-not-allowed select-none"
-              value={formData.longitude}
+            <label className="block font-medium text-gray-700 mb-1.5">Price Level</label>
+            <select
+              name="price_level"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
+              value={formData.price_level}
+              onChange={handleChange}
+            >
+              <option value={1}>1 - Budget</option>
+              <option value={2}>2 - Moderate</option>
+              <option value={3}>3 - Expensive</option>
+              <option value={4}>4 - Ultra Luxe</option>
+            </select>
+          </div>
+
+          {/* Business Status */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-1.5">Business Status</label>
+            <select
+              name="business_status"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
+              value={formData.business_status}
+              onChange={handleChange}
+            >
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="temporarily_closed">Temporarily Closed</option>
+            </select>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-1.5">Description</label>
+            <textarea
+              name="description"
+              rows={3}
+              placeholder="Write some notes or details about this place..."
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
+              value={formData.description}
+              onChange={handleChange}
             />
           </div>
-        </div>
 
-        {/* Price Level */}
-        <div>
-          <label className="block font-medium text-gray-700 mb-1.5">Price Level</label>
-          <select
-            name="price_level"
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-            value={formData.price_level}
-            onChange={handleChange}
+          {/* Nút bấm Đăng ký địa điểm màu xanh lá */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 bg-[#1b5e20] hover:bg-[#2e7d32] text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all disabled:bg-[#a5d6a7] disabled:cursor-not-allowed text-sm"
           >
-            <option value={1}>1 - Budget</option>
-            <option value={2}>2 - Moderate</option>
-            <option value={3}>3 - Expensive</option>
-            <option value={4}>4 - Ultra Luxe</option>
-          </select>
-        </div>
-
-        {/* Business Status */}
-        <div>
-          <label className="block font-medium text-gray-700 mb-1.5">Business Status</label>
-          <select
-            name="business_status"
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-            value={formData.business_status}
-            onChange={handleChange}
-          >
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-            <option value="temporarily_closed">Temporarily Closed</option>
-          </select>
-        </div>
-
-        {/* Description */}
-        <div>
-          <label className="block font-medium text-gray-700 mb-1.5">Description</label>
-          <textarea
-            name="description"
-            rows={3}
-            placeholder="Write some notes or details about this place..."
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
-            value={formData.description}
-            onChange={handleChange}
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50 text-sm"
-        >
-          <Save size={16} />
-          <span>{loading ? "Saving to Supabase..." : "Save to Supabase"}</span>
-        </button>
-      </form>
-    </div>
+            <span>{loading ? "Registering place..." : "Register Place"}</span>
+          </button>
+        </form>
+      </div>
+    </>
   );
 }

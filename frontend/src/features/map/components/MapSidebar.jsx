@@ -3,14 +3,14 @@ import { Utensils, Hotel, ShoppingCart, Pill, Film, Building, GraduationCap, Lan
 import { supabase } from "../../auth/api/supabaseClient";
 
 const CATEGORIES = [
-  { id: "restaurant", label: "Nhà hàng", icon: Utensils, bgColor: "bg-orange-50", iconColor: "text-orange-600" },
-  { id: "hotel", label: "Khách sạn", icon: Hotel, bgColor: "bg-blue-50", iconColor: "text-blue-600" },
-  { id: "supermarket", label: "Siêu thị", icon: ShoppingCart, bgColor: "bg-purple-50", iconColor: "text-purple-600" },
-  { id: "pharmacy", label: "Nhà thuốc", icon: Pill, bgColor: "bg-emerald-50", iconColor: "text-emerald-600" },
-  { id: "entertainment", label: "Giải trí", icon: Film, bgColor: "bg-pink-50", iconColor: "text-pink-600" },
-  { id: "government", label: "Hành chính", icon: Building, bgColor: "bg-slate-50", iconColor: "text-slate-600" },
-  { id: "education", label: "Giáo dục", icon: GraduationCap, bgColor: "bg-indigo-50", iconColor: "text-indigo-600" },
-  { id: "bank", label: "Ngân hàng", icon: Landmark, bgColor: "bg-amber-50", iconColor: "text-amber-600" },
+  { id: "restaurant", label: "Restaurant", icon: Utensils, bgColor: "bg-orange-50", iconColor: "text-orange-600" },
+  { id: "hotel", label: "Hotel", icon: Hotel, bgColor: "bg-blue-50", iconColor: "text-blue-600" },
+  { id: "supermarket", label: "Supermarket", icon: ShoppingCart, bgColor: "bg-purple-50", iconColor: "text-purple-600" },
+  { id: "pharmacy", label: "Pharmacy", icon: Pill, bgColor: "bg-emerald-50", iconColor: "text-emerald-600" },
+  { id: "entertainment", label: "Entertainment", icon: Film, bgColor: "bg-pink-50", iconColor: "text-pink-600" },
+  { id: "government", label: "Government", icon: Building, bgColor: "bg-slate-50", iconColor: "text-slate-600" },
+  { id: "education", label: "Education", icon: GraduationCap, bgColor: "bg-indigo-50", iconColor: "text-indigo-600" },
+  { id: "bank", label: "Bank", icon: Landmark, bgColor: "bg-amber-50", iconColor: "text-amber-600" },
 ];
 
 export default function MapSidebar({ 
@@ -30,14 +30,14 @@ export default function MapSidebar({
   const suggestionRef = useRef(null);
   const [sortedResults, setSortedResults] = useState([]);
 
-  // Cập nhật ô input khi click chọn địa điểm từ bản đồ
+  // Sync search query box when selecting from the map
   useEffect(() => {
     if (focusedLocation && focusedLocation.name) {
       setSearchQuery(focusedLocation.name);
     }
   }, [focusedLocation]);
 
-  // ĐÃ PHÁT TRIỂN THÊM: Sắp xếp danh sách kết quả tự động từ GẦN NHẤT đến XA NHẤT
+  // Sort list results by nearest distance automatically
   useEffect(() => {
     if (!categoryResults || categoryResults.length === 0) {
       setSortedResults([]);
@@ -53,7 +53,7 @@ export default function MapSidebar({
     setSortedResults(sorted);
   }, [categoryResults]);
 
-  // Xử lý tìm kiếm Autocomplete (Giữ nguyên logic của bạn)
+  // Autocomplete search processing logic
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSuggestions([]);
@@ -76,7 +76,7 @@ export default function MapSidebar({
           trackAsiaPredictions = data.predictions.map(item => ({ ...item, isSupabaseData: false }));
         }
       } catch (err) {
-        console.error("Lỗi Autocomplete Track-Asia:", err);
+        console.error("Track-Asia Autocomplete Error:", err);
       }
 
       try {
@@ -91,14 +91,14 @@ export default function MapSidebar({
             description: item.name,
             structured_formatting: {
               main_text: item.name,
-              secondary_text: item.address || "Địa điểm đã lưu"
+              secondary_text: item.address || "Saved location"
             },
             isSupabaseData: true,
             rawSupabaseItem: item
           }));
         }
       } catch (err) {
-        console.error("Lỗi tìm kiếm Supabase:", err);
+        console.error("Supabase Query Error:", err);
       }
 
       setSuggestions([...supabasePredictions, ...trackAsiaPredictions]);
@@ -107,7 +107,7 @@ export default function MapSidebar({
     return () => clearTimeout(delayDebounce);
   }, [searchQuery, apiKey, focusedLocation, currentUserCoords]);
 
-  // Đóng khung gợi ý khi click ra ngoài vùng search
+  // Close search suggestions panel on clicking outside area
   useEffect(() => {
     function handleClickOutside(event) {
       if (suggestionRef.current && !suggestionRef.current.contains(event.target)) {
@@ -118,7 +118,7 @@ export default function MapSidebar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Click chọn vị trí từ danh sách gợi ý tìm kiếm
+  // Handle suggestion click selection
   const handleSelectSuggestion = (prediction) => {
     setSearchQuery(prediction.description);
     setShowSuggestions(false);
@@ -165,7 +165,7 @@ export default function MapSidebar({
             if (onTriggerDirectionPanel) onTriggerDirectionPanel(normalizedPlace);
           }
         })
-        .catch((err) => console.error("Lỗi chi tiết vị trí:", err));
+        .catch((err) => console.error("Place details lookup error:", err));
     }
   };
 
@@ -180,13 +180,13 @@ export default function MapSidebar({
 
   return (
     <div className="absolute top-4 left-4 z-50 w-[360px] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-      {/* Vùng Tìm kiếm */}
+      {/* Search Input Box Area */}
       <div className="p-4 border-b border-gray-100 relative" ref={suggestionRef}>
         <div className="relative flex items-center bg-gray-100 rounded-xl px-3 py-2.5">
           <Search size={16} className="text-gray-400 mr-2 shrink-0" />
           <input
             type="text"
-            placeholder="Tìm kiếm địa điểm..."
+            placeholder="Search for places..."
             className="bg-transparent text-xs text-gray-800 focus:outline-none w-full pr-6"
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setShowSuggestions(true); }}
@@ -207,7 +207,7 @@ export default function MapSidebar({
                 <div className="overflow-hidden">
                   <p className="text-xs font-semibold text-gray-800 truncate">
                     {item.structured_formatting?.main_text}
-                    {item.isSupabaseData && <span className="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-normal">Đã lưu</span>}
+                    {item.isSupabaseData && <span className="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-normal">Saved</span>}
                   </p>
                   <p className="text-[10px] text-gray-500 truncate">{item.structured_formatting?.secondary_text}</p>
                 </div>
@@ -217,9 +217,9 @@ export default function MapSidebar({
         )}
       </div>
 
-      {/* Grid Danh mục */}
+      {/* Categories Grid Area */}
       <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-        <h2 className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Danh mục trong bán kính 5km</h2>
+        <h2 className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Categories within 5km radius</h2>
         <div className="grid grid-cols-4 gap-2">
           {CATEGORIES.map((cat) => {
             const isSelected = activeCategory?.toLowerCase() === cat.id.toLowerCase();
@@ -241,7 +241,7 @@ export default function MapSidebar({
         </div>
       </div>
 
-      {/* Vùng hiển thị kết quả đã được tối ưu KM từ trên xuống dưới */}
+      {/* Results Distance List Feed Area */}
       <div className="flex-1 overflow-y-auto">
         {sortedResults && sortedResults.length > 0 ? (
           sortedResults.map((place, index) => {
@@ -270,7 +270,6 @@ export default function MapSidebar({
                   </div>
                 </div>
 
-                {/* ĐÃ FIX: Nhận trực tiếp chuỗi distanceText từ hàm Haversine xử lý mảng phẳng */}
                 <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded whitespace-nowrap ml-2 self-center shrink-0">
                   {place.distanceText || "--- km"}
                 </span>
@@ -278,7 +277,7 @@ export default function MapSidebar({
             );
           })
         ) : (
-          <div className="p-6 text-center text-xs text-gray-400">Không tìm thấy địa điểm phù hợp trong 5km</div>
+          <div className="p-6 text-center text-xs text-gray-400">No matching places found within 5km</div>
         )}
       </div>
     </div>

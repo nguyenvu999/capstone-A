@@ -33,7 +33,7 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
       <div className="flex items-center gap-2 cursor-pointer">
         <Map className="w-6 h-6 text-emerald-700" />
         <span className="font-bold text-xl bg-gradient-to-r from-emerald-800 to-emerald-600 bg-clip-text text-transparent">
-          GeoApp
+          Netsuggest
         </span>
       </div>
 
