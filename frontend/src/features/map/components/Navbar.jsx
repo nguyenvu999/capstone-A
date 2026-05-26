@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { LogOut, Map, Plus } from "lucide-react";
+import { LogOut, Map, Plus, Menu, X } from "lucide-react";
 
 export default function Navbar({ user, onSignOut, onRegisterClick }) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Lấy 2 chữ cái đầu của tên hoặc email để làm Avatar (Ví dụ: Vu Vu -> VV)
+  // Lấy 2 chữ cái đầu của tên hoặc email để làm Avatar
   const getAvatarLetters = () => {
     if (!user || !user.email) return "U";
     const namePart = user.user_metadata?.full_name || user.email.split("@")[0];
@@ -28,44 +28,45 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
   }, []);
 
   return (
-    <nav className="absolute top-0 left-0 right-0 z-[100] h-16 bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 flex items-center justify-between shadow-sm select-none">
+    <nav className="absolute top-0 left-0 right-0 z-[100] h-16 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 md:px-6 flex items-center justify-between shadow-sm select-none">
       {/* Cột trái: Tên ứng dụng & Logo */}
       <div className="flex items-center gap-2 cursor-pointer">
-        <Map className="w-6 h-6 text-emerald-700" />
-        <span className="font-bold text-xl bg-gradient-to-r from-emerald-800 to-emerald-600 bg-clip-text text-transparent">
+        <Map className="w-5 h-5 md:w-6 md:h-6 text-emerald-700" />
+        <span className="font-bold text-lg md:text-xl bg-gradient-to-r from-emerald-800 to-emerald-600 bg-clip-text text-transparent">
           Netsuggest
         </span>
       </div>
 
       {/* Cột phải: Nút hành động & Menu Profile cá nhân */}
-      <div className="flex items-center gap-4">
-        {/* Nút Đăng ký địa điểm chuẩn thiết kế xanh lá đậm bo tròn */}
+      <div className="flex items-center gap-2 md:gap-4">
+        {/* Nút Đăng ký địa điểm - Responsive text layout */}
         <button
           onClick={onRegisterClick}
-          className="flex items-center gap-1.5 px-4 py-2 bg-[#2d5a1e] hover:bg-[#234617] text-white font-medium text-sm rounded-full shadow-sm transition-all active:scale-95"
+          className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 bg-[#2d5a1e] hover:bg-[#234617] text-white font-medium text-xs md:text-sm rounded-full shadow-sm transition-all active:scale-95"
         >
           <Plus size={16} />
-          <span>Register Place</span>
+          <span className="hidden sm:inline">Register Place</span>
+          <span className="inline sm:hidden">Register</span>
         </button>
 
         {/* Nút bấm tròn hiển thị chữ cái đại diện của Avatar */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-10 h-10 rounded-full bg-[#e2f0d9] text-[#4a7c35] border border-gray-200 font-semibold text-sm flex items-center justify-center shadow-inner hover:brightness-95 transition-all focus:outline-none"
+            className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-[#e2f0d9] text-[#4a7c35] border border-gray-200 font-semibold text-xs md:text-sm flex items-center justify-center shadow-inner hover:brightness-95 transition-all focus:outline-none"
           >
             {getAvatarLetters()}
           </button>
 
           {/* Hộp thoại Dropdown Menu hiển thị thông tin chi tiết */}
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-100 rounded-2xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-3 duration-150">
+            <div className="absolute right-0 mt-2 w-64 md:w-72 bg-white border border-gray-100 rounded-2xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-3 duration-150 origin-top-right">
               {/* Khu vực hiển thị Email */}
               <div className="px-4 py-3 border-b border-gray-50">
-                <p className="font-bold text-sm text-gray-800">
+                <p className="font-bold text-sm text-gray-800 truncate">
                   {user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Người dùng"}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5 break-all">
+                <p className="text-xs text-gray-400 mt-0.5 break-all whitespace-normal">
                   {user?.email || "Chưa cập nhật email"}
                 </p>
               </div>
@@ -82,13 +83,16 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
                 
                 <div className="w-full text-left px-4 py-2.5 text-sm text-gray-300 flex items-center gap-2 select-none">
                   <Plus size={16} className="text-gray-200" />
-                  <span>My Places <span className="text-[10px] text-gray-400 font-normal italic">(coming soon)</span></span>
+                  <span className="flex items-center gap-1 flex-wrap">
+                    My Places 
+                    <span className="text-[10px] text-gray-400 font-normal italic">(coming soon)</span>
+                  </span>
                 </div>
               </div>
 
               <div className="border-t border-gray-100 my-1"></div>
 
-              {/* Nút Đăng xuất màu đỏ */}
+              {/* Nút Đăng xuất */}
               <div className="px-1">
                 <button
                   onClick={() => {

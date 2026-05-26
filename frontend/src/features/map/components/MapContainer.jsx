@@ -9,7 +9,7 @@ export default function MapContainer({
   categoryResults, 
   onCategoryResultsChange,
   setFocusedLocation,   
-  setShowRegisterForm, // Kept for other components if needed
+  setShowRegisterForm,
   onUserLocationDetected,
   allPlaces
 }) {
@@ -18,9 +18,9 @@ export default function MapContainer({
   const markersRef = useRef([]);              
   const focusMarkerRef = useRef(null);         
   const userLocationMarkerRef = useRef(null);  
-  const userCoordsRef = useRef([106.694945, 10.769034]); // Default [lng, lat]
+  const userCoordsRef = useRef([106.694945, 10.769034]); 
 
-  // --- HELPER FUNCTION 1: Haversine Great-Circle Distance ---
+  // --- HELPER FUNCTION 1: Distance Calculation ---
   const appendDistanceToPlaces = (placesArray, userLat, userLng) => {
     if (!placesArray || placesArray.length === 0) return [];
     return placesArray.map(place => {
@@ -138,7 +138,7 @@ export default function MapContainer({
     );
   };
 
-  // 1. Initialize Map & Click Event Handling (Does NOT auto-open form)
+  // 1. Initialize Map & Click Event Handling
   useEffect(() => {
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
@@ -191,14 +191,13 @@ export default function MapContainer({
             }
           }
 
-          // Only updating focus location state, register form will not open automatically
           setFocusedLocation({
             lat: lat,
             lng: lng,
             name: "",
             address: detectedAddress,
             city: detectedCity,
-            isNewCustomPoint: true // Custom pin clicked outside registered ones
+            isNewCustomPoint: true 
           });
         })
         .catch((err) => {
@@ -363,7 +362,7 @@ export default function MapContainer({
           lng: lng,
           name: place.name,
           address: place.address || place.formatted_address || place.vicinity,
-          isNewCustomPoint: false // Existing officially registered marker
+          isNewCustomPoint: false 
         });
       });
 
@@ -394,7 +393,11 @@ export default function MapContainer({
   return (
     <div className="relative h-full w-full">
       <div ref={mapContainerRef} className="h-full w-full" />
-      <button onClick={handleRecenter} className="absolute bottom-6 right-6 z-50 p-3 bg-white hover:bg-gray-50 text-blue-600 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 group">
+      {/* Đẩy cao nút định vị trên mobile (max-md:bottom-28) để tránh bị đè dưới thanh Bottom Sheet */}
+      <button 
+        onClick={handleRecenter} 
+        className="absolute bottom-6 max-md:bottom-28 right-6 z-50 p-3 bg-white hover:bg-gray-50 text-blue-600 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 group"
+      >
         <Navigation size={20} className="fill-blue-50 group-hover:rotate-45 transition-transform" />
       </button>
     </div>

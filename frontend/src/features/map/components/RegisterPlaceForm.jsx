@@ -34,7 +34,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [toast, setToast] = useState({ show: false, message: "" }); 
   const suggestionRef = useRef(null);
 
-  // Nhận trực tiếp chuỗi địa chỉ chữ thực tế đã được Map Geocode sẵn
+  // Nhận trực tiếp chuỗi địa chỉ từ Map Geocode
   useEffect(() => {
     if (focusedLocation) {
       setFormData((prev) => ({
@@ -150,7 +150,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     setTimeout(() => {
       setToast({ show: false, message: "" });
       if (onClose) onClose(); 
-    }, 2500); // Ẩn toast và đóng form sau 2.5 giây mượt mà
+    }, 2500);
   };
 
   const handleSubmit = async (e) => {
@@ -165,7 +165,6 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
 
-      // FIX: Thêm .select() ở cuối để ép Supabase trả về Object dữ liệu thực tế vừa tạo kèm ID tự sinh
       const { data: insertedData, error } = await supabase
         .from("places")
         .insert([
@@ -187,26 +186,20 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         .select(); 
 
       if (error) throw error;
-
       const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
-
       setAddressQuery(formData.name);
       
-      // FIX LẬP TỨC HIỂN THỊ TRÊN MAP: 
-      // Cập nhật lại focusedLocation đầy đủ thông số thật từ DB, kích hoạt trạng thái hiển thị ghim trực tiếp.
       setFocusedLocation({
-        id: savedPlace ? savedPlace.id : Date.now(), // Đảm bảo có ID để phân biệt marker cố định
+        id: savedPlace ? savedPlace.id : Date.now(),
         lat: Number(formData.latitude),
         lng: Number(formData.longitude),
         name: formData.name,
         address: formData.address,
         category: formData.category,
-        isConfirmed: true // Cờ đánh dấu địa điểm này đã được lưu chính thức để Map xử lý vẽ marker ngay
+        isConfirmed: true
       });
 
-      // Kích hoạt hiển thị Pop-up bo tròn xanh lá chuẩn UI mẫu
       triggerToast("Successfully registered place.");
-
     } catch (error) {
       console.error("Insert error:", error.message);
       alert("Failed to save place: " + error.message);
@@ -217,42 +210,42 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
   return (
     <>
-      {/* Toast Notification Container định vị trên cùng chính giữa màn hình */}
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none">
+      {/* Toast Notification Container */}
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none w-11/12 max-w-sm">
         <div 
-          className={`flex items-center gap-2.5 px-6 py-2.5 bg-[#2ecc71] font-semibold text-white rounded-full shadow-xl transition-all duration-300 ease-out ${
+          className={`flex items-center justify-center gap-2.5 px-5 py-3 bg-[#2ecc71] font-semibold text-white rounded-full shadow-xl transition-all duration-300 ease-out ${
             toast.show 
               ? "opacity-100 translate-y-0 scale-100 visible" 
               : "opacity-0 -translate-y-4 scale-95 invisible"
           }`}
         >
-          {/* Icon checkmark vòng tròn mờ nhẹ */}
           <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center p-0.5 shrink-0">
             <Check size={14} strokeWidth={3} className="text-white" />
           </div>
-          <span className="text-[15px] tracking-wide whitespace-nowrap">{toast.message}</span>
+          <span className="text-sm tracking-wide text-center">{toast.message}</span>
         </div>
       </div>
 
-      {/* Main Form container */}
-      <div className="fixed top-20 right-6 z-[999] w-[400px] bg-white rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-120px)] border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-right-10">
+      {/* Container Form Chính: Mobile Fullscreen, Desktop Floating Card */}
+      <div className="fixed top-0 md:top-20 right-0 md:right-6 left-0 md:left-auto bottom-0 md:bottom-auto z-[999] w-full md:w-[400px] h-full md:h-auto max-h-full md:max-h-[calc(100vh-120px)] bg-white rounded-none md:rounded-2xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom-10 md:slide-in-from-right-10">
         
+        {/* Close Button UI optimized for fingers */}
         <button 
           type="button" 
           onClick={onClose} 
-          className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors z-[1000] focus:outline-none"
+          className="absolute top-4 right-4 p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors z-[1000] focus:outline-none"
           aria-label="Close form"
         >
-          <X size={18} />
+          <X size={20} />
         </button>
 
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-sm text-gray-700 custom-scrollbar">
+        <form onSubmit={handleSubmit} className="p-5 md:p-6 overflow-y-auto space-y-4 text-sm text-gray-700 h-full custom-scrollbar pb-12 md:pb-6">
           
-          <div className="pb-1">
-            <h2 className="text-base font-bold text-gray-800">Register Place</h2>
+          <div className="pb-1 mt-2 md:mt-0">
+            <h2 className="text-lg md:text-base font-bold text-gray-800">Register Place</h2>
           </div>
 
-          {/* Input Tên Địa Điểm */}
+          {/* Place Name */}
           <div>
             <label className="block font-medium text-gray-700 mb-1.5">Place Name *</label>
             <input
@@ -260,16 +253,16 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               name="name"
               required
               placeholder="e.g. Highlands Coffee"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               value={formData.name}
               onChange={handleChange}
             />
           </div>
 
-          {/* Giao diện chọn Category */}
+          {/* Category Grid - 2 cols on mobile and desktop */}
           <div>
             <label className="block font-medium text-gray-700 mb-2">Category (Danh mục) *</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 max-h-[160px] md:max-h-none overflow-y-auto pr-1 md:pr-0">
               {CATEGORIES.map((cat) => {
                 const isSelected = formData.category === cat.id;
                 return (
@@ -277,7 +270,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                     key={cat.id}
                     type="button"
                     onClick={() => handleCategorySelect(cat.id)}
-                    className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                    className={`flex items-center gap-2 p-2.5 md:p-2 rounded-xl border text-left transition-all ${
                       isSelected 
                         ? "border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20 font-semibold" 
                         : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
@@ -296,10 +289,10 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             </div>
           </div>
 
-          {/* Tìm kiếm địa chỉ */}
+          {/* Search Address */}
           <div className="relative" ref={suggestionRef}>
             <label className="block font-medium text-gray-700 mb-1.5">Search Address *</label>
-            <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-blue-500 focus-within:bg-white transition-all">
+            <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 md:py-2.5 focus-within:border-blue-500 focus-within:bg-white transition-all">
               <Search size={16} className="text-gray-400 mr-2 shrink-0" />
               <input
                 type="text"
@@ -315,7 +308,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             </div>
 
             {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-2xl max-h-[200px] overflow-y-auto z-50">
+              <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-2xl max-h-[180px] overflow-y-auto z-50">
                 {suggestions.map((item) => (
                   <div
                     key={item.place_id}
@@ -324,8 +317,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                   >
                     <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
                     <div className="overflow-hidden">
-                      <p className="font-medium text-gray-800 truncate">{item.structured_formatting?.main_text || item.description}</p>
-                      <p className="text-xs text-gray-500 truncate">{item.structured_formatting?.secondary_text || item.description}</p>
+                      <p className="font-medium text-gray-800 truncate text-xs md:text-sm">
+                        {item.structured_formatting?.main_text || item.description}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {item.structured_formatting?.secondary_text || item.description}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -341,13 +338,13 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               name="city"
               required
               placeholder="e.g. Ho Chi Minh City"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               value={formData.city}
               onChange={handleChange}
             />
           </div>
 
-          {/* Tọa độ */}
+          {/* Latitude & Longitude */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-medium text-gray-700 mb-1.5">Latitude</label>
@@ -357,7 +354,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                 name="latitude"
                 required
                 disabled
-                className="w-full bg-gray-100 border border-gray-150 rounded-xl p-2.5 text-sm text-gray-400 cursor-not-allowed select-none"
+                className="w-full bg-gray-100 border border-gray-150 rounded-xl p-3 md:p-2.5 text-xs text-gray-400 cursor-not-allowed select-none"
                 value={formData.latitude}
               />
             </div>
@@ -369,41 +366,41 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                 name="longitude"
                 required
                 disabled
-                className="w-full bg-gray-100 border border-gray-150 rounded-xl p-2.5 text-sm text-gray-400 cursor-not-allowed select-none"
+                className="w-full bg-gray-100 border border-gray-150 rounded-xl p-3 md:p-2.5 text-xs text-gray-400 cursor-not-allowed select-none"
                 value={formData.longitude}
               />
             </div>
           </div>
 
-          {/* Price Level */}
-          <div>
-            <label className="block font-medium text-gray-700 mb-1.5">Price Level</label>
-            <select
-              name="price_level"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-              value={formData.price_level}
-              onChange={handleChange}
-            >
-              <option value={1}>1 - Budget</option>
-              <option value={2}>2 - Moderate</option>
-              <option value={3}>3 - Expensive</option>
-              <option value={4}>4 - Ultra Luxe</option>
-            </select>
-          </div>
-
-          {/* Business Status */}
-          <div>
-            <label className="block font-medium text-gray-700 mb-1.5">Business Status</label>
-            <select
-              name="business_status"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-              value={formData.business_status}
-              onChange={handleChange}
-            >
-              <option value="open">Open</option>
-              <option value="closed">Closed</option>
-              <option value="temporarily_closed">Temporarily Closed</option>
-            </select>
+          {/* Price Level & Business Status Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-medium text-gray-700 mb-1.5">Price Level</label>
+              <select
+                name="price_level"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
+                value={formData.price_level}
+                onChange={handleChange}
+              >
+                <option value={1}>1 - Budget</option>
+                <option value={2}>2 - Moderate</option>
+                <option value={3}>3 - Expensive</option>
+                <option value={4}>4 - Ultra Luxe</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-medium text-gray-700 mb-1.5">Business Status</label>
+              <select
+                name="business_status"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
+                value={formData.business_status}
+                onChange={handleChange}
+              >
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="temporarily_closed">Temporarily</option>
+              </select>
+            </div>
           </div>
 
           {/* Description */}
@@ -413,17 +410,17 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               name="description"
               rows={3}
               placeholder="Write some notes or details about this place..."
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
               value={formData.description}
               onChange={handleChange}
             />
           </div>
 
-          {/* Nút bấm Đăng ký địa điểm màu xanh lá */}
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 bg-[#1b5e20] hover:bg-[#2e7d32] text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all disabled:bg-[#a5d6a7] disabled:cursor-not-allowed text-sm"
+            className="w-full mt-4 bg-[#1b5e20] hover:bg-[#2e7d32] text-white font-bold p-3.5 md:p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all disabled:bg-[#a5d6a7] disabled:cursor-not-allowed text-sm"
           >
             <span>{loading ? "Registering place..." : "Register Place"}</span>
           </button>
