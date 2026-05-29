@@ -1,19 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../auth/api/supabaseClient";
-import { X, Check, Search, MapPin } from "lucide-react"; 
+import { X, Check, Search, MapPin } from "lucide-react";
+import { useToast } from "../../../shared/ui/Toast";
+import { checkDuplicatePlace } from "../utils/duplicateDetection";
+import DuplicatePlaceModal from "./DuplicatePlaceModal";
 
+// CẬP NHẬT: 6 categories đồng bộ với MapSidebar + MapContainer
 const CATEGORIES = [
   { id: "restaurant", name: "Restaurant", icon: "/restaurant-icon.png", bgColor: "#fb923c" },
-  { id: "hotel", name: "Hotel", icon: "/lodging_map_icon.png", bgColor: "#87CEEB" },
-  { id: "supermarket", name: "Supermarket", icon: "/supermarket_icon.png", bgColor: "#a855f7" },
-  { id: "pharmacy", name: "Pharmacy", icon: "/medical_map_icon.png", bgColor: "#10b981" },
+  { id: "bar", name: "Bar", emoji: "🍷", bgColor: "#a855f7" },
+  { id: "beverage", name: "Beverage", emoji: "☕", bgColor: "#8b5cf6" },
+  { id: "sight", name: "Sight", emoji: "👁️", bgColor: "#3b82f6" },
   { id: "entertainment", name: "Entertainment", icon: "/park_map_icon.png", bgColor: "#ec4899" },
-  { id: "bank", name: "Bank", icon: "/bank_icon.png", bgColor: "#FFE74A" },
-  { id: "education", name: "Education", icon: "/education-icon.png", bgColor: "#8b5cf6" },
-  { id: "government", name: "Government", icon: "/local_government_icon.png", bgColor: "#64748b" }
+  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" }
 ];
 
-export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose }) {
+export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose, allPlaces = [], onSuccess }) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -22,7 +24,6 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     latitude: "",
     longitude: "",
     price_level: 1,
-    business_status: "open",
     source: "manual",
     category: "restaurant",
   });
@@ -31,10 +32,15 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState({ show: false, message: "" }); 
+  const [duplicatePlace, setDuplicatePlace] = useState(null); // Lưu place trùng nếu phát hiện
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false); // Hiển thị modal cảnh báo
   const suggestionRef = useRef(null);
+  
+  // THÊM: useToast hook
+  const { showToast, ToastComponent } = useToast();
 
   // Nhận trực tiếp chuỗi địa chỉ từ Map Geocode
+  // Khi user click vào map → focusedLocation thay đổi → autofill form
   useEffect(() => {
     if (focusedLocation) {
       setFormData((prev) => ({
@@ -54,7 +60,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   }, [focusedLocation]);
 
   // Track-Asia Autocomplete logic
+  // Gợi ý địa chỉ khi user gõ vào search box
   useEffect(() => {
+    // Minimum 2 characters cho search 
     if (addressQuery.trim().length < 2) {
       setSuggestions([]);
       return;
@@ -65,12 +73,17 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         .then((data) => {
           if (data.predictions) setSuggestions(data.predictions);
         })
-        .catch((err) => console.error("Autocomplete error:", err));
+        .catch((err) => {
+          console.error("Autocomplete error:", err);
+          // THÊM: Error handling
+          showToast("Failed to load address suggestions", "error");
+        });
     }, 300);
 
     return () => clearTimeout(delayDebounce);
   }, [addressQuery, apiKey]);
 
+  // Đóng dropdown gợi ý khi click ra ngoài
   useEffect(() => {
     function handleClickOutside(event) {
       if (suggestionRef.current && !suggestionRef.current.contains(event.target)) {
@@ -81,10 +94,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Xử lý khi user chọn 1 gợi ý địa chỉ
   const handleSelectSuggestion = (prediction) => {
     setAddressQuery(prediction.description);
     setShowSuggestions(false);
 
+    // Gọi API lấy chi tiết địa điểm (lat/lng)
     fetch(`https://maps.track-asia.com/api/v2/place/details/json?place_id=${prediction.place_id}&key=${apiKey}`)
       .then((res) => res.json())
       .then((data) => {
@@ -93,6 +108,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           const chosenName = formData.name || data.result.name;
           const formattedAddress = data.result.formatted_address || prediction.description;
           
+          // Cập nhật form với tọa độ mới
           setFormData((prev) => ({
             ...prev,
             address: formattedAddress,
@@ -100,6 +116,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             longitude: Number(loc.lng),
           }));
 
+          // Cập nhật map focus
           setFocusedLocation({
             lat: Number(loc.lat),
             lng: Number(loc.lng),
@@ -109,13 +126,20 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           });
         }
       })
-      .catch((err) => console.error("Place details error:", err));
+      .catch((err) => {
+        console.error("Place details error:", err);
+        // THÊM: Error handling
+        showToast("Failed to load place details", "error");
+      });
   };
 
+  // Xử lý khi user thay đổi input trong form
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => {
       const updated = { ...prev, [name]: value };
+      
+      // Nếu đổi tên place → cập nhật marker trên map
       if ((name === "name") && prev.latitude && prev.longitude) {
         setFocusedLocation({
           lat: Number(prev.latitude),
@@ -129,9 +153,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     });
   };
 
+  // Xử lý khi user chọn category
   const handleCategorySelect = (categoryId) => {
     setFormData((prev) => {
       const updated = { ...prev, category: categoryId };
+      
+      // Cập nhật marker trên map với category mới
       if (prev.latitude && prev.longitude) {
         setFocusedLocation({
           lat: Number(prev.latitude),
@@ -145,26 +172,65 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     });
   };
 
-  const triggerToast = (message) => {
-    setToast({ show: true, message });
-    setTimeout(() => {
-      setToast({ show: false, message: "" });
-      if (onClose) onClose(); 
-    }, 2500);
-  };
-
+  // Xử lý submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.latitude || !formData.longitude) {
-      alert("Please select a valid address from the suggestions or click on the map.");
+    
+    // VALIDATION 1: Kiểm tra required fields
+    if (!formData.name.trim()) {
+      showToast("Please enter place name", "warning");
       return;
     }
+
+    if (!formData.address.trim()) {
+      showToast("Please enter or search for an address", "warning");
+      return;
+    }
+
+    if (!formData.city.trim()) {
+      showToast("Please enter city name", "warning");
+      return;
+    }
+
+    // VALIDATION 2: Kiểm tra tọa độ
+    if (!formData.latitude || !formData.longitude) {
+      showToast("Please select a valid address from suggestions or click on the map", "warning");
+      return;
+    }
+
+    // VALIDATION 3: Kiểm tra tên place (tối thiểu 3 ký tự)
+    if (formData.name.trim().length < 3) {
+      showToast("Place name must be at least 3 characters", "warning");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // DUPLICATE CHECK: Kiểm tra trùng lặp trước khi insert
+      const duplicate = await checkDuplicatePlace(
+        {
+          name: formData.name,
+          address: formData.address,
+          latitude: formData.latitude,
+          longitude: formData.longitude
+        },
+        allPlaces
+      );
+
+      if (duplicate) {
+        // Phát hiện duplicate → hiển thị modal cảnh báo
+        setDuplicatePlace(duplicate);
+        setShowDuplicateModal(true);
+        setLoading(false);
+        return;
+      }
+
+      // Lấy thông tin user hiện tại (nếu có)
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
 
+      // Insert place vào Supabase
       const { data: insertedData, error } = await supabase
         .from("places")
         .insert([
@@ -176,9 +242,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             latitude: Number(formData.latitude),
             longitude: Number(formData.longitude),
             price_level: Number(formData.price_level),
-            business_status: formData.business_status,
+            business_status: "open", // MẶC ĐỊNH luôn là "open"
             source: formData.source,
-            category: formData.category, 
+            category: formData.category,
             created_by: user ? user.id : null, 
             created_by_email: user ? user.email : null, 
           },
@@ -186,9 +252,11 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         .select(); 
 
       if (error) throw error;
+      
       const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
       setAddressQuery(formData.name);
       
+      // Cập nhật map với place vừa thêm
       setFocusedLocation({
         id: savedPlace ? savedPlace.id : Date.now(),
         lat: Number(formData.latitude),
@@ -199,32 +267,49 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         isConfirmed: true
       });
 
-      triggerToast("Successfully registered place.");
+      // THÊM: Success toast
+      showToast("Place registered successfully!", "success");
+      
+      // Đóng form sau 1.5 giây
+      setTimeout(() => {
+        if (onClose) onClose();
+      }, 1500);
+
     } catch (error) {
       console.error("Insert error:", error.message);
-      alert("Failed to save place: " + error.message);
+      // THÊM: Error toast
+      showToast(`Failed to register place: ${error.message}`, "error");
     } finally {
       setLoading(false);
     }
   };
 
+  // Xử lý khi user muốn xem place đã tồn tại
+  const handleViewExistingPlace = (place) => {
+    setFocusedLocation({
+      lat: Number(place.latitude),
+      lng: Number(place.longitude),
+      name: place.name,
+      address: place.address,
+      category: place.category,
+    });
+    showToast("Navigated to existing place", "success");
+    if (onClose) onClose();
+  };
+
   return (
     <>
-      {/* Toast Notification Container */}
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none w-11/12 max-w-sm">
-        <div 
-          className={`flex items-center justify-center gap-2.5 px-5 py-3 bg-[#2ecc71] font-semibold text-white rounded-full shadow-xl transition-all duration-300 ease-out ${
-            toast.show 
-              ? "opacity-100 translate-y-0 scale-100 visible" 
-              : "opacity-0 -translate-y-4 scale-95 invisible"
-          }`}
-        >
-          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center p-0.5 shrink-0">
-            <Check size={14} strokeWidth={3} className="text-white" />
-          </div>
-          <span className="text-sm tracking-wide text-center">{toast.message}</span>
-        </div>
-      </div>
+      {/* THÊM: Toast Component */}
+      {ToastComponent}
+
+      {/* THÊM: Duplicate Modal */}
+      {showDuplicateModal && (
+        <DuplicatePlaceModal
+          existingPlace={duplicatePlace}
+          onClose={() => setShowDuplicateModal(false)}
+          onViewPlace={handleViewExistingPlace}
+        />
+      )}
 
       {/* Container Form Chính: Mobile Fullscreen, Desktop Floating Card */}
       <div className="fixed top-0 md:top-20 right-0 md:right-6 left-0 md:left-auto bottom-0 md:bottom-auto z-[999] w-full md:w-[400px] h-full md:h-auto max-h-full md:max-h-[calc(100vh-120px)] bg-white rounded-none md:rounded-2xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom-10 md:slide-in-from-right-10">
@@ -247,7 +332,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
           {/* Place Name */}
           <div>
-            <label className="block font-medium text-gray-700 mb-1.5">Place Name *</label>
+            <label className="block font-medium text-gray-700 mb-1.5">
+              Place Name <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               name="name"
@@ -261,7 +348,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
           {/* Category Grid - 2 cols on mobile and desktop */}
           <div>
-            <label className="block font-medium text-gray-700 mb-2">Category (Danh mục) *</label>
+            <label className="block font-medium text-gray-700 mb-2">
+              Category <span className="text-red-500">*</span>
+            </label>
             <div className="grid grid-cols-2 gap-2 max-h-[160px] md:max-h-none overflow-y-auto pr-1 md:pr-0">
               {CATEGORIES.map((cat) => {
                 const isSelected = formData.category === cat.id;
@@ -276,11 +365,16 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                         : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
                     }`}
                   >
+                    {/* Hiển thị icon hoặc emoji tùy theo category */}
                     <div 
                       className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white"
                       style={{ backgroundColor: cat.bgColor }}
                     >
-                      <img src={cat.icon} alt={cat.name} className="w-4 h-4 object-contain" />
+                      {cat.icon ? (
+                        <img src={cat.icon} alt={cat.name} className="w-4 h-4 object-contain" />
+                      ) : (
+                        <span className="text-sm">{cat.emoji}</span>
+                      )}
                     </div>
                     <span className="text-xs text-gray-700 truncate">{cat.name}</span>
                   </button>
@@ -291,7 +385,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
           {/* Search Address */}
           <div className="relative" ref={suggestionRef}>
-            <label className="block font-medium text-gray-700 mb-1.5">Search Address *</label>
+            <label className="block font-medium text-gray-700 mb-1.5">
+              Search Address <span className="text-red-500">*</span>
+            </label>
             <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 md:py-2.5 focus-within:border-blue-500 focus-within:bg-white transition-all">
               <Search size={16} className="text-gray-400 mr-2 shrink-0" />
               <input
@@ -307,6 +403,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               />
             </div>
 
+            {/* Dropdown gợi ý địa chỉ */}
             {showSuggestions && suggestions.length > 0 && (
               <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-2xl max-h-[180px] overflow-y-auto z-50">
                 {suggestions.map((item) => (
@@ -332,7 +429,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
           {/* City */}
           <div>
-            <label className="block font-medium text-gray-700 mb-1.5">City *</label>
+            <label className="block font-medium text-gray-700 mb-1.5">
+              City <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
               name="city"
@@ -372,35 +471,20 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             </div>
           </div>
 
-          {/* Price Level & Business Status Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-medium text-gray-700 mb-1.5">Price Level</label>
-              <select
-                name="price_level"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-                value={formData.price_level}
-                onChange={handleChange}
-              >
-                <option value={1}>1 - Budget</option>
-                <option value={2}>2 - Moderate</option>
-                <option value={3}>3 - Expensive</option>
-                <option value={4}>4 - Ultra Luxe</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-medium text-gray-700 mb-1.5">Business Status</label>
-              <select
-                name="business_status"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-                value={formData.business_status}
-                onChange={handleChange}
-              >
-                <option value="open">Open</option>
-                <option value="closed">Closed</option>
-                <option value="temporarily_closed">Temporarily</option>
-              </select>
-            </div>
+          {/* Price Level */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-1.5">Price Level</label>
+            <select
+              name="price_level"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
+              value={formData.price_level}
+              onChange={handleChange}
+            >
+              <option value={1}>1 - Budget</option>
+              <option value={2}>2 - Moderate</option>
+              <option value={3}>3 - Expensive</option>
+              <option value={4}>4 - Ultra Luxe</option>
+            </select>
           </div>
 
           {/* Description */}
