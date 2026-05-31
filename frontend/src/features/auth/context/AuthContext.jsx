@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
+    // 1. Kiểm tra session hiện tại khi ứng dụng khởi chạy ban đầu
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
         if (session) {
@@ -26,13 +27,17 @@ export function AuthProvider({ children }) {
           let expiresAt = localStorage.getItem("session_expires_at");
 
           if (!expiresAt) {
-            expiresAt = currentTime + 21600;
-            localStorage.setItem("session_expires_at", expiresAt.toString());
+            expiresAt = (currentTime + 21600).toString();
+            localStorage.setItem("session_expires_at", expiresAt);
           }
 
-          if (currentTime >= parseInt(expiresAt, 10)) {
-            logoutUser();
-            return;
+          // Kiểm tra điều kiện an toàn tránh lỗi so sánh NaN với currentTime
+          const parsedExpiresAt = parseInt(expiresAt, 10);
+          if (!isNaN(parsedExpiresAt)) {
+            if (currentTime >= parsedExpiresAt) {
+              logoutUser();
+              return;
+            }
           }
 
           setUser(session.user);
@@ -47,6 +52,7 @@ export function AuthProvider({ children }) {
         setLoading(false);
       });
 
+    // 2. Lắng nghe sự kiện thay đổi trạng thái Auth (Đăng nhập, Đăng xuất, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         if (event === "SIGNED_IN") {
@@ -61,10 +67,14 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
 
+    // 3. Vòng lặp kiểm tra định kỳ mỗi phút một lần xem session đã hết hạn chưa
     const interval = setInterval(() => {
       const expiresAt = localStorage.getItem("session_expires_at");
-      if (expiresAt && Math.floor(Date.now() / 1000) >= parseInt(expiresAt, 10)) {
-        logoutUser();
+      if (expiresAt) {
+        const parsedExpiresAt = parseInt(expiresAt, 10);
+        if (!isNaN(parsedExpiresAt) && Math.floor(Date.now() / 1000) >= parsedExpiresAt) {
+          logoutUser();
+        }
       }
     }, 60000);
 

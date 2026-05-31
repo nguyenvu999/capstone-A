@@ -63,6 +63,7 @@ public class SecurityConfig {
 
     @Bean
     public JwtDecoder jwtDecoder() {
+        // Sử dụng thuật toán chuẩn hóa đồng bộ của chuỗi JWT Secret từ Supabase
         SecretKeySpec secretKey = new SecretKeySpec(jwtSecret.getBytes(), "HmacSHA256");
         return NimbusJwtDecoder.withSecretKey(secretKey).build();
     }
@@ -70,11 +71,18 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Điền chính xác cổng chạy Client local của bạn để tránh lỗi CORS khi truyền Cookie
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://localhost:3000 , http://localhost"));
+        
+        // Đã bóc tách mảng rõ ràng, xóa bỏ dấu phẩy lỗi bên trong chuỗi, bổ sung production Netlify
+        configuration.setAllowedOrigins(Arrays.asList(
+            "http://localhost:5173", 
+            "http://localhost:3000", 
+            "http://localhost",
+            "https://netsuggest.netlify.app"
+        ));
+        
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
-        configuration.setAllowCredentials(true); // Bắt buộc bằng True để trình duyệt chấp nhận Cookie nhận về
+        configuration.setAllowCredentials(true); // Bắt buộc bằng True để trình duyệt chấp nhận truyền Token/Cookie xuyên suốt
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
