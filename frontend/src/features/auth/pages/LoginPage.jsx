@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { signInWithEmail, signUpWithEmail } from "../api/authApi";
+import { signInWithEmail, signUpWithEmail, signInWithMicrosoft } from "../api/authApi";
 import Logo from "../../../shared/ui/Logo";
 
 function LoginPage() {
@@ -15,17 +15,18 @@ function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Lấy trang đích dự định từ state, nếu không có thì mặc định là "/map"
+  // Lấy trang đích dự định từ state, nếu không có thì mặc định điều hướng về "/map"
   const fromPage = location.state?.from?.pathname || "/map";
 
   useEffect(() => {
     if (!loading && user) {
       // Dùng replace: true để ghi đè trang "/login" trong lịch sử duyệt web
-      // Giúp khi bấm Back ở trình duyệt sẽ quay lại trang trước đó (như Facebook)
+      // Giúp khi bấm Back ở trình duyệt không bị quay ngược lại trang login
       navigate(fromPage, { replace: true });
     }
   }, [user, loading, navigate, fromPage]);
 
+  // Xử lý submit form đăng nhập / đăng ký bằng email
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmiting(true);
@@ -48,7 +49,22 @@ function LoginPage() {
     }
   };
 
-  // NẾU ĐANG TẢI: Trả về trạng thái chờ, tránh chặn hoàn toàn tiến trình render
+  // Xử lý đăng nhập qua Microsoft OAuth
+  const handleMicrosoftLogin = async () => {
+    setIsSubmiting(true);
+    setErrorMsg("");
+    try {
+      const { error } = await signInWithMicrosoft();
+      if (error) throw error;
+      // Lưu ý: signInWithOAuth sẽ tự động redirect trình duyệt sang trang đăng nhập của Microsoft,
+      // sau khi thành công Microsoft sẽ redirect về callback URL của Supabase rồi trả về ứng dụng.
+    } catch (err) {
+      setErrorMsg(err.message || "Microsoft authentication failed.");
+      setIsSubmiting(false);
+    }
+  };
+
+  // Trả về trạng thái chờ kiểm tra session ban đầu, tránh chặn tiến trình render
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#94AB71] text-white font-medium">
@@ -60,7 +76,7 @@ function LoginPage() {
     );
   }
 
-  // Nếu đã xác thực thành công, useEffect ở trên sẽ tự động đẩy trang, tại đây trả về null để ẩn form ẩn.
+  // Nếu đã xác thực thành công, useEffect sẽ điều hướng trang, tại đây ẩn form.
   if (user) return null; 
 
   return (
@@ -83,6 +99,7 @@ function LoginPage() {
             </div>
           )}
 
+          {/* Form Email/Password Authentication */}
           <form onSubmit={handleSubmit} className="space-y-4 text-left">
             <div>
               <label className="text-xs font-semibold text-gray-600">Email Address</label>
@@ -112,7 +129,7 @@ function LoginPage() {
               disabled={isSubmiting}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#355e1d] px-4 text-base font-medium text-white transition hover:bg-[#2d4f18] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmiting ? (
+              {isSubmiting && !isRegister ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   Processing...
@@ -123,6 +140,33 @@ function LoginPage() {
             </button>
           </form>
           
+          {/* Đường phân cách lựa chọn OAuth */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-400">Or continue with</span>
+            </div>
+          </div>
+
+          {/* Nút bấm Đăng nhập qua Microsoft */}
+          <button
+            type="button"
+            onClick={handleMicrosoftLogin}
+            disabled={isSubmiting}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <svg className="h-4 w-4 mr-1 shrink-0" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#f35325" d="M0 0h11v11H0z"/>
+              <path fill="#81bc06" d="M12 0h11v11H12z"/>
+              <path fill="#05a6f0" d="M0 12h11v11H0z"/>
+              <path fill="#ffba08" d="M12 12h11v11H12z"/>
+            </svg>
+            Sign in with Microsoft
+          </button>
+
+          {/* Chuyển đổi trạng thái Đăng ký / Đăng nhập */}
           <button 
             type="button"
             onClick={() => { setIsRegister(!isRegister); setErrorMsg(""); }}
