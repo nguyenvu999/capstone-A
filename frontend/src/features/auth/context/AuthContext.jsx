@@ -19,7 +19,6 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    // 1. Kiểm tra session hiện tại khi ứng dụng khởi chạy ban đầu
     supabase.auth.getSession()
       .then(({ data: { session } }) => {
         if (session) {
@@ -31,7 +30,6 @@ export function AuthProvider({ children }) {
             localStorage.setItem("session_expires_at", expiresAt);
           }
 
-          // Kiểm tra điều kiện an toàn tránh lỗi so sánh NaN với currentTime
           const parsedExpiresAt = parseInt(expiresAt, 10);
           if (!isNaN(parsedExpiresAt)) {
             if (currentTime >= parsedExpiresAt) {
@@ -39,11 +37,7 @@ export function AuthProvider({ children }) {
               return;
             }
           }
-
           setUser(session.user);
-        } else {
-          setUser(null);
-          localStorage.removeItem("session_expires_at");
         }
         setLoading(false);
       })
@@ -52,14 +46,18 @@ export function AuthProvider({ children }) {
         setLoading(false);
       });
 
-    // 2. Lắng nghe sự kiện thay đổi trạng thái Auth (Đăng nhập, Đăng xuất, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
+        setUser(session.user);
+        
         if (event === "SIGNED_IN") {
           const expiresAt = Math.floor(Date.now() / 1000) + 21600;
           localStorage.setItem("session_expires_at", expiresAt.toString());
+          
+          if (window.location.pathname === "/login" || window.location.pathname === "/") {
+            window.location.replace("/map");
+          }
         }
-        setUser(session.user);
       } else {
         setUser(null);
         localStorage.removeItem("session_expires_at");
@@ -67,7 +65,6 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
 
-    // 3. Vòng lặp kiểm tra định kỳ mỗi phút một lần xem session đã hết hạn chưa
     const interval = setInterval(() => {
       const expiresAt = localStorage.getItem("session_expires_at");
       if (expiresAt) {
