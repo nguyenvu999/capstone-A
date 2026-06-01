@@ -244,7 +244,8 @@ export default function MapSidebar({
       <div 
         className={`
           fixed bg-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out
-          md:top-4 md:left-4 md:z-50 md:w-[360px] md:max-h-[85vh] md:rounded-2xl md:translate-y-0 md:opacity-100
+          /* CHỈ SỬA KHU VỰC NÀY: Thay đổi top và left để đẩy Sidebar xuống dưới Navbar một cách chuẩn xác trên Desktop */
+          md:top-[88px] md:left-6 md:z-30 md:w-[360px] md:max-h-[76vh] md:rounded-2xl md:translate-y-0 md:opacity-100
           max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:w-full max-md:z-[90] max-md:rounded-t-2xl max-md:border-t max-md:border-gray-150
           ${isMobileExpanded 
             ? "max-md:h-[65vh] max-md:opacity-100 max-md:translate-y-0" 

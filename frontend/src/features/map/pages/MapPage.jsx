@@ -16,9 +16,9 @@ export default function MapPage() {
   const [showRegisterForm, setShowRegisterForm] = useState(false);
   const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); 
   const [forceOpenDirectionPlace, setForceOpenDirectionPlace] = useState(null);
-  const [selectedPlace, setSelectedPlace] = useState(null); // Place đang được xem detail
+  const [selectedPlace, setSelectedPlace] = useState(null); 
 
-  // THÊM: State cho filters
+  // State cho filters
   const [activeFilters, setActiveFilters] = useState({
     priceLevels: [],
     ratings: []
@@ -26,7 +26,7 @@ export default function MapPage() {
 
   const API_KEY = "fbe052e2f17788443245e0c54f3084b0a2";
 
-  // Hàm tính toán ma trận cự ly chuẩn xác thực tế từ API Track-Asia
+  // Hàm tính toán ma trận cự ly chuẩn thực tế từ API Track-Asia
   const sortPlacesByRealRoad = async (placesArray, userCoords) => {
     if (!placesArray || placesArray.length === 0) return [];
     try {
@@ -49,9 +49,9 @@ export default function MapPage() {
     return placesArray;
   };
 
-  // THÊM: Helper function tính khoảng cách Haversine (đặt TRƯỚC hàm fetchPlacesFromSupabase)
+  // Helper function tính khoảng cách Haversine hình học
   const calculateDistance = (lat1, lng1, lat2, lng2) => {
-    const R = 6371; // Bán kính Trái Đất (km)
+    const R = 6371; 
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLng = ((lng2 - lng1) * Math.PI) / 180;
     
@@ -63,25 +63,21 @@ export default function MapPage() {
         Math.sin(dLng / 2);
         
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Khoảng cách (km)
+    return R * c; 
   };
 
   const fetchPlacesFromSupabase = async (userCoords = currentUserCoords, currentCat = activeCategory, filters = activeFilters) => {
     try {
-      // Bắt đầu query builder
       let query = supabase.from("places").select("*");
 
-      // Filter theo category (nếu có)
       if (currentCat) {
         query = query.eq("category", currentCat);
       }
 
-      // Filter theo price levels (nếu có)
       if (filters.priceLevels.length > 0) {
         query = query.in("price_level", filters.priceLevels);
       }
 
-      // Execute query
       const { data, error } = await query;
       
       if (error) throw error;
@@ -99,10 +95,10 @@ export default function MapPage() {
           rating: item.rating || 0,
           created_by: item.created_by, 
           created_by_email: item.created_by_email, 
-          description: item.description 
+          description: item.description,
+          isSupabaseData: true 
         }));
 
-        // THÊM: Filter places trong bán kính 5km từ vị trí user
         const [userLng, userLat] = userCoords;
         const placesWithin5km = normalized.filter(place => {
           const distance = calculateDistance(
@@ -111,12 +107,11 @@ export default function MapPage() {
             place.latitude, 
             place.longitude
           );
-          return distance <= 5; // Chỉ giữ lại places trong bán kính 5km
+          return distance <= 5; 
         });
 
         const sorted = await sortPlacesByRealRoad(placesWithin5km, userCoords);
         
-        // Filter theo rating (client-side vì cần tính avg từ reviews)
         let filtered = sorted;
         if (filters.ratings.length > 0) {
           const minRating = Math.min(...filters.ratings);
@@ -131,7 +126,6 @@ export default function MapPage() {
     }
   };
 
-  // THÊM: Handler khi filters thay đổi từ MapSidebar
   const handleFilterChange = (newFilters) => {
     setActiveFilters(newFilters);
     fetchPlacesFromSupabase(currentUserCoords, activeCategory, newFilters);
@@ -144,15 +138,19 @@ export default function MapPage() {
     fetchPlacesFromSupabase(currentUserCoords, nextCat, activeFilters);
   };
 
-  // Callback để refresh places sau khi register thành công
   const handlePlaceRegistered = () => {
     fetchPlacesFromSupabase(currentUserCoords, activeCategory, activeFilters);
   };
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden pt-16">
+    <div className="relative h-screen w-screen overflow-hidden flex flex-col bg-white">
+      {/* Navbar nằm cố định phía trên */}
       <Navbar user={user} onSignOut={logoutUser} onRegisterClick={() => setShowRegisterForm(true)} />
-      <div className="w-full h-full relative flex overflow-hidden">
+      
+      {/* Vùng chứa Map và Sidebar bên dưới Navbar */}
+      <div className="w-full flex-1 relative flex overflow-hidden z-10">
+        
+        {/* THANH SIDEBAR TÌM KIẾM */}
         <MapSidebar 
           apiKey={API_KEY} 
           activeCategory={activeCategory} 
@@ -163,14 +161,16 @@ export default function MapPage() {
           focusedLocation={focusedLocation} 
           currentUserCoords={currentUserCoords}
           onTriggerDirectionPanel={(place) => setForceOpenDirectionPlace(place)}
-          onFilterChange={handleFilterChange} // THÊM: Truyền callback xuống MapSidebar
-          onPlaceClick={setSelectedPlace} // THÊM: Truyền callback
+          onFilterChange={handleFilterChange} 
+          onPlaceClick={setSelectedPlace} 
         />
+        
+        {/* BẢN ĐỒ CHÍNH */}
         <MapContainer 
           apiKey={API_KEY} 
           activeCategory={activeCategory} 
           focusedLocation={focusedLocation}
-          categoryResults={categoryResults} 
+          categoryResults={categoryResults.filter(place => place.isSupabaseData === true)} 
           onCategoryResultsChange={setCategoryResults}
           setFocusedLocation={setFocusedLocation} 
           setShowRegisterForm={setShowRegisterForm}
@@ -198,7 +198,6 @@ export default function MapPage() {
         />
       )}
 
-      {/* THÊM: Place Detail Modal */}
       {selectedPlace && (
         <PlaceDetailModal
           place={selectedPlace}
