@@ -1,11 +1,22 @@
 import { useState, useEffect } from "react"
-import { X, CheckCircle, AlertCircle } from "lucide-react"
+import { X, CheckCircle, AlertCircle, AlertTriangle } from "lucide-react"
 
+// Component Toast hiển thị thông báo cho user
+// type: "success" | "error" | "warning"
 function Toast({ message, type = "success", onClose }) {
   useEffect(() => {
     const timer = setTimeout(() => onClose(), 3000)
     return () => clearTimeout(timer)
   }, [onClose])
+
+  // Config màu sắc và icon theo type
+  const config = {
+    success: { bg: "#003b1f", icon: CheckCircle },
+    error: { bg: "#dc2626", icon: AlertCircle },
+    warning: { bg: "#d97706", icon: AlertTriangle }
+  }
+
+  const { bg, icon: Icon } = config[type] || config.success
 
   return (
     <div
@@ -20,18 +31,14 @@ function Toast({ message, type = "success", onClose }) {
         padding: "12px 16px",
         borderRadius: "12px",
         boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
-        backgroundColor: type === "success" ? "#003b1f" : "#dc2626",
+        backgroundColor: bg,
         color: "white",
         fontSize: "14px",
         fontWeight: 500,
         maxWidth: "360px",
       }}
     >
-      {type === "success" ? (
-        <CheckCircle size={18} />
-      ) : (
-        <AlertCircle size={18} />
-      )}
+      <Icon size={18} />
       <span style={{ flex: 1 }}>{message}</span>
       <button
         onClick={onClose}
@@ -52,6 +59,7 @@ function Toast({ message, type = "success", onClose }) {
 export function useToast() {
   const [toast, setToast] = useState(null)
 
+  // Hiển thị toast với type tùy chỉnh
   const showToast = (message, type = "success") => {
     setToast({ message, type })
   }
@@ -64,5 +72,12 @@ export function useToast() {
     <Toast message={toast.message} type={toast.type} onClose={hideToast} />
   ) : null
 
-  return { showToast, ToastComponent }
+  // Helper functions để gọi nhanh hơn
+  return { 
+    showToast, 
+    ToastComponent,
+    success: (message) => showToast(message, "success"),
+    error: (message) => showToast(message, "error"),
+    warning: (message) => showToast(message, "warning")
+  }
 }
