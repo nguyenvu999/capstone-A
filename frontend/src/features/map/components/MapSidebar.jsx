@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Utensils, Wine, Coffee, Eye, Film, Users, Search, MapPin, X, Menu, DollarSign, Star, Filter as FilterIcon } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 
-// 6 categories đồng bộ
+// 6 categories 
 const CATEGORIES = [
   { id: "restaurant", label: "Restaurant", icon: Utensils, bgColor: "bg-orange-50", iconColor: "text-orange-600" },
   { id: "bar", label: "Bar", icon: Wine, bgColor: "bg-purple-50", iconColor: "text-purple-600" },
