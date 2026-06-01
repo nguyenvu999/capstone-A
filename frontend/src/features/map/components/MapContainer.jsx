@@ -427,70 +427,75 @@ export default function MapContainer({
   }, [categoryResults]);
 
   // 4. Camera Fly to Focused Location
-  // Khi focusedLocation thay đổi → zoom map vào địa điểm đó
-  useEffect(() => {
-    if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
-    const { lat, lng, name, address } = focusedLocation;
-    
-    // Zoom map vào địa điểm
-    mapRef.current.flyTo({ center: [Number(lng), Number(lat)], zoom: 15, essential: true });
-    
-    // Xóa marker focus cũ (nếu có)
-    focusMarkerRef.current?.remove();
-    
-    // Tạo marker mới (pin đỏ) tại địa điểm focus
-    const pin = document.createElement("div");
-    pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md";
-    pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
-    
-    // Thêm nút "See Details" vào popup
-    const popupHTML = `
-      <div class="p-2">
-        <div class="font-bold text-sm mb-1">${name || "Selected Location"}</div>
-        <div class="text-xs text-gray-600 mb-2">${address || ""}</div>
-        ${!focusedLocation.isNewCustomPoint ? `
-          <button 
-            class="see-details-btn w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
-          >
-            See Details
-          </button>
-        ` : ''}
-      </div>
-    `;
-    
-    const focusPopup = new trackasiagl.Popup({ 
-      offset: [0, -32], 
-      closeButton: true,
-      closeOnClick: false 
-    }).setHTML(popupHTML);
-    
-    focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
-      .setLngLat([Number(lng), Number(lat)])
-      .setPopup(focusPopup)
-      .addTo(mapRef.current)
-      .togglePopup(); // Tự động mở popup
-    
-    // THÊM: Xử lý click nút "See Details"
-    setTimeout(() => {
-      const seeDetailsBtn = document.querySelector('.see-details-btn');
-      if (seeDetailsBtn && onPlaceClick) {
-        seeDetailsBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          
-          // Tìm place trong categoryResults
-          const clickedPlace = categoryResults.find(p => 
-            Number(p.latitude) === Number(lat) && 
-            Number(p.longitude) === Number(lng)
-          );
-          
-          if (clickedPlace && clickedPlace.id) {
-            focusPopup.remove();
-            onPlaceClick(clickedPlace);
-          }
-        });
-      }
-    }, 100);
-  }, [focusedLocation?.lat, focusedLocation?.lng, categoryResults, onPlaceClick]);
+// Khi focusedLocation thay đổi → di chuyển camera đến địa điểm đó (KHÔNG thay đổi zoom)
+useEffect(() => {
+  if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
+  const { lat, lng, name, address } = focusedLocation;
+  
+  // THAY ĐỔI: Chỉ di chuyển camera (pan), KHÔNG thay đổi zoom level
+  // User zoom in → giữ nguyên zoom in
+  // User zoom out → giữ nguyên zoom out
+  mapRef.current.flyTo({ 
+    center: [Number(lng), Number(lat)], 
+    essential: true 
+  });
+  
+  // Xóa marker focus cũ (nếu có)
+  focusMarkerRef.current?.remove();
+  
+  // Tạo marker mới (pin đỏ) tại địa điểm focus
+  const pin = document.createElement("div");
+  pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md";
+  pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
+  
+  // Thêm nút "See Details" vào popup
+  const popupHTML = `
+    <div class="p-2">
+      <div class="font-bold text-sm mb-1">${name || "Selected Location"}</div>
+      <div class="text-xs text-gray-600 mb-2">${address || ""}</div>
+      ${!focusedLocation.isNewCustomPoint ? `
+        <button 
+          class="see-details-btn w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
+        >
+          See Details
+        </button>
+      ` : ''}
+    </div>
+  `;
+  
+  const focusPopup = new trackasiagl.Popup({ 
+    offset: [0, -32], 
+    closeButton: true,
+    closeOnClick: false 
+  }).setHTML(popupHTML);
+  
+  focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
+    .setLngLat([Number(lng), Number(lat)])
+    .setPopup(focusPopup)
+    .addTo(mapRef.current)
+    .togglePopup(); // Tự động mở popup
+  
+  // THÊM: Xử lý click nút "See Details"
+  setTimeout(() => {
+    const seeDetailsBtn = document.querySelector('.see-details-btn');
+    if (seeDetailsBtn && onPlaceClick) {
+      seeDetailsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        // Tìm place trong categoryResults
+        const clickedPlace = categoryResults.find(p => 
+          Number(p.latitude) === Number(lat) && 
+          Number(p.longitude) === Number(lng)
+        );
+        
+        if (clickedPlace && clickedPlace.id) {
+          focusPopup.remove();
+          onPlaceClick(clickedPlace);
+        }
+      });
+    }
+  }, 100);
+}, [focusedLocation?.lat, focusedLocation?.lng, categoryResults, onPlaceClick]);
 
   return (
     <div className="relative h-full w-full">

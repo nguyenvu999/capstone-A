@@ -65,13 +65,15 @@ export function stringSimilarity(str1, str2) {
   return 1 - matrix[s2.length][s1.length] / maxLength;
 }
 
-// Kiểm tra duplicate place
+
 // Trả về place trùng nếu tìm thấy, null nếu không
 export async function checkDuplicatePlace(newPlace, existingPlaces) {
-  // Ngưỡng: tên giống >= 80% VÀ địa chỉ giống >= 70% VÀ khoảng cách < 50m
+  // Ngưỡng cho các điều kiện
   const NAME_THRESHOLD = 0.8;
   const ADDRESS_THRESHOLD = 0.7;
-  const DISTANCE_THRESHOLD = 0.05; // 50 meters = 0.05 km
+  const DISTANCE_THRESHOLD = 0.05; // 50 meters
+  const SAME_LOCATION_THRESHOLD = 0.01; // 10 meters
+  const EXACT_COORDS_PRECISION = 0.00001; // ~1 mét
 
   for (const existing of existingPlaces) {
     // Tính độ tương đồng tên
@@ -88,13 +90,43 @@ export async function checkDuplicatePlace(newPlace, existingPlaces) {
       Number(existing.longitude)
     );
 
-    // Kiểm tra điều kiện duplicate
+    // ĐIỀU KIỆN 1: SAME_LOCATION (ưu tiên cao nhất)
+    // Nếu cùng địa chỉ + cùng vị trí GPS (< 10m) → CHẮC CHẮN duplicate
+    // BẤT KỂ tên có khác gì (để chống spam đổi tên)
+    if (distance <= SAME_LOCATION_THRESHOLD && addressSimilarity >= ADDRESS_THRESHOLD) {
+      return { 
+        ...existing, 
+        distance,
+        reason: "SAME_LOCATION" // Debug info
+      };
+    }
+
+    // ĐIỀU KIỆN 2: EXACT_COORDS
+    // Nếu tọa độ HOÀN TOÀN giống nhau (đến 5 chữ số thập phân)
+    // → CHẮC CHẮN duplicate, bất kể tên/địa chỉ
+    const latDiff = Math.abs(Number(newPlace.latitude) - Number(existing.latitude));
+    const lngDiff = Math.abs(Number(newPlace.longitude) - Number(existing.longitude));
+    
+    if (latDiff < EXACT_COORDS_PRECISION && lngDiff < EXACT_COORDS_PRECISION) {
+      return { 
+        ...existing, 
+        distance,
+        reason: "EXACT_COORDS"
+      };
+    }
+
+    // ĐIỀU KIỆN 3: SAME_PLACE (logic cũ - giữ nguyên)
+    // Tên giống + Địa chỉ giống + Khoảng cách gần
     if (
       nameSimilarity >= NAME_THRESHOLD &&
       addressSimilarity >= ADDRESS_THRESHOLD &&
       distance <= DISTANCE_THRESHOLD
     ) {
-      return { ...existing, distance }; // Trả về place trùng + khoảng cách
+      return { 
+        ...existing, 
+        distance,
+        reason: "SAME_PLACE"
+      };
     }
   }
 

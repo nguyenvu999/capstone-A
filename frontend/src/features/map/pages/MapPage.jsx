@@ -49,7 +49,23 @@ export default function MapPage() {
     return placesArray;
   };
 
-  // CẬP NHẬT: Apply filters khi fetch places từ Supabase
+  // THÊM: Helper function tính khoảng cách Haversine (đặt TRƯỚC hàm fetchPlacesFromSupabase)
+  const calculateDistance = (lat1, lng1, lat2, lng2) => {
+    const R = 6371; // Bán kính Trái Đất (km)
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+        
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Khoảng cách (km)
+  };
+
   const fetchPlacesFromSupabase = async (userCoords = currentUserCoords, currentCat = activeCategory, filters = activeFilters) => {
     try {
       // Bắt đầu query builder
@@ -80,15 +96,25 @@ export default function MapPage() {
           category: item.category,
           price_level: item.price_level,
           business_status: item.business_status,
-          // THÊM: Thêm rating (tính từ reviews - tạm thời dùng placeholder)
-          // TODO: Sau khi có review system, cần tính avg rating từ bảng reviews
           rating: item.rating || 0,
           created_by: item.created_by, 
           created_by_email: item.created_by_email, 
           description: item.description 
         }));
 
-        const sorted = await sortPlacesByRealRoad(normalized, userCoords);
+        // THÊM: Filter places trong bán kính 5km từ vị trí user
+        const [userLng, userLat] = userCoords;
+        const placesWithin5km = normalized.filter(place => {
+          const distance = calculateDistance(
+            userLat, 
+            userLng, 
+            place.latitude, 
+            place.longitude
+          );
+          return distance <= 5; // Chỉ giữ lại places trong bán kính 5km
+        });
+
+        const sorted = await sortPlacesByRealRoad(placesWithin5km, userCoords);
         
         // Filter theo rating (client-side vì cần tính avg từ reviews)
         let filtered = sorted;
@@ -114,6 +140,7 @@ export default function MapPage() {
   const handleSelectCategory = (category) => {
     const nextCat = activeCategory === category ? null : category;
     setActiveCategory(nextCat);
+    setFocusedLocation(null);
     fetchPlacesFromSupabase(currentUserCoords, nextCat, activeFilters);
   };
 
