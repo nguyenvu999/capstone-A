@@ -24,7 +24,7 @@ export default function MapPage() {
     ratings: []
   });
 
-  const API_KEY = "fbe052e2f17788443245e0c54f3084b0a2";
+  const API_KEY = "47c259f38d98bc1780380421e9735f2b0a";
 
   // Hàm tính toán ma trận cự ly chuẩn thực tế từ API Track-Asia
   const sortPlacesByRealRoad = async (placesArray, userCoords) => {

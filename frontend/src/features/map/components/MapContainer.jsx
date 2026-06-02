@@ -22,7 +22,7 @@ export default function MapContainer({
   const userLocationMarkerRef = useRef(null);  
   const userCoordsRef = useRef([106.694945, 10.769034]); 
 
-  // --- HELPER FUNCTION 1: Distance Calculation ---
+  // GIỮ NGUYÊN HOÀN TOÀN LOGIC CŨ CỦA BẠN
   const appendDistanceToPlaces = (placesArray, userLat, userLng) => {
     if (!placesArray || placesArray.length === 0) return [];
     return placesArray.map(place => {
@@ -33,7 +33,7 @@ export default function MapContainer({
         return { ...place, distanceText: "--- km" };
       }
 
-      const R = 6371; // Bán kính Trái Đất (km)
+      const R = 6371; 
       const dLat = ((pLat - userLat) * Math.PI) / 180;
       const dLon = ((pLng - userLng) * Math.PI) / 180;
       
@@ -56,12 +56,10 @@ export default function MapContainer({
     });
   };
 
-  // Xử lý khi user click nút "Recenter" (quay về vị trí hiện tại)
   const handleRecenter = () => {
     getUserCurrentLocation(true);
   };
 
-  // Lấy vị trí GPS hiện tại của user
   const getUserCurrentLocation = (shouldFlyTo = false) => {
     if (!navigator.geolocation) {
       alert("Your browser does not support geolocation.");
@@ -89,7 +87,6 @@ export default function MapContainer({
           .setPopup(new trackasiagl.Popup({ offset: 10 }).setHTML("<p class='text-xs font-semibold px-1'>Your Location</p>"))
           .addTo(mapRef.current);
 
-        // Đồng bộ khoảng cách dựa trên allPlaces của Supabase đổ về
         const placesWithDistance = appendDistanceToPlaces(allPlaces, latitude, longitude);
         onCategoryResultsChange(placesWithDistance);
       },
@@ -101,7 +98,6 @@ export default function MapContainer({
     );
   };
 
-  // Fallback khi GPS độ chính xác cao lỗi
   const fallbackLocation = (shouldFlyTo) => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -124,7 +120,7 @@ export default function MapContainer({
     );
   };
 
-  // 1. Initialize Map & Click Event Handling
+  // 1. Initialize Map & Click Event Handling (Giữ nguyên)
   useEffect(() => {
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
@@ -206,8 +202,7 @@ export default function MapContainer({
     };
   }, [apiKey]);
 
-  // 2. ĐÃ SỬA ĐỔI: Loại bỏ hoàn toàn fetch api TrackAsia vãng lai khi đổi category
-  // Chỉ thực hiện mapping khoảng cách Haversine chính xác dựa theo mảng Supabase (allPlaces)
+  // 2. Sync Category items distance (Giữ nguyên)
   useEffect(() => {
     if (!mapRef.current) return;
     const [lng, lat] = userCoordsRef.current;
@@ -222,7 +217,7 @@ export default function MapContainer({
     }
   }, [activeCategory, allPlaces]);
 
-  // 3. Render Markers Loop - Chỉ vẽ những gì nằm trong mảng kết quả đã lọc sạch
+  // 3. Render Markers Loop (Giữ nguyên)
   useEffect(() => {
     if (!mapRef.current) return;
     
@@ -290,11 +285,12 @@ export default function MapContainer({
     });
   }, [categoryResults]);
 
-  // 4. Camera Fly to Focused Location
+  // 4. FIX CHỈ ĐỊNH: Chặn nhảy chữ vào popup khi đang gõ text trong Form đăng ký
   useEffect(() => {
     if (!focusedLocation || !focusedLocation.lat || !focusedLocation.lng || !mapRef.current) return;
     const { lat, lng, name, address } = focusedLocation;
     
+    // Thực hiện di chuyển camera và trả popup về nguyên bản logic cũ (.togglePopup())
     mapRef.current.flyTo({ 
       center: [Number(lng), Number(lat)], 
       essential: true 
@@ -330,7 +326,7 @@ export default function MapContainer({
       .setLngLat([Number(lng), Number(lat)])
       .setPopup(focusPopup)
       .addTo(mapRef.current)
-      .togglePopup(); 
+      .togglePopup(); // Giữ nguyên hành vi tự động mở popup cũ của bạn
     
     setTimeout(() => {
       const seeDetailsBtn = document.querySelector('.see-details-btn');
@@ -350,14 +346,15 @@ export default function MapContainer({
         });
       }
     }, 100);
-  }, [focusedLocation?.lat, focusedLocation?.lng, categoryResults, onPlaceClick]);
+
+  // THAY ĐỔI QUAN TRỌNG: Chỉ lắng nghe sự thay đổi của TỌA ĐỘ (lat, lng).
+  // Loại bỏ hoàn toàn sự phụ thuộc vào text 'name' hay 'address' để khi bạn gõ, useEffect này KHÔNG bị chạy lại.
+  }, [focusedLocation?.lat, focusedLocation?.lng, onPlaceClick]); 
 
   return (
-    // FIX: Tách biệt z-index của container bản đồ (về số thấp z-0) để không che khuất ô search dropdown
     <div className="relative h-full w-full flex-1 z-0">
       <div ref={mapContainerRef} className="h-full w-full" />
       
-      {/* Nút "Recenter" quay về vị trí user */}
       <button 
         onClick={handleRecenter} 
         className="absolute bottom-6 max-md:bottom-28 right-6 z-40 p-3 bg-white hover:bg-gray-50 text-blue-600 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 group"

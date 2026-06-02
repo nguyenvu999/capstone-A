@@ -22,8 +22,8 @@ export default function MapSidebar({
   focusedLocation, 
   currentUserCoords,
   onTriggerDirectionPanel,
-  onFilterChange, // THÊM: Callback để thông báo filter thay đổi
-  onPlaceClick // THÊM: Callback khi click vào place
+  onFilterChange,
+  onPlaceClick
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -32,26 +32,40 @@ export default function MapSidebar({
   const suggestionRef = useRef(null);
   const [sortedResults, setSortedResults] = useState([]);
 
-  // THÊM: State cho filters
-  const [selectedPriceLevels, setSelectedPriceLevels] = useState([]); // [1, 2, 3, 4]
-  const [selectedRatings, setSelectedRatings] = useState([]); // [1, 2, 3, 4, 5]
-  const [showFilters, setShowFilters] = useState(false); // Toggle filter panel
+  // State cho filters
+  const [selectedPriceLevels, setSelectedPriceLevels] = useState([]); 
+  const [selectedRatings, setSelectedRatings] = useState([]); 
+  const [showFilters, setShowFilters] = useState(false); 
 
-  // Sync search query box when selecting from the map
+  // Sync search query box khi chọn địa điểm từ bản đồ
   useEffect(() => {
     if (focusedLocation && focusedLocation.name) {
       setSearchQuery(focusedLocation.name);
     }
   }, [focusedLocation]);
 
-  // Sort list results by nearest distance automatically
+  // Sắp xếp và LỌC TRÙNG TỌA ĐỘ cho list kết quả hiển thị bên dưới danh mục
   useEffect(() => {
     if (!categoryResults || categoryResults.length === 0) {
       setSortedResults([]);
       return;
     }
 
-    const sorted = [...categoryResults].sort((a, b) => {
+    // Lọc trùng theo Tọa độ & Tên đối với dữ liệu danh mục trả về thực tế
+    const uniquePlacesMap = new Map();
+    categoryResults.forEach(place => {
+      const lat = Number(place.latitude).toFixed(4); // Làm tròn 4 chữ số để tránh lệch coordinate siêu nhỏ
+      const lng = Number(place.longitude).toFixed(4);
+      const cleanName = (place.name || "").toLowerCase().replace(/\s+/g, "");
+      const geoKey = `${cleanName}_${lat}_${lng}`;
+
+      // Nếu trùng tọa độ + tên, ưu tiên giữ lại dữ liệu không phải từ Track-Asia ngẫu nhiên
+      if (!uniquePlacesMap.has(geoKey) || place.category !== "TrackAsiaPlace") {
+        uniquePlacesMap.set(geoKey, place);
+      }
+    });
+
+    const sorted = Array.from(uniquePlacesMap.values()).sort((a, b) => {
       const distA = parseFloat(a.distanceText) || 0;
       const distB = parseFloat(b.distanceText) || 0;
       return distA - distB;
@@ -60,7 +74,7 @@ export default function MapSidebar({
     setSortedResults(sorted);
   }, [categoryResults]);
 
-  // THÊM: Gửi filter changes lên MapPage
+  // Gửi filter thay đổi lên component cha
   useEffect(() => {
     if (onFilterChange) {
       onFilterChange({
@@ -108,7 +122,7 @@ export default function MapSidebar({
             description: item.name,
             structured_formatting: {
               main_text: item.name,
-              secondary_text: item.address || "Saved location"
+              secondary_text: item.address || "Registered location"
             },
             isSupabaseData: true,
             rawSupabaseItem: item
@@ -118,13 +132,49 @@ export default function MapSidebar({
         console.error("Supabase Query Error:", err);
       }
 
-      setSuggestions([...supabasePredictions, ...trackAsiaPredictions]);
+      // --- BỘ LỌC NGHIÊM NGẶT: TÊN + SỐ NHÀ/ĐƯỜNG RÚT GỌN ---
+      const allRawSuggestions = [...supabasePredictions, ...trackAsiaPredictions];
+      const seenKeys = new Set();
+      
+      const filteredSuggestions = allRawSuggestions.filter(item => {
+        const mainText = (item.structured_formatting?.main_text || "").toLowerCase();
+        const secondaryText = (item.structured_formatting?.secondary_text || "").toLowerCase();
+        
+        // 1. Chuẩn hóa Tên (Xóa hết khoảng trắng, xóa dấu)
+        const cleanName = mainText
+          .replace(/\s+/g, "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+        // 2. Tách lấy phần cốt lõi của địa chỉ (Chỉ lấy số nhà + tên đường)
+        // Loại bỏ từ khóa hành chính
+        let coreAddress = secondaryText
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/(duong|phuong|quan|thanh pho|tp\.|q\.|p\.|d\.)/g, "");
+
+        // Giữ lại 4 từ/cụm số đầu tiên của địa chỉ (Ví dụ: "17 vo van tan" thay vì đọc hết đuôi đằng sau)
+        const addressParts = coreAddress.trim().split(/[\s,]+/);
+        const shortAddress = addressParts.slice(0, 4).join("");
+
+        // Tạo khóa định danh nghiêm ngặt
+        const uniqueKey = `${cleanName}_${shortAddress}`;
+
+        if (seenKeys.has(uniqueKey)) {
+          return false; // Loại bỏ hoàn toàn bản ghi trùng lặp từ Track-Asia phía sau
+        }
+        
+        seenKeys.add(uniqueKey);
+        return true;
+      });
+
+      setSuggestions(filteredSuggestions);
     }, 300);
 
     return () => clearTimeout(delayDebounce);
   }, [searchQuery, apiKey, focusedLocation, currentUserCoords]);
 
-  // Close search suggestions panel on clicking outside area
+  // Đóng bảng gợi ý khi nhấn ra ngoài
   useEffect(() => {
     function handleClickOutside(event) {
       if (suggestionRef.current && !suggestionRef.current.contains(event.target)) {
@@ -135,7 +185,7 @@ export default function MapSidebar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle suggestion click selection
+  // Xử lý khi click vào item trong dropdown gợi ý
   const handleSelectSuggestion = (prediction) => {
     setSearchQuery(prediction.description);
     setShowSuggestions(false);
@@ -159,7 +209,7 @@ export default function MapSidebar({
       setCategoryResults([normalizedPlace]);
       if (onTriggerDirectionPanel) onTriggerDirectionPanel(normalizedPlace);
       setIsMobileExpanded(false);
-    } else {
+    } else { 
       setCategoryResults([]);
       fetch(`https://maps.track-asia.com/api/v2/place/details/json?place_id=${prediction.place_id}&key=${apiKey}`)
         .then((res) => res.json())
@@ -197,30 +247,25 @@ export default function MapSidebar({
     }
   };
 
-  // THÊM: Toggle price level filter
   const togglePriceLevel = (level) => {
     setSelectedPriceLevels(prev => 
       prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]
     );
   };
 
-  // THÊM: Toggle rating filter
   const toggleRating = (rating) => {
     setSelectedRatings(prev => 
       prev.includes(rating) ? prev.filter(r => r !== rating) : [...prev, rating]
     );
   };
 
-  // THÊM: Clear all filters
   const clearAllFilters = () => {
     setSelectedPriceLevels([]);
     setSelectedRatings([]);
   };
 
-  // THÊM: Count active filters
   const activeFiltersCount = selectedPriceLevels.length + selectedRatings.length;
 
-  // Function để lấy icon tương ứng với category
   const getCategoryIcon = (categoryId) => {
     const category = CATEGORIES.find(cat => cat.id.toLowerCase() === categoryId?.toLowerCase());
     if (!category) return null;
@@ -231,7 +276,7 @@ export default function MapSidebar({
 
   return (
     <>
-      {/* NÚT XEM DANH SÁCH CHỈ HIỂN THỊ TRÊN MOBILE */}
+      {/* MOBILE LIST TOGGLE */}
       <button
         onClick={() => setIsMobileExpanded(!isMobileExpanded)}
         className="md:hidden fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-1.5 active:scale-95 transition-all text-xs"
@@ -240,11 +285,10 @@ export default function MapSidebar({
         <span>{isMobileExpanded ? "Hide Panel" : "View List"}</span>
       </button>
 
-      {/* SIDEBAR CONTAINER: Cấu hình Responsive linh hoạt */}
+      {/* SIDEBAR CONTAINER */}
       <div 
         className={`
           fixed bg-white shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ease-in-out
-          /* CHỈ SỬA KHU VỰC NÀY: Thay đổi top và left để đẩy Sidebar xuống dưới Navbar một cách chuẩn xác trên Desktop */
           md:top-[88px] md:left-6 md:z-30 md:w-[360px] md:max-h-[76vh] md:rounded-2xl md:translate-y-0 md:opacity-100
           max-md:bottom-0 max-md:left-0 max-md:right-0 max-md:w-full max-md:z-[90] max-md:rounded-t-2xl max-md:border-t max-md:border-gray-150
           ${isMobileExpanded 
@@ -253,7 +297,6 @@ export default function MapSidebar({
           }
         `}
       >
-        {/* Thanh gờ kéo gợi ý vuốt trên mobile */}
         <div 
           onClick={() => setIsMobileExpanded(!isMobileExpanded)}
           className="md:hidden w-12 h-1 bg-gray-300 rounded-full mx-auto mt-2.5 mb-1.5 shrink-0 cursor-pointer" 
@@ -284,12 +327,16 @@ export default function MapSidebar({
               {suggestions.map((item) => (
                 <div key={item.place_id} onClick={() => handleSelectSuggestion(item)} className="flex items-start gap-2.5 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-none">
                   <MapPin size={14} className={`mt-0.5 shrink-0 ${item.isSupabaseData ? "text-red-500 font-bold" : "text-gray-400"}`} />
-                  <div className="overflow-hidden">
-                    <p className="text-xs font-semibold text-gray-800 truncate">
-                      {item.structured_formatting?.main_text}
-                      {item.isSupabaseData && <span className="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-normal">Saved</span>}
-                    </p>
-                    <p className="text-[10px] text-gray-500 truncate">{item.structured_formatting?.secondary_text}</p>
+                  <div className="overflow-hidden bg-white w-full">
+                    <div className="text-xs font-semibold text-gray-800 flex items-center flex-wrap gap-1.5">
+                      <span className="truncate max-w-[200px]">{item.structured_formatting?.main_text}</span>
+                      {item.isSupabaseData && (
+                        <span className="text-[9px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-normal shrink-0">
+                          Registered
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.structured_formatting?.secondary_text}</p>
                   </div>
                 </div>
               ))}
@@ -297,13 +344,12 @@ export default function MapSidebar({
           )}
         </div>
 
-        {/* Bọc nội dung còn lại */}
+        {/* Bọc nội dung danh mục và kết quả */}
         <div className={`flex-1 flex flex-col overflow-hidden max-md:transition-opacity max-md:duration-200 ${!isMobileExpanded && "max-md:opacity-0 max-md:pointer-events-none"}`}>
           {/* Categories Grid Area */}
           <div className="p-4 border-b border-gray-100 bg-gray-50/50 shrink-0">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Categories within 5km</h2>
-              {/* THÊM: Toggle filter button */}
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
@@ -337,10 +383,9 @@ export default function MapSidebar({
             </div>
           </div>
 
-          {/* THÊM: Filter Panel (collapsible) */}
+          {/* Filter Panel */}
           {showFilters && (
             <div className="p-4 border-b border-gray-100 bg-gray-50 shrink-0 space-y-3 max-h-[240px] overflow-y-auto">
-              {/* Price Level Filter */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
@@ -403,7 +448,6 @@ export default function MapSidebar({
                 </div>
               </div>
 
-              {/* Clear All Button */}
               {activeFiltersCount > 0 && (
                 <button
                   onClick={clearAllFilters}
@@ -415,7 +459,7 @@ export default function MapSidebar({
             </div>
           )}
 
-          {/* Results Distance List Feed Area */}
+          {/* Results Area */}
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             {sortedResults && sortedResults.length > 0 ? (
               sortedResults.map((place, index) => {
@@ -431,7 +475,6 @@ export default function MapSidebar({
                         setFocusedLocation({ lat, lng, name: place.name, address: addressText });
                         if (onTriggerDirectionPanel) onTriggerDirectionPanel(place);
                         setIsMobileExpanded(false);
-                        // THÊM: Mở Place Detail Modal
                         if (onPlaceClick) onPlaceClick(place);
                       }
                     }} 
