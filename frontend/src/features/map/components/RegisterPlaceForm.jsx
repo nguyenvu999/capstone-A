@@ -35,6 +35,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [duplicatePlace, setDuplicatePlace] = useState(null); // Lưu place trùng nếu phát hiện
   const [showDuplicateModal, setShowDuplicateModal] = useState(false); // Hiển thị modal cảnh báo
   const suggestionRef = useRef(null);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   
   // THÊM: useToast hook
   const { showToast, ToastComponent } = useToast();
@@ -171,7 +173,19 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       return updated;
     });
   };
+  const handleImageChange = (e) => {
+  const file = e.target.files[0];
 
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    showToast("Please upload an image file", "warning");
+    return;
+  }
+
+  setImageFile(file);
+  setImagePreview(URL.createObjectURL(file));
+};
   // Xử lý submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -229,7 +243,25 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       // Lấy thông tin user hiện tại (nếu có)
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
+      let imageUrl = null;
 
+      if (imageFile) {
+        const fileExt = imageFile.name.split(".").pop();
+        const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+        const filePath = `places/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("place-images")
+          .upload(filePath, imageFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage
+          .from("place-images")
+          .getPublicUrl(filePath);
+
+        imageUrl = data.publicUrl;
+      }
       // Insert place vào Supabase
       const { data: insertedData, error } = await supabase
         .from("places")
@@ -245,6 +277,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             business_status: "open", // MẶC ĐỊNH luôn là "open"
             source: formData.source,
             category: formData.category,
+            image_url: imageUrl,
             created_by: user ? user.id : null, 
             created_by_email: user ? user.email : null, 
           },
@@ -485,6 +518,28 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               <option value={3}>3 - Expensive</option>
               <option value={4}>4 - Ultra Luxe</option>
             </select>
+          </div>
+
+          {/* Place Image */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-1.5">
+              Place Image
+            </label>
+
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+            />
+
+            {imagePreview && (
+              <img
+                src={imagePreview}
+                alt="Place preview"
+                className="mt-3 w-full h-40 object-cover rounded-xl border border-gray-200"
+              />
+            )}
           </div>
 
           {/* Description */}
