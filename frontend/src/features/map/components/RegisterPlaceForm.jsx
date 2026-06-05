@@ -277,7 +277,6 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             business_status: "open", // MẶC ĐỊNH luôn là "open"
             source: formData.source,
             category: formData.category,
-            image_url: imageUrl,
             created_by: user ? user.id : null, 
             created_by_email: user ? user.email : null, 
           },
@@ -285,8 +284,30 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         .select(); 
 
       if (error) throw error;
-      
+
       const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
+
+      // Save image URL into place_images table
+      // Because your database stores image separately from places table
+      if (imageUrl && savedPlace) {
+        const { error: imageInsertError } = await supabase
+          .from("place_images")
+          .insert([
+            {
+              // places.id is integer, but place_images.place_id is varchar
+              place_id: String(savedPlace.id),
+
+              // image public URL from Supabase Storage
+              url: imageUrl,
+
+              // first image of this place
+              sort_order: 1,
+            },
+          ]);
+
+        if (imageInsertError) throw imageInsertError;
+      }
+
       setAddressQuery(formData.name);
       
       // Cập nhật map với place vừa thêm
