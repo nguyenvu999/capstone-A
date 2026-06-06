@@ -28,8 +28,31 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionRef = useRef(null);
+  // Load images of current place
+  const [placeImages, setPlaceImages] = useState([]);
 
   if (!place) return null;
+
+  useEffect(() => {
+  if (!place?.id) return;
+
+  const loadImages = async () => {
+    const { data, error } = await supabase
+      .from("place_images")
+      .select("url, sort_order")
+      .eq("place_id", String(place.id))
+      .order("sort_order", { ascending: true });
+
+    if (error) {
+      console.error("Load images error:", error.message);
+      return;
+    }
+
+    setPlaceImages(data || []);
+  };
+
+  loadImages();
+}, [place?.id]);
 
   // Kiểm tra xem user có phải là người tạo place không
   // So sánh cả 2 kiểu (string và number)
@@ -221,17 +244,30 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               <div className="px-6 pt-6 pb-4">
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 pr-12">{place.name}</h1>
 
-                 {/* THÊM: Images Section (Coming Soon) */}
-                <div className="px-6 pt-6 pb-4 bg-gray-50 border-b border-gray-200">
-                    <div className="flex items-center justify-center h-32 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300">
-                    <div className="text-center">
-                        <ImageIcon size={32} className="mx-auto text-gray-400 mb-2" />
-                        <p className="text-sm text-gray-500 font-medium">Place images</p>
-                        <p className="text-xs text-gray-400">Coming soon</p>
+                    {/* Images uploaded */}
+                    <div className="px-6 pt-6 pb-4">
+                      {placeImages.length > 0 ? (
+                        <div className="rounded-xl overflow-hidden border border-gray-200">
+                          <img
+                            src={placeImages[0].url}
+                            alt={place.name}
+                            className="w-full h-[280px] object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-32 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300">
+                          <div className="text-center">
+                            <ImageIcon size={32} className="mx-auto text-gray-400 mb-2" />
+                            <p className="text-sm text-gray-500 font-medium">
+                              Place images
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              No image uploaded
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    </div>
-                </div>
-
                 <hr className="border-gray-200" />
                 
                 {/* Badges Row */}
