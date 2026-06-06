@@ -8,9 +8,15 @@ import { useAuth } from "../../auth/context/AuthContext";
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey }) {
   const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
-  const [selectedImage, setSelectedImage] = useState(null); //Pop up the photo when click on 
+  
   const [showEditForm, setShowEditForm] = useState(false); // Toggle edit form
   const [updating, setUpdating] = useState(false);
+  const [editImages, setEditImages] = useState([]); // Edit image
+  const [newImageFiles, setNewImageFiles] = useState([]); // Add new image if it is deleted
+
+  const MAX_IMAGE_COUNT = 3;
+  const MAX_IMAGE_SIZE_MB = 5;
+  const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
   
   // THÊM: Form data cho edit
   const [editData, setEditData] = useState({
@@ -30,35 +36,32 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const suggestionRef = useRef(null);
   // Load images of current place
   const [placeImages, setPlaceImages] = useState([]);
+  
 
   if (!place) return null;
 
   useEffect(() => {
   if (!place?.id) return;
   const loadImages = async () => {
-    const { data, error } =
-      await supabase
-        .from("place_images")
-        .select("url, sort_order")
-        .eq(
-          "place_id",
-          String(place.id)
-        )
-        .order(
-          "sort_order",
-          { ascending: true }
-        );
-    if (error) {
-      console.error(
-        error.message
-      );
 
-      return;
-    }
-    setPlaceImages(
-      data || []
-    );
-  };
+      const { data, error } =
+        await supabase
+          .from("place_images")
+          .select("id, url, sort_order")
+          .eq("place_id", String(place.id))
+          .order("sort_order", { ascending: true });
+
+      if (error) {
+        console.error(error.message);
+        return;
+      }
+
+      setPlaceImages(data || []);
+
+    
+      setEditImages(data || []);
+    };
+
   loadImages();
 }, [place?.id]);
 
@@ -164,6 +167,59 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       })
       .catch((err) => console.error("Place details error:", err));
   };
+  // Edit images when user edit place ( add or delete)
+  const handleEditImageChange = (e) => {
+  const files = Array.from(e.target.files);
+
+  if (!files.length) return;
+  if (editImages.length + files.length > MAX_IMAGE_COUNT) {
+    showToast(`Maximum ${MAX_IMAGE_COUNT} images allowed`, "warning");
+    e.target.value = "";
+    return;
+  }
+  const validImages = [];
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) {
+      showToast("Only image files are allowed", "warning");
+      continue;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      showToast(`Each image must be under ${MAX_IMAGE_SIZE_MB}MB`, "warning");
+      continue;
+    }
+
+    validImages.push({
+      id: `new-${crypto.randomUUID()}`,
+      url: URL.createObjectURL(file),
+      file,
+      isNew: true,
+    });
+  }
+  setEditImages((prev) => [...prev, ...validImages]);
+  e.target.value = "";
+};
+
+const handleRemoveEditImage = async (image) => {
+  setEditImages((prev) =>
+    prev.filter((img) => img.url !== image.url)
+  );
+  if (image.isNew) {
+    URL.revokeObjectURL(image.url);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("place_images")
+    .delete()
+    .eq("url", image.url)
+    .eq("place_id", String(place.id));
+  if (error) {
+    showToast(`Failed to remove image: ${error.message}`, "error");
+    return;
+  }
+  showToast("Image removed", "success");
+};
 
   // THÊM: Handle update place
   const handleUpdatePlace = async () => {
@@ -200,6 +256,41 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         .eq("id", place.id);
 
       if (error) throw error;
+        // Upload new images in edit place
+        const newImages = editImages.filter((img) => img.isNew);
+        if (newImages.length > 0) {
+          const uploadedRows = [];
+
+        for (let i = 0; i < newImages.length; i++) {
+          const file = newImages[i].file;
+
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+          const filePath = `places/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("place-images")
+            .upload(filePath, file);
+
+          if (uploadError) throw uploadError;
+
+          const { data } = supabase.storage
+            .from("place-images")
+            .getPublicUrl(filePath);
+
+          uploadedRows.push({
+            place_id: String(place.id),
+            url: data.publicUrl,
+            sort_order: editImages.length - newImages.length + i + 1,
+          });
+        }
+
+        const { error: imageInsertError } = await supabase
+          .from("place_images")
+          .insert(uploadedRows);
+
+        if (imageInsertError) throw imageInsertError;
+      }
 
       showToast("Place updated successfully!", "success");
       setShowEditForm(false);
@@ -262,9 +353,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                             className="rounded-xl overflow-hidden border border-gray-200"
                           >
                             <img
-                              src={image.url}
-                              alt={`${place.name} ${index + 1}`}
-                              className="w-full h-40 object-cover"
+                            src={image.url}
+                            alt={`${place.name} ${index + 1}`}
+                            onClick={() => setSelectedImage(image.url)}
+                            className="w-full h-40 object-cover cursor-pointer hover:opacity-90"
                             />
                           </div>
                         ))}
@@ -538,6 +630,47 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                       </span>
                     </button>
                   </div>
+                </div>
+
+                {/* Edit image */}
+                <div>
+                  <label className="block font-medium text-gray-700 mb-1.5 text-sm">
+                    Place Images
+                  </label>
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleEditImageChange}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm"
+                  />
+
+                  <p className="text-xs text-gray-400 mt-1">
+                    Max 3 images • Max 5MB each
+                  </p>
+
+                  {editImages.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      {editImages.map((image) => (
+                        <div key={image.id || image.url} className="relative">
+                          <img
+                            src={image.url}
+                            alt="Place"
+                            className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditImage(image)}
+                            className="absolute top-1 right-1 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Description */}
