@@ -35,8 +35,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [duplicatePlace, setDuplicatePlace] = useState(null); // Lưu place trùng nếu phát hiện
   const [showDuplicateModal, setShowDuplicateModal] = useState(false); // Hiển thị modal cảnh báo
   const suggestionRef = useRef(null);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imageFiles, setImageFiles] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
+  const MAX_IMAGE_COUNT = 3;
+  const MAX_IMAGE_SIZE_MB = 5;
+  const MAX_IMAGE_SIZE_BYTES =
+    MAX_IMAGE_SIZE_MB * 1024 * 1024;
   
   // THÊM: useToast hook
   const { showToast, ToastComponent } = useToast();
@@ -174,34 +178,60 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     });
   };
   const handleImageChange = (e) => {
-  const file = e.target.files[0];
+    const files = Array.from(e.target.files);
 
-  if (!file) return;
+    if (!files.length) return;
 
-  if (!file.type.startsWith("image/")) {
-    showToast("Please upload an image file", "warning");
-    return;
-  }
+    if (imageFiles.length + files.length > MAX_IMAGE_COUNT) {
+      showToast(
+        `Maximum ${MAX_IMAGE_COUNT} images allowed`,
+        "warning"
+      );
 
+      e.target.value = "";
+      return;
+    }
 
-// clear old preview
-  if (imagePreview) {
-    URL.revokeObjectURL(imagePreview);
-  }
+    const validFiles = [];
+    const previews = [];
 
-  setImageFile(file);
-  setImagePreview(URL.createObjectURL(file));
-};
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        showToast("Only images are allowed", "warning");
+        continue;
+      }
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        showToast(
+          `Each image must be under ${MAX_IMAGE_SIZE_MB}MB`,
+          "warning"
+        );
+        continue;
+      }
+
+      validFiles.push(file);
+      previews.push(URL.createObjectURL(file));
+    }
+
+    setImageFiles((prev) => [...prev, ...validFiles]);
+    setImagePreviews((prev) => [...prev, ...previews]);
+
+    e.target.value = "";
+  };
+  
 
  //Xử lý xoá ảnh 
-  const handleRemoveImage = () => {
-  if (imagePreview) {
-    URL.revokeObjectURL(imagePreview);
-  }
+const handleRemoveImage = (index) => {
+  URL.revokeObjectURL(imagePreviews[index]);
 
-  setImageFile(null);
-  setImagePreview(null);
-};
+  setImageFiles((prev) =>
+    prev.filter((_, i) => i !== index)
+  );
+
+  setImagePreviews((prev) =>
+    prev.filter((_, i) => i !== index)
+  );
+}
 
   // Xử lý submit form
   const handleSubmit = async (e) => {
@@ -260,25 +290,45 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       // Lấy thông tin user hiện tại (nếu có)
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
-      let imageUrl = null;
 
-      if (imageFile) {
-        const fileExt = imageFile.name.split(".").pop();
-        const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
-        const filePath = `places/${fileName}`;
+      //uplaod many images
+      const uploadedImageUrls = [];
+      for (const imageFile of imageFiles) {
+        const fileExt =
+          imageFile.name
+            .split(".")
+            .pop();
 
-        const { error: uploadError } = await supabase.storage
-          .from("place-images")
-          .upload(filePath, imageFile);
+        const fileName =
+          `${Date.now()}-${Math.random()}.${fileExt}`;
 
-        if (uploadError) throw uploadError;
+        const filePath =
+          `places/${fileName}`;
 
-        const { data } = supabase.storage
-          .from("place-images")
-          .getPublicUrl(filePath);
+        const { error: uploadError } =
+          await supabase.storage
+            .from("place-images")
+            .upload(
+              filePath,
+              imageFile
+            );
 
-        imageUrl = data.publicUrl;
+        if (uploadError)
+          throw uploadError;
+
+        const { data } =
+          supabase.storage
+            .from("place-images")
+            .getPublicUrl(
+              filePath
+            );
+
+        uploadedImageUrls.push(
+          data.publicUrl
+        );
       }
+      
+          
       // Insert place vào Supabase
       const { data: insertedData, error } = await supabase
         .from("places")
@@ -306,23 +356,22 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
       // Save image URL into place_images table
       // Because your database stores image separately from places table
-      if (imageUrl && savedPlace) {
-        const { error: imageInsertError } = await supabase
-          .from("place_images")
-          .insert([
-            {
-              // places.id is integer, but place_images.place_id is varchar
+      if (uploadedImageUrls.length > 0 && savedPlace) {
+        const imageRows =
+          uploadedImageUrls.map(
+            (url, index) => ({
               place_id: String(savedPlace.id),
+              url,
+              sort_order: index + 1,
+            })
+          );
+        const { error: imageInsertError } =
+          await supabase
+            .from("place_images")
+            .insert(imageRows);
 
-              // image public URL from Supabase Storage
-              url: imageUrl,
-
-              // first image of this place
-              sort_order: 1,
-            },
-          ]);
-
-        if (imageInsertError) throw imageInsertError;
+        if (imageInsertError)
+          throw imageInsertError;
       }
 
       setAddressQuery(formData.name);
@@ -345,8 +394,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       setTimeout(() => {
         if (onClose) onClose();
       }, 1500);
-
-    } catch (error) {
+    }
+      catch (error) {
       console.error("Insert error:", error.message);
       // THÊM: Error toast
       showToast(`Failed to register place: ${error.message}`, "error");
@@ -567,28 +616,39 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             <input
               type="file"
               accept="image/*"
+              multiple
               onChange={handleImageChange}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3"
             />
 
-            {imagePreview && (
-              <div className="relative mt-3 group">
-                <img
-                  src={imagePreview}
-                  alt="Place preview"
-                  className="w-full h-40 object-cover rounded-xl border border-gray-200"
-                />
+            <p className="text-xs text-gray-400 mt-1">
+            Max 3 images • Max 5MB each
+            </p>
 
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  className="absolute top-2 right-2 z-20 w-8 h-8 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
-                  aria-label="Remove selected image"
+            {imagePreviews.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              {imagePreviews.map((preview, index) => (
+                <div
+                  key={index}
+                  className="relative"
                 >
-                  <X size={18} strokeWidth={3} />
-                </button>
-              </div>
-            )}
+                  <img
+                    src={preview}
+                    className="w-full h-28 object-cover rounded-lg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleRemoveImage(index)
+                    }
+                    className="absolute top-1 right-1 w-7 h-7 rounded-full bg-red-500 text-white"
+                  >
+                    <X size={14}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           </div>
           {/* Description */}
           <div>
