@@ -8,7 +8,7 @@ import { useAuth } from "../../auth/context/AuthContext";
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey }) {
   const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
-  
+  const [selectedImage, setSelectedImage] = useState(null); //Pop up the photo when click on 
   const [showEditForm, setShowEditForm] = useState(false); // Toggle edit form
   const [updating, setUpdating] = useState(false);
   
@@ -35,22 +35,30 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
   useEffect(() => {
   if (!place?.id) return;
-
   const loadImages = async () => {
-    const { data, error } = await supabase
-      .from("place_images")
-      .select("url, sort_order")
-      .eq("place_id", String(place.id))
-      .order("sort_order", { ascending: true });
-
+    const { data, error } =
+      await supabase
+        .from("place_images")
+        .select("url, sort_order")
+        .eq(
+          "place_id",
+          String(place.id)
+        )
+        .order(
+          "sort_order",
+          { ascending: true }
+        );
     if (error) {
-      console.error("Load images error:", error.message);
+      console.error(
+        error.message
+      );
+
       return;
     }
-
-    setPlaceImages(data || []);
+    setPlaceImages(
+      data || []
+    );
   };
-
   loadImages();
 }, [place?.id]);
 
@@ -245,29 +253,32 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-900 pr-12">{place.name}</h1>
 
                     {/* Images uploaded */}
-                    <div className="px-6 pt-6 pb-4">
-                      {placeImages.length > 0 ? (
-                        <div className="rounded-xl overflow-hidden border border-gray-200">
-                          <img
-                            src={placeImages[0].url}
-                            alt={place.name}
-                            className="w-full h-[280px] object-cover"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-32 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300">
-                          <div className="text-center">
-                            <ImageIcon size={32} className="mx-auto text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-500 font-medium">
-                              Place images
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              No image uploaded
-                            </p>
+                    {placeImages.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                        {placeImages.map((image, index) => (
+                          <div
+                            key={index}
+                            className="rounded-xl overflow-hidden border border-gray-200"
+                          >
+                            <img
+                              src={image.url}
+                              alt={`${place.name} ${index + 1}`}
+                              className="w-full h-40 object-cover"
+                            />
                           </div>
+                        ))}
+
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-32 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300">
+                        <div className="text-center">
+                          <ImageIcon size={32} className="mx-auto text-gray-400 mb-2" />
+                          <p className="text-sm text-gray-500 font-medium">Place images</p>
+                          <p className="text-xs text-gray-400">No image uploaded</p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                 <hr className="border-gray-200" />
                 
                 {/* Badges Row */}
