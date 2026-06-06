@@ -183,9 +183,26 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     return;
   }
 
+
+// clear old preview
+  if (imagePreview) {
+    URL.revokeObjectURL(imagePreview);
+  }
+
   setImageFile(file);
   setImagePreview(URL.createObjectURL(file));
 };
+
+ //Xử lý xoá ảnh 
+  const handleRemoveImage = () => {
+  if (imagePreview) {
+    URL.revokeObjectURL(imagePreview);
+  }
+
+  setImageFile(null);
+  setImagePreview(null);
+};
+
   // Xử lý submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -555,14 +572,24 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             />
 
             {imagePreview && (
-              <img
-                src={imagePreview}
-                alt="Place preview"
-                className="mt-3 w-full h-40 object-cover rounded-xl border border-gray-200"
-              />
+              <div className="relative mt-3 group">
+                <img
+                  src={imagePreview}
+                  alt="Place preview"
+                  className="w-full h-40 object-cover rounded-xl border border-gray-200"
+                />
+
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="absolute top-2 right-2 z-20 w-8 h-8 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-md"
+                  aria-label="Remove selected image"
+                >
+                  <X size={18} strokeWidth={3} />
+                </button>
+              </div>
             )}
           </div>
-
           {/* Description */}
           <div>
             <label className="block font-medium text-gray-700 mb-1.5">Description</label>
