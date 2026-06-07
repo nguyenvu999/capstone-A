@@ -18,7 +18,6 @@ export default function MapPage() {
   const [forceOpenDirectionPlace, setForceOpenDirectionPlace] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null); 
 
-  // State cho filters
   const [activeFilters, setActiveFilters] = useState({
     priceLevels: [],
     ratings: []
@@ -26,7 +25,12 @@ export default function MapPage() {
 
   const API_KEY = "47c259f38d98bc1780380421e9735f2b0a";
 
-  // Hàm tính toán ma trận cự ly chuẩn thực tế từ API Track-Asia
+  // ===== THÊM: Function mở Register Form + đóng Place Detail =====
+  const handleOpenRegisterForm = () => {
+    setSelectedPlace(null); // Đóng Place Detail nếu đang mở
+    setShowRegisterForm(true); // Mở Register Form
+  };
+
   const sortPlacesByRealRoad = async (placesArray, userCoords) => {
     if (!placesArray || placesArray.length === 0) return [];
     try {
@@ -49,7 +53,6 @@ export default function MapPage() {
     return placesArray;
   };
 
-  // Helper function tính khoảng cách Haversine hình học
   const calculateDistance = (lat1, lng1, lat2, lng2) => {
     const R = 6371; 
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -144,13 +147,11 @@ export default function MapPage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden flex flex-col bg-white">
-      {/* Navbar nằm cố định phía trên */}
-      <Navbar user={user} onSignOut={logoutUser} onRegisterClick={() => setShowRegisterForm(true)} />
+      {/* ===== THAY ĐỔI: Truyền handleOpenRegisterForm thay vì setShowRegisterForm ===== */}
+      <Navbar user={user} onSignOut={logoutUser} onRegisterClick={handleOpenRegisterForm} />
       
-      {/* Vùng chứa Map và Sidebar bên dưới Navbar */}
       <div className="w-full flex-1 relative flex overflow-hidden z-10">
         
-        {/* THANH SIDEBAR TÌM KIẾM */}
         <MapSidebar 
           apiKey={API_KEY} 
           activeCategory={activeCategory} 
@@ -165,7 +166,6 @@ export default function MapPage() {
           onPlaceClick={setSelectedPlace} 
         />
         
-        {/* BẢN ĐỒ CHÍNH */}
         <MapContainer 
           apiKey={API_KEY} 
           activeCategory={activeCategory} 
@@ -198,6 +198,7 @@ export default function MapPage() {
         />
       )}
 
+      {/* Place Detail Modal - Giờ đây nằm bên phải giống Register Form */}
       {selectedPlace && (
         <PlaceDetailModal
           place={selectedPlace}
