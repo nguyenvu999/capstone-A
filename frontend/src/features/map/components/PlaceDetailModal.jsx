@@ -3,6 +3,7 @@ import { X, MapPin, Edit3, Star, Copy, Image as ImageIcon, Search, MoreVertical,
 import { supabase } from "../../auth/api/supabaseClient";
 import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
+import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
 
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey }) {
   const { user } = useAuth();
@@ -14,6 +15,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false); // Dropdown 3 chấm
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Modal xác nhận xóa
   const [deleting, setDeleting] = useState(false);
+
+  // REVIEW STATE
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [displayedReviews, setDisplayedReviews] = useState(5);
+  const [sortBy, setSortBy] = useState("time"); // "time" or "rating"
+  const [sortOrder, setSortOrder] = useState("desc"); // "desc" or "asc"
+
+  // Write/Edit review state
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [editingReviewId, setEditingReviewId] = useState(null);
 
   const MAX_IMAGE_COUNT = 3;
   const MAX_IMAGE_SIZE_MB = 5;
@@ -58,6 +72,34 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
     loadImages();
   }, [place?.id]);
+
+  // LOAD REVIEWS WHEN MODAL OPENS 
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadReviews = async () => {
+      if (!place?.id) return;
+      
+      setReviewsLoading(true);
+      const { data, error } = await fetchReviewsByPlace(place.id);
+      
+      if (!mounted) return;
+      
+      if (error) {
+        console.error("Failed to load reviews:", error);
+        showToast("Unable to load reviews", "error");
+      } else {
+        setReviews(data || []);
+        // ✅ KHÔNG TỰ ĐỘNG ĐIỀN FORM - Chỉ load reviews
+      }
+      
+      setReviewsLoading(false);
+    };
+    
+    loadReviews();
+    
+    return () => { mounted = false; };
+  }, [place?.id, user?.id]);
 
   // Close dropdown khi click ra ngoài
   useEffect(() => {
@@ -354,6 +396,113 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     }
   };
 
+  // REVIEW HELPER FUNCTIONS
+  const getSortedReviews = () => {
+    let sorted = [...reviews];
+    
+    if (sortBy === "time") {
+      sorted.sort((a, b) => {
+        const dateA = new Date(a.created_at);
+        const dateB = new Date(b.created_at);
+        return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
+      });
+    } else if (sortBy === "rating") {
+      sorted.sort((a, b) => {
+        return sortOrder === "desc" ? b.rating - a.rating : a.rating - b.rating;
+      });
+    }
+    
+    return sorted.slice(0, displayedReviews);
+  };
+
+  const getAverageRating = () => {
+    if (reviews.length === 0) return 0;
+    const sum = reviews.reduce((acc, r) => acc + Number(r.rating), 0);
+    return (sum / reviews.length).toFixed(1);
+  };
+
+  const handleSubmitReview = async () => {
+  if (!user) {
+    showToast("Please sign in to submit a review", "error");
+    return;
+  }
+  
+  if (selectedRating === 0) {
+    showToast("Please select a rating", "warning");
+    return;
+  }
+  
+  setSubmittingReview(true);
+  
+  const { data, error } = await upsertReview({
+    placeId: place.id,
+    userId: user.id,
+    userName: user.email?.split("@")[0] || "User",
+    rating: selectedRating,
+    comment: reviewComment.trim(),
+  });
+  
+  if (error) {
+    console.error("Submit review error:", error);
+    showToast("Failed to submit review", "error");
+  } else {
+    showToast(editingReviewId ? "Review updated!" : "Review submitted!", "success");
+    
+    // Reload reviews
+    const { data: updatedReviews } = await fetchReviewsByPlace(place.id);
+    setReviews(updatedReviews || []);
+    
+    // ===== SỬA: ẨN FORM SAU KHI SUBMIT =====
+    setSelectedRating(0);
+    setReviewComment("");
+    setEditingReviewId(null); // ← ĐẶT NULL để ẩn form
+    
+    if (onStatusUpdated) onStatusUpdated();
+  }
+  
+  setSubmittingReview(false);
+};
+
+  const handleEditReview = (review) => {
+    setSelectedRating(review.rating);
+    setReviewComment(review.comment || "");
+    setEditingReviewId(review.id);
+    
+    setTimeout(() => {
+      document.getElementById("write-review-section")?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!confirm("Are you sure you want to delete your review?")) return;
+    
+    const { error } = await deleteReview(reviewId, place.id);
+    
+    if (error) {
+      showToast("Failed to delete review", "error");
+    } else {
+      showToast("Review deleted", "success");
+      
+      const { data: updatedReviews } = await fetchReviewsByPlace(place.id);
+      setReviews(updatedReviews || []);
+      
+      setSelectedRating(0);
+      setReviewComment("");
+      setEditingReviewId(null);
+      
+      if (onStatusUpdated) onStatusUpdated();
+    }
+  };
+
+  const toggleSort = (type) => {
+    if (sortBy === type) {
+      setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(type);
+      setSortOrder("desc");
+    }
+  };
+
   return (
     <>
       {ToastComponent}
@@ -522,13 +671,198 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               </>
             )}
 
-            {/* Reviews Placeholder */}
+            {/* REVIEWS SECTION */}
             <hr className="border-gray-200" />
-            <div className="py-4">
-              <div className="text-center py-8 text-gray-400">
-                <Star size={32} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Reviews & ratings coming soon</p>
+            <div className="py-6">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Reviews</h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {reviews.length} review{reviews.length !== 1 ? "s" : ""} • ⭐ {getAverageRating()} average
+                  </p>
+                </div>
               </div>
+
+              {/* Sort Buttons */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => toggleSort("time")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    sortBy === "time"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  Time {sortBy === "time" && (sortOrder === "desc" ? "↓" : "↑")}
+                </button>
+                <button
+                  onClick={() => toggleSort("rating")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    sortBy === "rating"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  Rating {sortBy === "rating" && (sortOrder === "desc" ? "↓" : "↑")}
+                </button>
+              </div>
+
+              {/* ===== COMMENT CONTAINER (SCROLL RIÊNG) ===== */}
+              <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6 max-h-[300px] overflow-y-auto">
+                {reviewsLoading ? (
+                  <p className="text-sm text-gray-500 text-center py-4">Loading reviews...</p>
+                ) : reviews.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">This place has no reviews yet</p>
+                ) : (
+                  <>
+                    {getSortedReviews().map((review) => {
+                      const isOwnReview = user && String(review.user_id) === String(user.id);
+                      
+                      return (
+                        <div key={review.id} className="bg-white rounded-lg p-4 mb-3 last:mb-0 border border-gray-100">
+                          {/* User info + 3-dot menu */}
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">
+                                {review.user_name?.substring(0, 2).toUpperCase() || "U"}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">{review.user_name || "User"}</p>
+                                <p className="text-xs text-gray-500">
+                                  {new Date(review.created_at).toLocaleString('en-US', {
+                                    timeZone: 'Asia/Ho_Chi_Minh',
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* 3-dot menu (chỉ hiện nếu là review của user) */}
+                            {isOwnReview && (
+                              <div className="relative group">
+                                <button className="p-1 hover:bg-gray-100 rounded">
+                                  <span className="text-gray-400">⋮</span>
+                                </button>
+                                <div className="absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                                  <button
+                                    onClick={() => handleEditReview(review)}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Edit Review
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteReview(review.id)}
+                                    className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Rating stars */}
+                          <div className="flex items-center gap-1 mb-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                size={14}
+                                className={star <= review.rating ? "fill-amber-400 text-amber-400" : "text-gray-300"}
+                              />
+                            ))}
+                            <span className="text-xs text-gray-600 ml-1">{review.rating}/5</span>
+                          </div>
+
+                          {/* Comment */}
+                          {review.comment && (
+                            <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* See More button */}
+                    {reviews.length > displayedReviews && (
+                      <button
+                        onClick={() => setDisplayedReviews(displayedReviews + 5)}
+                        className="w-full py-2 mt-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        See More ({reviews.length - displayedReviews} more)
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* ===== WRITE/EDIT REVIEW SECTION (chỉ hiện khi chưa có review HOẶC đang edit) ===== */}
+              {(() => {
+                const userHasReview = reviews.some(r => String(r.user_id) === String(user?.id));
+                const shouldShowForm = !userHasReview || editingReviewId !== null;
+                
+                if (!shouldShowForm) return null;
+                
+                return (
+                  <div id="write-review-section" className="bg-white border border-gray-200 rounded-xl p-4">
+                    <h3 className="text-sm font-bold text-gray-900 mb-3">
+                      {editingReviewId ? "Edit Your Review" : "Write a Review"}
+                    </h3>
+
+                {/* Star rating selection */}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-2">
+                    Rating <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setSelectedRating(star)}
+                        className="transition-transform hover:scale-110"
+                      >
+                        <Star
+                          size={28}
+                          className={star <= selectedRating ? "fill-amber-400 text-amber-400" : "text-gray-300 hover:text-amber-200"}
+                        />
+                      </button>
+                    ))}
+                    {selectedRating > 0 && (
+                      <span className="text-sm text-gray-600 ml-2">{selectedRating}/5</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Comment textarea */}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-2">
+                    Comment <span className="text-gray-400">(optional)</span>
+                  </label>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    rows={3}
+                    placeholder="Share your experience..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
+                  />
+                </div>
+
+                {/* Submit button */}
+                <button
+                  onClick={handleSubmitReview}
+                  disabled={submittingReview || selectedRating === 0}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {submittingReview ? "Submitting..." : editingReviewId ? "Update Review" : "Submit Review"}
+                </button>
+              </div>
+             );
+            })()}
             </div>
           </div>
         )}
