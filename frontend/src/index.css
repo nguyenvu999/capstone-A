@@ -1,0 +1,54 @@
+@import "tailwindcss";
+@import "trackasia-gl/dist/trackasia-gl.css";
+
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght=400;500;600;700;800&display=swap');
+
+/* Cấu hình Font và biến hệ thống theo chuẩn Tailwind v4 */
+@theme {
+  --font-sans: "Nunito Sans", sans-serif;
+}
+
+header {
+  z-index: 50 !important;
+}
+
+html,
+body,
+#root {
+  font-family: var(--font-sans);
+}
+
+/* ==========================================================================
+   CUSTOM COMPONENT STYLES (TRACK-ASIA SIDEBAR)
+   ========================================================================== */
+
+/* Tùy chỉnh thanh cuộn cho danh sách gợi ý địa điểm (Autocomplete dropdown) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+/* Làm sạch CSS cho khung Popup theo chuẩn Google Maps */
+.custom-google-popup .mapboxgl-popup-content,
+.custom-google-popup .trackasiagl-popup-content {
+  padding: 0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+  border: none !important;
+}
+.custom-google-popup .mapboxgl-popup-tip,
+.custom-google-popup .trackasiagl-popup-tip {
+  border-top-color: #ffffff !important;
+}
