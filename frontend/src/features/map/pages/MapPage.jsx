@@ -14,7 +14,9 @@ export default function MapPage() {
   const [categoryResults, setCategoryResults] = useState([]); 
   const [focusedLocation, setFocusedLocation] = useState(null);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
-  const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); 
+  const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); // GPS thật
+  const [pinPointCoords, setPinPointCoords] = useState(null); // Pin coords (nếu có)
+  const [activeCoords, setActiveCoords] = useState([106.694945, 10.769034]); // Coords đang dùng (GPS hoặc Pin)
   const [forceOpenDirectionPlace, setForceOpenDirectionPlace] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null); 
 
@@ -70,9 +72,14 @@ export default function MapPage() {
   };
 
   const fetchPlacesFromSupabase = async (userCoords = currentUserCoords, currentCat = activeCategory, filters = activeFilters) => {
+    console.log("🔍 [MapPage] fetchPlacesFromSupabase called");
+    console.log("   📍 Coords:", userCoords);
+    console.log("   🏷️ Category:", currentCat);
+    console.log("   🔧 Filters:", filters);
+    
     try {
       let query = supabase.from("places").select("*");
-
+      
       if (currentCat) {
         query = query.eq("category", currentCat);
       }
@@ -84,6 +91,8 @@ export default function MapPage() {
       const { data, error } = await query;
       
       if (error) throw error;
+      
+      console.log("📦 [MapPage] Fetched", data?.length || 0, "places from Supabase");
       
       if (data) {
         const normalized = data.map(item => ({
@@ -112,6 +121,8 @@ export default function MapPage() {
           );
           return distance <= 5; 
         });
+        
+        console.log("📏 [MapPage] Filtered to", placesWithin5km.length, "places within 5km");
 
         const sorted = await sortPlacesByRealRoad(placesWithin5km, userCoords);
         
@@ -119,30 +130,54 @@ export default function MapPage() {
         if (filters.ratings.length > 0) {
           const minRating = Math.min(...filters.ratings);
           filtered = sorted.filter(place => (place.rating || 0) >= minRating);
+          console.log("⭐ [MapPage] Filtered by rating, now", filtered.length, "places");
         }
         
+        console.log("✅ [MapPage] Setting allPlaces + categoryResults (", filtered.length, "places)");
         setAllPlaces(filtered);
         setCategoryResults(filtered);
       }
     } catch (err) { 
-      console.error("Fetch places error:", err); 
+      console.error("❌ [MapPage] Fetch places error:", err); 
     }
   };
 
   const handleFilterChange = (newFilters) => {
     setActiveFilters(newFilters);
-    fetchPlacesFromSupabase(currentUserCoords, activeCategory, newFilters);
+    fetchPlacesFromSupabase(activeCoords, activeCategory, newFilters);
   };
 
   const handleSelectCategory = (category) => {
     const nextCat = activeCategory === category ? null : category;
     setActiveCategory(nextCat);
     setFocusedLocation(null);
-    fetchPlacesFromSupabase(currentUserCoords, nextCat, activeFilters);
+    fetchPlacesFromSupabase(activeCoords, nextCat, activeFilters);
   };
 
   const handlePlaceRegistered = () => {
-    fetchPlacesFromSupabase(currentUserCoords, activeCategory, activeFilters);
+    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+  };
+
+  const handlePinPointChange = (coords) => {
+    console.log("🔴 [MapPage] handlePinPointChange called with coords:", coords);
+    
+    setPinPointCoords(coords);
+    
+    if (coords) {
+      // ===== BẬT PIN MODE =====
+      console.log("✅ [MapPage] PIN MODE ON - Setting activeCoords to:", coords);
+      setActiveCoords(coords);
+      
+      console.log("📍 [MapPage] Fetching places from PIN location...");
+      fetchPlacesFromSupabase(coords, activeCategory, activeFilters);
+    } else {
+      // ===== TẮT PIN MODE =====
+      console.log("❌ [MapPage] PIN MODE OFF - Reverting to GPS coords:", currentUserCoords);
+      setActiveCoords(currentUserCoords);
+      
+      console.log("🧭 [MapPage] Fetching places from GPS location...");
+      fetchPlacesFromSupabase(currentUserCoords, activeCategory, activeFilters);
+    }
   };
 
   return (
@@ -160,7 +195,7 @@ export default function MapPage() {
           setCategoryResults={setCategoryResults}
           setFocusedLocation={setFocusedLocation} 
           focusedLocation={focusedLocation} 
-          currentUserCoords={currentUserCoords}
+          currentUserCoords={activeCoords}
           onTriggerDirectionPanel={(place) => setForceOpenDirectionPlace(place)}
           onFilterChange={handleFilterChange} 
           onPlaceClick={setSelectedPlace} 
@@ -175,15 +210,24 @@ export default function MapPage() {
           setFocusedLocation={setFocusedLocation} 
           setShowRegisterForm={setShowRegisterForm}
           onUserLocationDetected={(coords) => { 
-            setCurrentUserCoords(coords); 
-            fetchPlacesFromSupabase(coords, activeCategory, activeFilters); 
+            setCurrentUserCoords(coords); // Lưu GPS thật
+            
+            if (!pinPointCoords) { 
+              // Chưa có pin → dùng GPS thật
+              setActiveCoords(coords);
+              fetchPlacesFromSupabase(coords, activeCategory, activeFilters);
+            }
+            // Nếu đã có pin → KHÔNG load lại (giữ nguyên places từ pin)
           }}
           allPlaces={allPlaces} 
           sortPlacesByRealRoad={sortPlacesByRealRoad} 
-          currentUserCoords={currentUserCoords}
+          currentUserCoords={activeCoords}
           forceOpenDirectionPlace={forceOpenDirectionPlace} 
           setForceOpenDirectionPlace={setForceOpenDirectionPlace}
           onPlaceClick={setSelectedPlace}
+          showRegisterForm={showRegisterForm}           // ← THÊM
+          selectedPlace={selectedPlace}                 // ← THÊM
+          onPinPointChange={handlePinPointChange}       // ← THÊM
         />
       </div>
       
