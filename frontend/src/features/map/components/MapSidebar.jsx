@@ -192,36 +192,80 @@ export default function MapSidebar({
 
     if (prediction.isSupabaseData) {
       const dbItem = prediction.rawSupabaseItem;
+      
+      // ✅ Tính distance từ vị trí hiện tại (GPS hoặc Pin)
+      const [userLng, userLat] = currentUserCoords;
+      const pLat = Number(dbItem.latitude);
+      const pLng = Number(dbItem.longitude);
+      const R = 6371;
+      const dLat = ((pLat - userLat) * Math.PI) / 180;
+      const dLon = ((pLng - userLng) * Math.PI) / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((userLat * Math.PI) / 180) * Math.cos((pLat * Math.PI) / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c;
+      
       const normalizedPlace = {
         id: dbItem.id,
         name: dbItem.name,
-        latitude: Number(dbItem.latitude),
-        longitude: Number(dbItem.longitude),
+        latitude: pLat,
+        longitude: pLng,
         address: dbItem.address,
-        category: dbItem.category
+        category: dbItem.category,
+        price_level: dbItem.price_level,
+        business_status: dbItem.business_status,
+        rating: dbItem.rating || 0,
+        created_by: dbItem.created_by,
+        created_by_email: dbItem.created_by_email,
+        description: dbItem.description,
+        isSupabaseData: true,
+        distanceText: `${distance.toFixed(1)} km`  
       };
       setFocusedLocation({
         lat: normalizedPlace.latitude,
         lng: normalizedPlace.longitude,
         name: normalizedPlace.name,
         address: normalizedPlace.address,
+        isNewCustomPoint: false  
       });
-      setCategoryResults([normalizedPlace]);
+      setCategoryResults(prev => {        
+        const existingIds = prev.map(p => p.id);
+        if (existingIds.includes(normalizedPlace.id)) {
+          return prev; 
+        }
+        return [...prev, normalizedPlace];
+      });
       if (onTriggerDirectionPanel) onTriggerDirectionPanel(normalizedPlace);
       setIsMobileExpanded(false);
     } else { 
-      setCategoryResults([]);
+      // ✅ KHÔNG XÓA categoryResults cũ
       fetch(`https://maps.track-asia.com/api/v2/place/details/json?place_id=${prediction.place_id}&key=${apiKey}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.result && data.result.geometry) {
             const loc = data.result.geometry.location;
+            
+            // ✅ Tính distance
+            const [userLng, userLat] = currentUserCoords;
+            const pLat = Number(loc.lat);
+            const pLng = Number(loc.lng);
+            const R = 6371;
+            const dLat = ((pLat - userLat) * Math.PI) / 180;
+            const dLon = ((pLng - userLng) * Math.PI) / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos((userLat * Math.PI) / 180) * Math.cos((pLat * Math.PI) / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c;
+            
             const normalizedPlace = {
               name: data.result.name,
-              latitude: Number(loc.lat),
-              longitude: Number(loc.lng),
+              latitude: pLat,
+              longitude: pLng,
               address: data.result.formatted_address || prediction.description,
-              category: "TrackAsiaPlace"
+              category: "TrackAsiaPlace",
+              distanceText: `${distance.toFixed(1)} km`
             };
             setFocusedLocation({
               lat: normalizedPlace.latitude,
@@ -229,7 +273,8 @@ export default function MapSidebar({
               name: normalizedPlace.name,
               address: normalizedPlace.address,
             });
-            setCategoryResults([normalizedPlace]);
+            // ✅ GIỮ places cũ + thêm place search
+            setCategoryResults(prev => [...prev, normalizedPlace]);
             if (onTriggerDirectionPanel) onTriggerDirectionPanel(normalizedPlace);
             setIsMobileExpanded(false);
           }
@@ -254,9 +299,19 @@ export default function MapSidebar({
   };
 
   const toggleRating = (rating) => {
-    setSelectedRatings(prev => 
-      prev.includes(rating) ? prev.filter(r => r !== rating) : [...prev, rating]
-    );
+    setSelectedRatings(prev => {
+      if (prev.includes(rating)) {
+        // Bỏ chọn → tắt số này
+        return prev.filter(r => r !== rating);
+      } else if (prev.length >= 2) {
+        // Đã chọn 2 rồi → KHÔNG CHO CHỌN THÊM
+        // User phải tắt 1 cái trước rồi mới chọn cái mới
+        return prev;
+      } else {
+        // Chưa đủ 2 → thêm vào
+        return [...prev, rating];
+      }
+    });
   };
 
   const clearAllFilters = () => {
@@ -315,7 +370,33 @@ export default function MapSidebar({
               onFocus={() => { setShowSuggestions(true); }}
             />
             {searchQuery && (
-              <button onClick={() => { setSearchQuery(""); setSuggestions([]); }} className="absolute right-3 text-gray-400 hover:text-gray-600">
+              <button onClick={() => { 
+                setSearchQuery(""); 
+                setSuggestions([]);
+                
+                // ✅ Khi xóa search → loại bỏ places ngoài 5km khỏi nearby panel
+                // Chỉ giữ lại places trong 5km (isSupabaseData + within radius)
+                setCategoryResults(prev => {
+                  const [userLng, userLat] = currentUserCoords;
+                  return prev.filter(place => {
+                    // Giữ lại place trong 5km
+                    if (!place.latitude || !place.longitude) return false;
+                    const R = 6371;
+                    const dLat = ((place.latitude - userLat) * Math.PI) / 180;
+                    const dLon = ((place.longitude - userLng) * Math.PI) / 180;
+                    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos((userLat * Math.PI) / 180) * Math.cos((place.latitude * Math.PI) / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distance = R * c;
+                    return distance <= 5;
+                  });
+                });
+                
+                // ✅ Xóa focused marker trên map
+                setFocusedLocation(null);
+                
+              }} className="absolute right-3 text-gray-400 hover:text-gray-600">
                 <X size={14} />
               </button>
             )}

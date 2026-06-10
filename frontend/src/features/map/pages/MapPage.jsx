@@ -128,12 +128,36 @@ export default function MapPage() {
         
         let filtered = sorted;
         if (filters.ratings.length > 0) {
-          const minRating = Math.min(...filters.ratings);
-          filtered = sorted.filter(place => (place.rating || 0) >= minRating);
-          console.log("⭐ [MapPage] Filtered by rating, now", filtered.length, "places");
+          if (filters.ratings.length === 1) {
+            // Chọn 1 option → hiện places >= giá trị đó
+            // Ví dụ: chọn 3 → hiện 3, 3.5, 4, 4.3, 5
+            // Ví dụ: chọn 5 → hiện 5 only
+            const minRating = filters.ratings[0];
+            filtered = sorted.filter(place => (place.rating || 0) >= minRating);
+          } else {
+            // Chọn 2 options → range [MIN, MAX)
+            // Ngoại lệ: nếu MAX = 5 thì range [MIN, 5] (bao gồm 5)
+            const minRating = Math.min(...filters.ratings);
+            const maxRating = Math.max(...filters.ratings);
+            
+            if (maxRating === 5) {
+              // Chọn X + 5 → hiện places >= X VÀ <= 5
+              // Ví dụ: 3+5 → hiện 3, 3.5, 4, 4.3, 5
+              // Ví dụ: 4+5 → hiện 4, 4.3, 5
+              filtered = sorted.filter(place => (place.rating || 0) >= minRating);
+            } else {
+              // Chọn X + Y (Y < 5) → hiện places >= X VÀ < Y
+              // Ví dụ: 3+4 → hiện 3, 3.5 (KHÔNG hiện 4, 4.3, 5)
+              // Ví dụ: 1+3 → hiện 1, 1.5, 2, 2.5 (KHÔNG hiện 3, 4, 5)
+              filtered = sorted.filter(place => {
+                const rating = place.rating || 0;
+                return rating >= minRating && rating < maxRating;
+              });
+            }
+          }
         }
         
-        console.log("✅ [MapPage] Setting allPlaces + categoryResults (", filtered.length, "places)");
+        console.log("[MapPage] Setting allPlaces + categoryResults (", filtered.length, "places)");
         setAllPlaces(filtered);
         setCategoryResults(filtered);
       }

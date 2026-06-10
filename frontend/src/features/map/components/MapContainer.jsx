@@ -542,14 +542,17 @@ export default function MapContainer({
         seeDetailsBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           
+          // ✅ Tìm place bằng tọa độ (tolerance 0.0001 cho floating point)
           const clickedPlace = categoryResults.find(p => 
-            Number(p.latitude) === Number(lat) && 
-            Number(p.longitude) === Number(lng)
+            Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
+            Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
           );
           
           if (clickedPlace && clickedPlace.id) {
             focusPopup.remove();
             onPlaceClick(clickedPlace);
+          } else {
+            console.log("⚠️ Place not found in categoryResults for coords:", { lat, lng });
           }
         });
       }
