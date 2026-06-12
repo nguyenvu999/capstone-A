@@ -24,6 +24,7 @@ export default function MapContainer({
   const focusMarkerRef = useRef(null);         
   const userLocationMarkerRef = useRef(null);  
   const userCoordsRef = useRef([106.694945, 10.769034]);
+  const isSwitchingLocationRef = useRef(false);
   
   // PIN POINT STATE
   const [isPinPointMode, setIsPinPointMode] = useState(false);
@@ -504,8 +505,17 @@ export default function MapContainer({
       essential: true 
     });
     
-    focusMarkerRef.current?.remove();
-    
+if (focusMarkerRef.current) {
+  isSwitchingLocationRef.current = true;
+
+  focusMarkerRef.current.remove();
+  focusMarkerRef.current = null;
+
+  setTimeout(() => {
+    isSwitchingLocationRef.current = false;
+  }, 50);
+}
+
     const pin = document.createElement("div");
     pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
     pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
@@ -531,6 +541,11 @@ export default function MapContainer({
     
     // delete marker and return to user
  focusPopup.on("close", () => {
+  // Ignore popup closes caused by switching locations
+  if (isSwitchingLocationRef.current) {
+    return;
+  }
+
   if (focusMarkerRef.current) {
     focusMarkerRef.current.remove();
     focusMarkerRef.current = null;
