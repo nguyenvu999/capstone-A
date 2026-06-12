@@ -329,6 +329,27 @@ export default function MapSidebar({
     return <IconComponent className={category.iconColor} size={14} />;
   };
 
+  // Helper function để hiển thị số sao trong nearby panel
+  // Ví dụ:
+  // rating = 5   -> ★★★★★
+  // rating = 4.3 -> ★★★★☆
+  // rating = 3   -> ★★★☆☆
+  const renderStars = (rating) => {
+    const filledStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 > 0;
+
+    let stars = "★".repeat(filledStars);
+
+    if (hasHalfStar) {
+      stars += "☆";
+    }
+
+    const emptyStarsNeeded = 5 - filledStars - (hasHalfStar ? 1 : 0);
+    stars += "☆".repeat(emptyStarsNeeded);
+
+    return stars;
+  };
+
   return (
     <>
       {/* MOBILE LIST TOGGLE */}
@@ -572,6 +593,12 @@ export default function MapSidebar({
                       </div>
                       <div className="overflow-hidden">
                         <p className="text-xs font-bold text-gray-800 truncate">{place.name}</p>
+                        {place.rating > 0 && (
+                          <p className="text-[10px] text-yellow-600 mt-0.5 font-semibold flex items-center gap-1">
+                            <span>{renderStars(place.rating)}</span>
+                            <span className="text-gray-600">{Number(place.rating).toFixed(1)}</span>
+                          </p>
+                        )}
                         <p className="text-[11px] text-gray-500 mt-0.5 truncate">{addressText}</p>
                       </div>
                     </div>

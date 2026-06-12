@@ -22,6 +22,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [displayedReviews, setDisplayedReviews] = useState(5);
   const [sortBy, setSortBy] = useState("time"); // "time" or "rating"
   const [sortOrder, setSortOrder] = useState("desc"); // "desc" or "asc"
+  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
+  const [showRatingDropdown, setShowRatingDropdown] = useState(false);
 
   // Write/Edit review state
   const [selectedRating, setSelectedRating] = useState(0);
@@ -48,6 +50,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionRef = useRef(null);
   const dropdownRef = useRef(null);
+  const timeDropdownRef = useRef(null);
+  const ratingDropdownRef = useRef(null);
   const [placeImages, setPlaceImages] = useState([]);
 
   if (!place) return null;
@@ -106,6 +110,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setShowOptionsDropdown(false);
+      }
+      if (timeDropdownRef.current && !timeDropdownRef.current.contains(event.target)) {
+        setShowTimeDropdown(false);
+      }
+      if (ratingDropdownRef.current && !ratingDropdownRef.current.contains(event.target)) {
+        setShowRatingDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -396,21 +406,32 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     }
   };
 
-  // REVIEW HELPER FUNCTIONS
+  // Fix timestamp parsing — nếu không có timezone thì coi là UTC
   const parseReviewTimestamp = (timestamp) => {
     if (!timestamp) return new Date();
     if (typeof timestamp !== "string") return new Date(timestamp);
-
     const normalized = timestamp.trim();
-    // If the timestamp has no timezone offset, treat it as UTC.
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(normalized)) {
       return new Date(`${normalized}Z`);
     }
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(normalized)) {
       return new Date(`${normalized.replace(" ", "T")}Z`);
     }
-
     return new Date(normalized);
+  };
+
+  // Handler chọn sort time từ dropdown
+  const handleSelectTime = (order) => {
+    setSortBy("time");
+    setSortOrder(order);
+    setShowTimeDropdown(false);
+  };
+
+  // Handler chọn sort rating từ dropdown
+  const handleSelectRating = (order) => {
+    setSortBy("rating");
+    setSortOrder(order);
+    setShowRatingDropdown(false);
   };
 
   const getSortedReviews = () => {
@@ -418,8 +439,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     
     if (sortBy === "time") {
       sorted.sort((a, b) => {
-        const dateA = parseReviewTimestamp(a.created_at);
-        const dateB = parseReviewTimestamp(b.created_at);
+        const dateA = parseReviewTimestamp(a.created_at); 
+        const dateB = parseReviewTimestamp(b.created_at); 
         return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
       });
     } else if (sortBy === "rating") {
@@ -700,28 +721,85 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 </div>
               </div>
 
-              {/* Sort Buttons */}
+              {/* Sort Dropdowns */}
               <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => toggleSort("time")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    sortBy === "time"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  Time {sortBy === "time" && (sortOrder === "desc" ? "↓" : "↑")}
-                </button>
-                <button
-                  onClick={() => toggleSort("rating")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    sortBy === "rating"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-                >
-                  Rating {sortBy === "rating" && (sortOrder === "desc" ? "↓" : "↑")}
-                </button>
+                {/* Time sort dropdown */}
+                <div className="relative" ref={timeDropdownRef}>
+                  <button
+                    onClick={() => setShowTimeDropdown(s => !s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      sortBy === "time"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    Time: {sortBy === "time" ? (sortOrder === "desc" ? "Newest" : "Oldest") : "Time"} ▼
+                  </button>
+
+                  {showTimeDropdown && (
+                    <div className="absolute left-0 mt-2 w-40 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50">
+                      <button
+                        onClick={() => handleSelectTime("desc")}
+                        className={`w-full text-left px-4 py-2 text-sm ${
+                          sortBy === "time" && sortOrder === "desc"
+                            ? "text-blue-600 font-semibold"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Newest
+                      </button>
+                      <button
+                        onClick={() => handleSelectTime("asc")}
+                        className={`w-full text-left px-4 py-2 text-sm ${
+                          sortBy === "time" && sortOrder === "asc"
+                            ? "text-blue-600 font-semibold"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Oldest
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Rating sort dropdown */}
+                <div className="relative" ref={ratingDropdownRef}>
+                  <button
+                    onClick={() => setShowRatingDropdown(s => !s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      sortBy === "rating"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    Rating: {sortBy === "rating" ? (sortOrder === "desc" ? "Highest" : "Lowest") : "Rating"} ▼
+                  </button>
+
+                  {showRatingDropdown && (
+                    <div className="absolute left-0 mt-2 w-40 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50">
+                      <button
+                        onClick={() => handleSelectRating("desc")}
+                        className={`w-full text-left px-4 py-2 text-sm ${
+                          sortBy === "rating" && sortOrder === "desc"
+                            ? "text-blue-600 font-semibold"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Highest
+                      </button>
+                      <button
+                        onClick={() => handleSelectRating("asc")}
+                        className={`w-full text-left px-4 py-2 text-sm ${
+                          sortBy === "rating" && sortOrder === "asc"
+                            ? "text-blue-600 font-semibold"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Lowest
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* ===== COMMENT CONTAINER (SCROLL RIÊNG) ===== */}
