@@ -523,12 +523,21 @@ export default function MapContainer({
         ` : ''}
       </div>
     `;
-    
     const focusPopup = new trackasiagl.Popup({ 
       offset: [0, -32], 
       closeButton: true,
       closeOnClick: false 
     }).setHTML(popupHTML);
+    
+    // delete marker and return to user
+  focusPopup.on("close", () => {
+  if (focusMarkerRef.current) {
+    focusMarkerRef.current.remove();
+    focusMarkerRef.current = null;
+  }
+  setFocusedLocation(null);
+  handleClearPin();
+});
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
       .setLngLat([Number(lng), Number(lat)])
