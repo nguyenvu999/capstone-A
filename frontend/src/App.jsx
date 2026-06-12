@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./features/auth/context/AuthContext";
 import LoginPage from "./features/auth/pages/LoginPage";
 import MapPage from "./features/map/pages/MapPage";
+import ItinerariesPage from "./features/itinerary/pages/ItinerariesPage";
+import ItineraryDetailPage from "./features/itinerary/pages/ItineraryDetailPage";
 import ProtectedRoute from "./features/auth/components/ProtectedRoute";
 
 // Component trung gian xử lý trang gốc để tránh nuốt mất Token OAuth của Supabase
@@ -39,6 +41,24 @@ export default function App() {
                 <MapPage />
               </ProtectedRoute>
             } 
+          />
+
+            {/* Itinerary pages */}
+          <Route
+            path="/itineraries"
+            element={
+              <ProtectedRoute>
+                <ItinerariesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/itineraries/:id"
+            element={
+              <ProtectedRoute>
+                <ItineraryDetailPage />
+              </ProtectedRoute>
+            }
           />
           
           {/* Xử lý các đường dẫn không tồn tại */}
