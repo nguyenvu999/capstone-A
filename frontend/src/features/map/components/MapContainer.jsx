@@ -530,13 +530,23 @@ export default function MapContainer({
     }).setHTML(popupHTML);
     
     // delete marker and return to user
-  focusPopup.on("close", () => {
+ focusPopup.on("close", () => {
   if (focusMarkerRef.current) {
     focusMarkerRef.current.remove();
     focusMarkerRef.current = null;
   }
+
   setFocusedLocation(null);
-  handleClearPin();
+
+  navigator.geolocation.getCurrentPosition((position) => {
+    const { latitude, longitude } = position.coords;
+
+    mapRef.current?.flyTo({
+      center: [longitude, latitude],
+      zoom: 14,
+      essential: true,
+    });
+  });
 });
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
