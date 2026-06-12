@@ -533,42 +533,52 @@ if (focusMarkerRef.current) {
         ` : ''}
       </div>
     `;
+    
+    // ✅ Flag để phân biệt: popup đóng do "See Details" hay do user ấn "X"
+    let closedBySeeDetails = false;
+    
     const focusPopup = new trackasiagl.Popup({ 
       offset: [0, -32], 
       closeButton: true,
       closeOnClick: false 
     }).setHTML(popupHTML);
     
-    // delete marker and return to user
- focusPopup.on("close", () => {
-  // Ignore popup closes caused by switching locations
-  if (isSwitchingLocationRef.current) {
-    return;
-  }
+    // Logic xóa marker + quay về GPS (CHỈ khi user ấn "X", KHÔNG khi ấn "See Details")
+    focusPopup.on("close", () => {
+      // Bỏ qua nếu đang chuyển location (logic của thành viên kia)
+      if (isSwitchingLocationRef.current) {
+        return;
+      }
+      
+      // ✅ Bỏ qua nếu popup đóng do "See Details"
+      if (closedBySeeDetails) {
+        return;
+      }
 
-  if (focusMarkerRef.current) {
-    focusMarkerRef.current.remove();
-    focusMarkerRef.current = null;
-  }
+      // User ấn "X" → xóa marker + quay về GPS (logic của thành viên kia, GIỮ NGUYÊN)
+      if (focusMarkerRef.current) {
+        focusMarkerRef.current.remove();
+        focusMarkerRef.current = null;
+      }
 
-  setFocusedLocation(null);
+      setFocusedLocation(null);
 
-  navigator.geolocation.getCurrentPosition((position) => {
-    const { latitude, longitude } = position.coords;
+      navigator.geolocation.getCurrentPosition((position) => {
+        const { latitude, longitude } = position.coords;
 
-    mapRef.current?.flyTo({
-      center: [longitude, latitude],
-      zoom: 14,
-      essential: true,
+        mapRef.current?.flyTo({
+          center: [longitude, latitude],
+          zoom: 14,
+          essential: true,
+        });
+      });
     });
-  });
-});
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
       .setLngLat([Number(lng), Number(lat)])
       .setPopup(focusPopup)
       .addTo(mapRef.current)
-      .togglePopup(); // Giữ nguyên hành vi tự động mở popup cũ của bạn
+      .togglePopup();
     
     setTimeout(() => {
       const seeDetailsBtn = document.querySelector('.see-details-btn');
@@ -576,14 +586,15 @@ if (focusMarkerRef.current) {
         seeDetailsBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           
-          // ✅ Tìm place bằng tọa độ (tolerance 0.0001 cho floating point)
           const clickedPlace = categoryResults.find(p => 
             Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
             Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
           );
           
           if (clickedPlace && clickedPlace.id) {
-            focusPopup.remove();
+            // ✅ CHỈ MỞ Place Detail form, KHÔNG xóa popup và marker
+            // Marker đỏ + thẻ tên VẪN CÒN trên map
+            // User vẫn có thể ấn "X" trên thẻ để xóa marker + bay về GPS
             onPlaceClick(clickedPlace);
           } else {
             console.log("⚠️ Place not found in categoryResults for coords:", { lat, lng });
