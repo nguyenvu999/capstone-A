@@ -339,13 +339,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       }
 
       showToast("Place updated successfully!", "success");
-      setShowEditForm(false); // Quay lại View mode
-      
       if (onStatusUpdated) onStatusUpdated();
-      
-      setTimeout(() => {
-        onClose();
-      }, 1000);
+
 
     } catch (error) {
       console.error("Update place error:", error);
@@ -1119,7 +1114,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 accept="image/*"
                 multiple
                 onChange={handleEditImageChange}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
               />
 
               <p className="text-xs text-gray-400 mt-1">

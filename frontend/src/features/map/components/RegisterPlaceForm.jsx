@@ -618,7 +618,16 @@ const handleRemoveImage = (index) => {
               accept="image/*"
               multiple
               onChange={handleImageChange}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3"
+              className="cursor-pointer
+              w-full
+              bg-gray-50
+              border
+              border-gray-200
+              rounded-xl
+              p-3
+              hover:border-blue-500
+              hover:bg-blue-50
+              transition"
             />
 
             <p className="text-xs text-gray-400 mt-1">
