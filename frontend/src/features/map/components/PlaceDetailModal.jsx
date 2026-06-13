@@ -15,6 +15,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false); // Dropdown 3 chấm
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Modal xác nhận xóa
   const [deleting, setDeleting] = useState(false);
+   const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
 
   // REVIEW STATE
   const [reviews, setReviews] = useState([]);
@@ -614,8 +615,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                     <div key={index} className="rounded-xl overflow-hidden border border-gray-200">
                       <img
                         src={image.url}
-                        alt={`${place.name} ${index + 1}`}
-                        className="w-full h-40 object-cover cursor-pointer hover:opacity-90"
+                        alt="Place"
+                        onClick={() => setSelectedImageIndex(index)}
+                        className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
                       />
                     </div>
                   ))}
@@ -1203,6 +1205,54 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           </div>
         </div>
       )}
+       {/* Add pop-up images */}
+      {selectedImageIndex !== null && (
+      <div
+        className="fixed inset-0 z-[10001] bg-black/80 flex items-center justify-center p-4"
+        onClick={() => setSelectedImageIndex(null)}
+      >
+        <button
+          type="button"
+          onClick={() => setSelectedImageIndex(null)}
+          className="absolute top-5 right-5 text-white bg-black/50 rounded p-2 cursor-pointer hover:bg-black"
+        >
+          <X size={22} />
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedImageIndex((prev) =>
+              prev === 0 ? editImages.length - 1 : prev - 1
+            );
+          }}
+          className="absolute left-5 text-white text-8xl cursor-pointer"
+        >
+          ‹
+        </button>
+
+        <img
+          src={editImages[selectedImageIndex].url}
+          alt="Selected"
+          className="max-w-[75vh] max-h-[70vh] rounded-xl object-contain shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedImageIndex((prev) =>
+              prev === editImages.length - 1 ? 0 : prev + 1
+            );
+          }}
+          className="absolute right-5 text-white text-8xl cursor-pointer"
+        >
+          ›
+        </button>
+      </div>
+    )}
     </>
   );
 }
