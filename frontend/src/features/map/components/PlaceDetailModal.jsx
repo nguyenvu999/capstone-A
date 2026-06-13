@@ -31,6 +31,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [reviewComment, setReviewComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState(null);
+  const [reviewImageFiles, setReviewImageFiles] = useState([]);
+  const [reviewImagePreviews, setReviewImagePreviews] = useState([]);
 
   const MAX_IMAGE_COUNT = 3;
   const MAX_IMAGE_SIZE_MB = 5;
@@ -269,6 +271,58 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     }
     showToast("Image removed", "success");
   };
+
+  //Upload pictures in reviews
+      const handleReviewImageChange = (e) => {
+      const files = Array.from(e.target.files);
+
+        if (files.length > 3) {
+        alert("You can upload up to 3 pictures only.");
+        e.target.value = "";
+        return;
+      }
+
+      if (reviewImageFiles.length + files.length > MAX_REVIEW_IMAGE_COUNT) {
+        showToast(`Maximum ${MAX_REVIEW_IMAGE_COUNT} images allowed`, "warning");
+        e.target.value = "";
+        return;
+      }
+
+      const validFiles = [];
+      const previews = [];
+
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) {
+          showToast("Only image files are allowed", "warning");
+          continue;
+        }
+
+        if (file.size > MAX_REVIEW_IMAGE_SIZE_BYTES) {
+          showToast(`Each image must be under ${MAX_REVIEW_IMAGE_SIZE_MB}MB`, "warning");
+          continue;
+        }
+
+        validFiles.push(file);
+        previews.push(URL.createObjectURL(file));
+      }
+
+      setReviewImageFiles((prev) => [...prev, ...validFiles]);
+      setReviewImagePreviews((prev) => [...prev, ...previews]);
+
+      e.target.value = "";
+    };
+    //Remove images in review 
+    const handleRemoveReviewImage = (index) => {
+    URL.revokeObjectURL(reviewImagePreviews[index]);
+
+    setReviewImageFiles((prev) =>
+      prev.filter((_, i) => i !== index)
+    );
+
+    setReviewImagePreviews((prev) =>
+      prev.filter((_, i) => i !== index)
+    );
+    };  
 
   const handleUpdatePlace = async () => {
     if (!isOwner) {
@@ -942,6 +996,56 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                     className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
                   />
                 </div>
+                  {/*Upload images*/}
+                <div className="mb-4">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Images <span className="text-gray-400">(optional)</span>
+                </label>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleReviewImageChange}
+                  className="w-full
+                  bg-gray-50
+                  border
+                  border-gray-200
+                  rounded-lg
+                  p-2.5
+                  text-sm
+                  cursor-pointer
+                  hover:border-blue-500
+                  hover:bg-blue-50
+                  transition-all"
+                />
+
+                <p className="text-xs text-gray-400 mt-1">
+                  Max 3 images • Max 5MB each
+                </p>
+
+                {reviewImagePreviews.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    {reviewImagePreviews.map((preview, index) => (
+                      <div key={index} className="relative">
+                        <img
+                          src={preview}
+                          alt={`Review image ${index + 1}`}
+                          className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveReviewImage(index)}
+                          className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
+                        >
+                          <X size={12} strokeWidth={3} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
                 {/* Submit button */}
                 <button
