@@ -389,6 +389,9 @@ const handleRemoveImage = (index) => {
 
       // THÊM: Success toast
       showToast("Place registered successfully!", "success");
+
+      // Refresh map markers immediately so new location appears without reload
+      if (onSuccess) onSuccess();
       
       // Đóng form sau 1.5 giây
       setTimeout(() => {
