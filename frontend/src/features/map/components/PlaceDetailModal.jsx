@@ -1134,9 +1134,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                       <button
                         type="button"
                         onClick={() => handleRemoveEditImage(image)}
-                        className="absolute top-1 right-1 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center"
+                        className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
+                        aria-label="Remove image"
                       >
-                        <X size={14} />
+                        <X size={11} strokeWidth={3} />
                       </button>
                     </div>
                   ))}
