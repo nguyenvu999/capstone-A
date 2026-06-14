@@ -612,7 +612,7 @@ if (focusMarkerRef.current) {
 
   // THAY ĐỔI QUAN TRỌNG: Chỉ lắng nghe sự thay đổi của TỌA ĐỘ (lat, lng).
   // Loại bỏ hoàn toàn sự phụ thuộc vào text 'name' hay 'address' để khi bạn gõ, useEffect này KHÔNG bị chạy lại.
-  }, [focusedLocation?.lat, focusedLocation?.lng, onPlaceClick]); 
+  }, [focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.name, focusedLocation?.address, onPlaceClick]); 
 
   return (
     <div className="relative h-full w-full flex-1 z-0">
