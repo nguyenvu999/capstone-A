@@ -182,6 +182,15 @@ export default function MapPage() {
     fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
   };
 
+  // Called after a place is edited — update the open modal immediately,
+  // then re-fetch so map markers stay in sync
+  const handlePlaceUpdated = (updatedPlace) => {
+    if (updatedPlace) {
+      setSelectedPlace(updatedPlace);
+    }
+    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+  };
+
   const handlePinPointChange = (coords) => {
     console.log("🔴 [MapPage] handlePinPointChange called with coords:", coords);
     
@@ -271,7 +280,7 @@ export default function MapPage() {
         <PlaceDetailModal
           place={selectedPlace}
           onClose={() => setSelectedPlace(null)}
-          onStatusUpdated={handlePlaceRegistered}
+          onStatusUpdated={handlePlaceUpdated}
           apiKey={API_KEY}
         />
       )}
