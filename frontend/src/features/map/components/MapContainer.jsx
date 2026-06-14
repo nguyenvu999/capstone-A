@@ -298,14 +298,30 @@ export default function MapContainer({
   };
 
   // 1. Initialize Map & Click Event Handling (Giữ nguyên)
-  useEffect(() => {
-    if (!document.getElementById("pulse-marker-style")) {
+    useEffect(() => {
+      if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
       style.id = "pulse-marker-style";
       style.innerHTML = `
         .user-pulse-marker { width: 16px; height: 16px; background: #2563eb; border: 2px solid white; border-radius: 50%; position: relative; box-shadow: 0 0 8px rgba(0,0,0,0.3); z-index: 10; }
         .user-pulse-marker::after { content: ''; width: 40px; height: 40px; background: rgba(37, 99, 235, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.5); animation: mapPulse 2s infinite ease-out; opacity: 0; }
         @keyframes mapPulse { 0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; } 50% { opacity: 0.8; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
+
+        /* Focused popup phải luôn nằm trên tất cả category markers khác */
+        .focused-place-popup {
+          z-index: 99999 !important;
+        }
+
+        .focused-place-popup .trackasia-gl-popup-content,
+        .focused-place-popup .mapboxgl-popup-content {
+          z-index: 99999 !important;
+          position: relative;
+        }
+
+        .focused-place-popup .trackasia-gl-popup-tip,
+        .focused-place-popup .mapboxgl-popup-tip {
+          z-index: 99999 !important;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -555,7 +571,8 @@ if (focusMarkerRef.current) {
     const focusPopup = new trackasiagl.Popup({ 
       offset: [0, -32], 
       closeButton: true,
-      closeOnClick: false 
+      closeOnClick: false,
+      className: "focused-place-popup"
     }).setHTML(popupHTML);
     
     // delete marker and return to user
