@@ -33,6 +33,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [editingReviewId, setEditingReviewId] = useState(null);
   const [reviewImageFiles, setReviewImageFiles] = useState([]);
   const [reviewImagePreviews, setReviewImagePreviews] = useState([]);
+  const [reviewImages, setReviewImages] = useState([]);
+  const [deletedReviewImages, setDeletedReviewImages] = useState([]);
 
   const MAX_IMAGE_COUNT = 3;
   const MAX_IMAGE_SIZE_MB = 5;
@@ -281,9 +283,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     const files = Array.from(e.target.files);
 
     if (!files.length) return;
+      //limit the picture number
+    const currentImageCount =
+      reviewImages.length + reviewImageFiles.length;
 
     const remainingSlots =
-      MAX_REVIEW_IMAGE_COUNT - reviewImageFiles.length;
+      MAX_REVIEW_IMAGE_COUNT - currentImageCount;
 
     if (remainingSlots <= 0) {
       showToast(`Maximum ${MAX_REVIEW_IMAGE_COUNT} images allowed`, "warning");
@@ -338,7 +343,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       prev.filter((_, i) => i !== index)
     );
     };  
+    //Remove existing images in review when edit
+    const handleRemoveExistingReviewImage = (image) => {
+      setReviewImages((prev) =>
+        prev.filter((img) => img.id !== image.id)
+      );
 
+      setDeletedReviewImages((prev) => [...prev, image]);
+    };
   const handleUpdatePlace = async () => {
     if (!isOwner) {
       showToast("You don't have permission to edit this place", "error");
@@ -409,7 +421,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       }
 
       showToast("Place updated successfully!", "success");
-
+      
       // Pass updated place data back so the modal reflects changes immediately
       const updatedPlace = {
         ...place,
@@ -562,6 +574,18 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
       if (error) throw error;
 
+      // ===== DELETE REMOVED OLD IMAGES =====
+      if (deletedReviewImages.length > 0) {
+        for (const image of deletedReviewImages) {
+          const { error: deleteImageError } = await supabase
+            .from("review_images")
+            .delete()
+            .eq("id", image.id);
+
+          if (deleteImageError) throw deleteImageError;
+        }
+      }
+
       const reviewId = data?.id || data?.[0]?.id;
 
       if (reviewImageFiles.length > 0) {
@@ -626,9 +650,23 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     setSelectedRating(review.rating);
     setReviewComment(review.comment || "");
     setEditingReviewId(review.id);
-    
+
+    // Load existing review images
+    setReviewImages(review.review_images || []);
+
+    // Reset new upload state
+    setReviewImageFiles([]);
+    setReviewImagePreviews([]);
+
+    // Reset deleted list
+    setDeletedReviewImages([]);
+
     setTimeout(() => {
-      document.getElementById("write-review-section")?.scrollIntoView({ behavior: "smooth" });
+      document
+        .getElementById("write-review-section")
+        ?.scrollIntoView({
+          behavior: "smooth",
+        });
     }, 100);
   };
 
@@ -1000,6 +1038,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                           {review.comment && (
                             <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
                           )}
+                          {/*Upload images*/}
+                          {review.review_images?.length > 0 && (
+                            <div className="grid grid-cols-3 gap-2 mt-3">
+                              {review.review_images.map((image) => (
+                                <img
+                                  key={image.id}
+                                  src={image.url}
+                                  alt="Review"
+                                  className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1068,10 +1119,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                     className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
                   />
                 </div>
-                  {/*Upload images*/}
+                 {/* Upload Review Images */}
                 <div className="mb-4">
+
                 <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Images <span className="text-gray-400">(optional)</span>
+                Upload Images
+                <span className="text-gray-400"> (optional)</span>
                 </label>
 
                 <input
@@ -1079,46 +1132,65 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                   accept="image/*"
                   multiple
                   onChange={handleReviewImageChange}
-                  className="w-full
-                  bg-gray-50
-                  border
-                  border-gray-200
-                  rounded-lg
-                  p-2.5
-                  text-sm
-                  cursor-pointer
-                  hover:border-blue-500
-                  hover:bg-blue-50
-                  transition-all"
+                  className="
+                    w-full
+                    bg-gray-50
+                    border
+                    border-gray-200
+                    rounded-lg
+                    p-2.5
+                    text-sm
+                    cursor-pointer
+                    hover:border-blue-500
+                    hover:bg-blue-50
+                    transition-all
+                  "
                 />
-
                 <p className="text-xs text-gray-400 mt-1">
-                  Max 3 images • Max 5MB each
+                Max 3 images • Max 5MB each
                 </p>
+                {(reviewImages.length > 0 || reviewImagePreviews.length > 0) && (
+                <div className="grid grid-cols-3 gap-2 mt-3">
 
-                {reviewImagePreviews.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    {reviewImagePreviews.map((preview, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={preview}
-                          alt={`Review image ${index + 1}`}
-                          className="w-full h-20 object-cover rounded-lg border border-gray-200"
-                        />
+                  {reviewImages.map((image) => (
+                    <div key={image.id} className="relative">
+                      <img
+                        src={image.url}
+                        alt="Review"
+                        className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                      />
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveReviewImage(index)}
-                          className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
-                        >
-                          <X size={12} strokeWidth={3} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExistingReviewImage(image)}
+                        className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer"
+                      >
+                        <X size={12} strokeWidth={3} />
+                      </button>
+                    </div>
+                  ))}
 
+                  {reviewImagePreviews.map((preview, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveReviewImage(index)}
+                        className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer"
+                      >
+                        <X size={12} strokeWidth={3} />
+                      </button>
+                    </div>
+                  ))}
+
+                </div>
+              )}
+                </div>
                 {/* Submit button */}
                 <button
                   onClick={handleSubmitReview}

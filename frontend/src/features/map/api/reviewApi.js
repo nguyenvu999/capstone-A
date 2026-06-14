@@ -1,24 +1,42 @@
 import { supabase } from "../../auth/api/supabaseClient";
 
-// Fetch all reviews for a place
-// Returns reviews sorted by created_at DESC
- 
 export async function fetchReviewsByPlace(placeId) {
   try {
-    const { data, error } = await supabase
+    const { data: reviews, error: reviewError } = await supabase
       .from("reviews")
       .select("*")
       .eq("place_id", String(placeId))
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
-    return { data, error: null };
+    if (reviewError) throw reviewError;
+
+    const reviewIds = (reviews || []).map((r) => r.id);
+
+    if (reviewIds.length === 0) {
+      return { data: [], error: null };
+    }
+
+    const { data: images, error: imageError } = await supabase
+      .from("review_images")
+      .select("id, review_id, url, sort_order")
+      .in("review_id", reviewIds)
+      .order("sort_order", { ascending: true });
+
+    if (imageError) throw imageError;
+
+    const reviewsWithImages = reviews.map((review) => ({
+      ...review,
+      review_images: (images || []).filter(
+        (img) => String(img.review_id) === String(review.id)
+      ),
+    }));
+
+    return { data: reviewsWithImages, error: null };
   } catch (error) {
     console.error("fetchReviewsByPlace error:", error);
     return { data: null, error };
   }
 }
-
 // Insert or update a review
 // Logic: 1 user can only have 1 review per place
  
