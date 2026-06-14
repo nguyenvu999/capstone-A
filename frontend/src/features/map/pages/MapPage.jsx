@@ -182,6 +182,20 @@ export default function MapPage() {
     fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
   };
 
+  // sync the pin popup and  map markers to stay in sync
+  const handlePlaceUpdated = (updatedPlace) => {
+    if (updatedPlace) {
+      setSelectedPlace(updatedPlace);
+      // Sync pin popup so name/address update without a refresh
+      setFocusedLocation(prev => prev ? {
+        ...prev,
+        name: updatedPlace.name,
+        address: updatedPlace.address,
+      } : prev);
+    }
+    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+  };
+
   const handlePinPointChange = (coords) => {
     console.log("🔴 [MapPage] handlePinPointChange called with coords:", coords);
     
@@ -271,7 +285,7 @@ export default function MapPage() {
         <PlaceDetailModal
           place={selectedPlace}
           onClose={() => setSelectedPlace(null)}
-          onStatusUpdated={handlePlaceRegistered}
+          onStatusUpdated={handlePlaceUpdated}
           apiKey={API_KEY}
         />
       )}
