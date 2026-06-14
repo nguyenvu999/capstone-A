@@ -48,7 +48,8 @@ export async function upsertReview({ placeId, userId, userName, rating, comment 
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingReview.id)
-        .select();
+        .select()
+        .single();
     } else {
       // INSERT new review
       result = await supabase
@@ -63,7 +64,8 @@ export async function upsertReview({ placeId, userId, userName, rating, comment 
             created_at: new Date().toISOString(), 
           },
         ])
-        .select();
+        .select()
+        .single();
     }
 
     if (result.error) throw result.error;

@@ -37,6 +37,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const MAX_IMAGE_COUNT = 3;
   const MAX_IMAGE_SIZE_MB = 5;
   const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+
+  const MAX_REVIEW_IMAGE_COUNT = 3;
+  const MAX_REVIEW_IMAGE_SIZE_MB = 5;
+  const MAX_REVIEW_IMAGE_SIZE_BYTES = MAX_REVIEW_IMAGE_SIZE_MB * 1024 * 1024;
   
   const [editData, setEditData] = useState({
     name: place?.name || "",
@@ -273,44 +277,55 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   };
 
   //Upload pictures in reviews
-      const handleReviewImageChange = (e) => {
-      const files = Array.from(e.target.files);
+    const handleReviewImageChange = (e) => {
+    const files = Array.from(e.target.files);
 
-        if (files.length > 3) {
-        alert("You can upload up to 3 pictures only.");
-        e.target.value = "";
-        return;
-      }
+    if (!files.length) return;
 
-      if (reviewImageFiles.length + files.length > MAX_REVIEW_IMAGE_COUNT) {
-        showToast(`Maximum ${MAX_REVIEW_IMAGE_COUNT} images allowed`, "warning");
-        e.target.value = "";
-        return;
-      }
+    const remainingSlots =
+      MAX_REVIEW_IMAGE_COUNT - reviewImageFiles.length;
 
-      const validFiles = [];
-      const previews = [];
-
-      for (const file of files) {
-        if (!file.type.startsWith("image/")) {
-          showToast("Only image files are allowed", "warning");
-          continue;
-        }
-
-        if (file.size > MAX_REVIEW_IMAGE_SIZE_BYTES) {
-          showToast(`Each image must be under ${MAX_REVIEW_IMAGE_SIZE_MB}MB`, "warning");
-          continue;
-        }
-
-        validFiles.push(file);
-        previews.push(URL.createObjectURL(file));
-      }
-
-      setReviewImageFiles((prev) => [...prev, ...validFiles]);
-      setReviewImagePreviews((prev) => [...prev, ...previews]);
-
+    if (remainingSlots <= 0) {
+      showToast(`Maximum ${MAX_REVIEW_IMAGE_COUNT} images allowed`, "warning");
       e.target.value = "";
-    };
+      return;
+    }
+
+    if (files.length > remainingSlots) {
+      showToast(
+        `You can only add ${remainingSlots} more image(s)`,
+        "warning"
+      );
+      e.target.value = "";
+      return;
+    }
+
+    const validFiles = [];
+    const previews = [];
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        showToast("Only image files are allowed", "warning");
+        continue;
+      }
+
+      if (file.size > MAX_REVIEW_IMAGE_SIZE_BYTES) {
+        showToast(
+          `Each image must be under ${MAX_REVIEW_IMAGE_SIZE_MB}MB`,
+          "warning"
+        );
+        continue;
+      }
+
+      validFiles.push(file);
+      previews.push(URL.createObjectURL(file));
+    }
+
+    setReviewImageFiles((prev) => [...prev, ...validFiles]);
+    setReviewImagePreviews((prev) => [...prev, ...previews]);
+
+    e.target.value = "";
+  };
     //Remove images in review 
     const handleRemoveReviewImage = (index) => {
     URL.revokeObjectURL(reviewImagePreviews[index]);
@@ -524,46 +539,88 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   };
 
   const handleSubmitReview = async () => {
-  if (!user) {
-    showToast("Please sign in to submit a review", "error");
-    return;
-  }
-  
-  if (selectedRating === 0) {
-    showToast("Please select a rating", "warning");
-    return;
-  }
-  
-  setSubmittingReview(true);
-  
-  const { data, error } = await upsertReview({
-    placeId: place.id,
-    userId: user.id,
-    userName: user.email?.split("@")[0] || "User",
-    rating: selectedRating,
-    comment: reviewComment.trim(),
-  });
-  
-  if (error) {
-    console.error("Submit review error:", error);
-    showToast("Failed to submit review", "error");
-  } else {
-    showToast(editingReviewId ? "Review updated!" : "Review submitted!", "success");
-    
-    // Reload reviews
-    const { data: updatedReviews } = await fetchReviewsByPlace(place.id);
-    setReviews(updatedReviews || []);
-    
-    // ===== SỬA: ẨN FORM SAU KHI SUBMIT =====
-    setSelectedRating(0);
-    setReviewComment("");
-    setEditingReviewId(null); // ← ĐẶT NULL để ẩn form
-    
-    if (onStatusUpdated) onStatusUpdated();
-  }
-  
-  setSubmittingReview(false);
-};
+    if (!user) {
+      showToast("Please sign in to submit a review", "error");
+      return;
+    }
+
+    if (selectedRating === 0) {
+      showToast("Please select a rating", "warning");
+      return;
+    }
+
+    setSubmittingReview(true);
+
+    try {
+      const { data, error } = await upsertReview({
+        placeId: place.id,
+        userId: user.id,
+        userName: user.email?.split("@")[0] || "User",
+        rating: selectedRating,
+        comment: reviewComment.trim(),
+      });
+
+      if (error) throw error;
+
+      const reviewId = data?.id || data?.[0]?.id;
+
+      if (reviewImageFiles.length > 0) {
+        if (!reviewId) {
+          throw new Error("Review ID not returned");
+        }
+
+        const uploadedRows = [];
+
+        for (let i = 0; i < reviewImageFiles.length; i++) {
+          const file = reviewImageFiles[i];
+
+          const fileExt = file.name.split(".").pop();
+          const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+          const filePath = `review/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("place-images")
+            .upload(filePath, file);
+
+          if (uploadError) throw uploadError;
+
+          const { data: publicData } = supabase.storage
+            .from("place-images")
+            .getPublicUrl(filePath);
+
+          uploadedRows.push({
+            review_id: reviewId,
+            url: publicData.publicUrl,
+            sort_order: i + 1,
+          });
+        }
+
+        const { error: imageInsertError } = await supabase
+          .from("review_images")
+          .insert(uploadedRows);
+
+        if (imageInsertError) throw imageInsertError;
+      }
+
+      showToast(editingReviewId ? "Review updated!" : "Review submitted!", "success");
+
+      const { data: updatedReviews } = await fetchReviewsByPlace(place.id);
+      setReviews(updatedReviews || []);
+
+      setSelectedRating(0);
+      setReviewComment("");
+      setEditingReviewId(null);
+      setReviewImageFiles([]);
+      setReviewImagePreviews([]);
+
+      if (onStatusUpdated) onStatusUpdated();
+    } catch (error) {
+      console.error("Submit review error:", error);
+      showToast(`Failed to submit review: ${error.message}`, "error");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const handleEditReview = (review) => {
     setSelectedRating(review.rating);
