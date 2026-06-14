@@ -394,7 +394,22 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       }
 
       showToast("Place updated successfully!", "success");
-      if (onStatusUpdated) onStatusUpdated();
+
+      // Pass updated place data back so the modal reflects changes immediately
+      const updatedPlace = {
+        ...place,
+        name: editData.name,
+        description: editData.description,
+        address: editData.address,
+        latitude: Number(editData.latitude),
+        longitude: Number(editData.longitude),
+        price_level: Number(editData.price_level),
+        business_status: editData.business_status,
+      };
+      if (onStatusUpdated) onStatusUpdated(updatedPlace);
+
+      // Return to view mode so user sees updated details immediately
+      setShowEditForm(false);
 
 
     } catch (error) {
