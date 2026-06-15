@@ -14,11 +14,12 @@ export default function MapPage() {
   const [categoryResults, setCategoryResults] = useState([]); 
   const [focusedLocation, setFocusedLocation] = useState(null);
   const [showRegisterForm, setShowRegisterForm] = useState(false);
-  const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); 
+  const [currentUserCoords, setCurrentUserCoords] = useState([106.694945, 10.769034]); // GPS thật
+  const [pinPointCoords, setPinPointCoords] = useState(null); // Pin coords (nếu có)
+  const [activeCoords, setActiveCoords] = useState([106.694945, 10.769034]); // Coords đang dùng (GPS hoặc Pin)
   const [forceOpenDirectionPlace, setForceOpenDirectionPlace] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null); 
 
-  // State cho filters
   const [activeFilters, setActiveFilters] = useState({
     priceLevels: [],
     ratings: []
@@ -26,7 +27,12 @@ export default function MapPage() {
 
   const API_KEY = "47c259f38d98bc1780380421e9735f2b0a";
 
-  // Hàm tính toán ma trận cự ly chuẩn thực tế từ API Track-Asia
+  // ===== THÊM: Function mở Register Form + đóng Place Detail =====
+  const handleOpenRegisterForm = () => {
+    setSelectedPlace(null); // Đóng Place Detail nếu đang mở
+    setShowRegisterForm(true); // Mở Register Form
+  };
+
   const sortPlacesByRealRoad = async (placesArray, userCoords) => {
     if (!placesArray || placesArray.length === 0) return [];
     try {
@@ -49,7 +55,6 @@ export default function MapPage() {
     return placesArray;
   };
 
-  // Helper function tính khoảng cách Haversine hình học
   const calculateDistance = (lat1, lng1, lat2, lng2) => {
     const R = 6371; 
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -67,9 +72,14 @@ export default function MapPage() {
   };
 
   const fetchPlacesFromSupabase = async (userCoords = currentUserCoords, currentCat = activeCategory, filters = activeFilters) => {
+    console.log("🔍 [MapPage] fetchPlacesFromSupabase called");
+    console.log("   📍 Coords:", userCoords);
+    console.log("   🏷️ Category:", currentCat);
+    console.log("   🔧 Filters:", filters);
+    
     try {
       let query = supabase.from("places").select("*");
-
+      
       if (currentCat) {
         query = query.eq("category", currentCat);
       }
@@ -81,6 +91,8 @@ export default function MapPage() {
       const { data, error } = await query;
       
       if (error) throw error;
+      
+      console.log("📦 [MapPage] Fetched", data?.length || 0, "places from Supabase");
       
       if (data) {
         const normalized = data.map(item => ({
@@ -109,48 +121,105 @@ export default function MapPage() {
           );
           return distance <= 5; 
         });
+        
+        console.log("📏 [MapPage] Filtered to", placesWithin5km.length, "places within 5km");
 
         const sorted = await sortPlacesByRealRoad(placesWithin5km, userCoords);
         
         let filtered = sorted;
         if (filters.ratings.length > 0) {
-          const minRating = Math.min(...filters.ratings);
-          filtered = sorted.filter(place => (place.rating || 0) >= minRating);
+          if (filters.ratings.length === 1) {
+            // Chọn 1 option → hiện places >= giá trị đó
+            // Ví dụ: chọn 3 → hiện 3, 3.5, 4, 4.3, 5
+            // Ví dụ: chọn 5 → hiện 5 only
+            const minRating = filters.ratings[0];
+            filtered = sorted.filter(place => (place.rating || 0) >= minRating);
+          } else {
+            // Chọn 2 options → range [MIN, MAX)
+            // Ngoại lệ: nếu MAX = 5 thì range [MIN, 5] (bao gồm 5)
+            const minRating = Math.min(...filters.ratings);
+            const maxRating = Math.max(...filters.ratings);
+            
+            if (maxRating === 5) {
+              // Chọn X + 5 → hiện places >= X VÀ <= 5
+              // Ví dụ: 3+5 → hiện 3, 3.5, 4, 4.3, 5
+              // Ví dụ: 4+5 → hiện 4, 4.3, 5
+              filtered = sorted.filter(place => (place.rating || 0) >= minRating);
+            } else {
+              // Chọn X + Y (Y < 5) → hiện places >= X VÀ < Y
+              // Ví dụ: 3+4 → hiện 3, 3.5 (KHÔNG hiện 4, 4.3, 5)
+              // Ví dụ: 1+3 → hiện 1, 1.5, 2, 2.5 (KHÔNG hiện 3, 4, 5)
+              filtered = sorted.filter(place => {
+                const rating = place.rating || 0;
+                return rating >= minRating && rating < maxRating;
+              });
+            }
+          }
         }
         
+        console.log("[MapPage] Setting allPlaces + categoryResults (", filtered.length, "places)");
         setAllPlaces(filtered);
         setCategoryResults(filtered);
       }
     } catch (err) { 
-      console.error("Fetch places error:", err); 
+      console.error("❌ [MapPage] Fetch places error:", err); 
     }
   };
 
   const handleFilterChange = (newFilters) => {
     setActiveFilters(newFilters);
-    fetchPlacesFromSupabase(currentUserCoords, activeCategory, newFilters);
+    fetchPlacesFromSupabase(activeCoords, activeCategory, newFilters);
   };
 
   const handleSelectCategory = (category) => {
     const nextCat = activeCategory === category ? null : category;
     setActiveCategory(nextCat);
     setFocusedLocation(null);
-    fetchPlacesFromSupabase(currentUserCoords, nextCat, activeFilters);
+    fetchPlacesFromSupabase(activeCoords, nextCat, activeFilters);
   };
 
   const handlePlaceRegistered = () => {
-    fetchPlacesFromSupabase(currentUserCoords, activeCategory, activeFilters);
+    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+  };
+
+  // Called after a place is edited — update the open modal immediately,
+  // then re-fetch so map markers stay in sync
+  const handlePlaceUpdated = (updatedPlace) => {
+    if (updatedPlace) {
+      setSelectedPlace(updatedPlace);
+    }
+    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+  };
+
+  const handlePinPointChange = (coords) => {
+    console.log("🔴 [MapPage] handlePinPointChange called with coords:", coords);
+    
+    setPinPointCoords(coords);
+    
+    if (coords) {
+      // ===== BẬT PIN MODE =====
+      console.log("✅ [MapPage] PIN MODE ON - Setting activeCoords to:", coords);
+      setActiveCoords(coords);
+      
+      console.log("📍 [MapPage] Fetching places from PIN location...");
+      fetchPlacesFromSupabase(coords, activeCategory, activeFilters);
+    } else {
+      // ===== TẮT PIN MODE =====
+      console.log("❌ [MapPage] PIN MODE OFF - Reverting to GPS coords:", currentUserCoords);
+      setActiveCoords(currentUserCoords);
+      
+      console.log("🧭 [MapPage] Fetching places from GPS location...");
+      fetchPlacesFromSupabase(currentUserCoords, activeCategory, activeFilters);
+    }
   };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden flex flex-col bg-white">
-      {/* Navbar nằm cố định phía trên */}
-      <Navbar user={user} onSignOut={logoutUser} onRegisterClick={() => setShowRegisterForm(true)} />
+      {/* ===== THAY ĐỔI: Truyền handleOpenRegisterForm thay vì setShowRegisterForm ===== */}
+      <Navbar user={user} onSignOut={logoutUser} onRegisterClick={handleOpenRegisterForm} />
       
-      {/* Vùng chứa Map và Sidebar bên dưới Navbar */}
       <div className="w-full flex-1 relative flex overflow-hidden z-10">
         
-        {/* THANH SIDEBAR TÌM KIẾM */}
         <MapSidebar 
           apiKey={API_KEY} 
           activeCategory={activeCategory} 
@@ -159,13 +228,12 @@ export default function MapPage() {
           setCategoryResults={setCategoryResults}
           setFocusedLocation={setFocusedLocation} 
           focusedLocation={focusedLocation} 
-          currentUserCoords={currentUserCoords}
+          currentUserCoords={activeCoords}
           onTriggerDirectionPanel={(place) => setForceOpenDirectionPlace(place)}
           onFilterChange={handleFilterChange} 
           onPlaceClick={setSelectedPlace} 
         />
         
-        {/* BẢN ĐỒ CHÍNH */}
         <MapContainer 
           apiKey={API_KEY} 
           activeCategory={activeCategory} 
@@ -175,15 +243,24 @@ export default function MapPage() {
           setFocusedLocation={setFocusedLocation} 
           setShowRegisterForm={setShowRegisterForm}
           onUserLocationDetected={(coords) => { 
-            setCurrentUserCoords(coords); 
-            fetchPlacesFromSupabase(coords, activeCategory, activeFilters); 
+            setCurrentUserCoords(coords); // Lưu GPS thật
+            
+            if (!pinPointCoords) { 
+              // Chưa có pin → dùng GPS thật
+              setActiveCoords(coords);
+              fetchPlacesFromSupabase(coords, activeCategory, activeFilters);
+            }
+            // Nếu đã có pin → KHÔNG load lại (giữ nguyên places từ pin)
           }}
           allPlaces={allPlaces} 
           sortPlacesByRealRoad={sortPlacesByRealRoad} 
-          currentUserCoords={currentUserCoords}
+          currentUserCoords={activeCoords}
           forceOpenDirectionPlace={forceOpenDirectionPlace} 
           setForceOpenDirectionPlace={setForceOpenDirectionPlace}
           onPlaceClick={setSelectedPlace}
+          showRegisterForm={showRegisterForm}           // ← THÊM
+          selectedPlace={selectedPlace}                 // ← THÊM
+          onPinPointChange={handlePinPointChange}       // ← THÊM
         />
       </div>
       
@@ -198,11 +275,12 @@ export default function MapPage() {
         />
       )}
 
+      {/* Place Detail Modal - Giờ đây nằm bên phải giống Register Form */}
       {selectedPlace && (
         <PlaceDetailModal
           place={selectedPlace}
           onClose={() => setSelectedPlace(null)}
-          onStatusUpdated={handlePlaceRegistered}
+          onStatusUpdated={handlePlaceUpdated}
           apiKey={API_KEY}
         />
       )}

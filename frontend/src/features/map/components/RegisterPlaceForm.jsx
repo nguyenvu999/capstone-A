@@ -35,6 +35,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   const [duplicatePlace, setDuplicatePlace] = useState(null); // Lưu place trùng nếu phát hiện
   const [showDuplicateModal, setShowDuplicateModal] = useState(false); // Hiển thị modal cảnh báo
   const suggestionRef = useRef(null);
+  const [imageFiles, setImageFiles] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
+  const MAX_IMAGE_COUNT = 3;
+  const MAX_IMAGE_SIZE_MB = 5;
+  const MAX_IMAGE_SIZE_BYTES =
+    MAX_IMAGE_SIZE_MB * 1024 * 1024;
   
   // THÊM: useToast hook
   const { showToast, ToastComponent } = useToast();
@@ -171,6 +177,61 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       return updated;
     });
   };
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files);
+
+    if (!files.length) return;
+
+    if (imageFiles.length + files.length > MAX_IMAGE_COUNT) {
+      showToast(
+        `Maximum ${MAX_IMAGE_COUNT} images allowed`,
+        "warning"
+      );
+
+      e.target.value = "";
+      return;
+    }
+
+    const validFiles = [];
+    const previews = [];
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        showToast("Only images are allowed", "warning");
+        continue;
+      }
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        showToast(
+          `Each image must be under ${MAX_IMAGE_SIZE_MB}MB`,
+          "warning"
+        );
+        continue;
+      }
+
+      validFiles.push(file);
+      previews.push(URL.createObjectURL(file));
+    }
+
+    setImageFiles((prev) => [...prev, ...validFiles]);
+    setImagePreviews((prev) => [...prev, ...previews]);
+
+    e.target.value = "";
+  };
+  
+
+ //Xử lý xoá ảnh 
+const handleRemoveImage = (index) => {
+  URL.revokeObjectURL(imagePreviews[index]);
+
+  setImageFiles((prev) =>
+    prev.filter((_, i) => i !== index)
+  );
+
+  setImagePreviews((prev) =>
+    prev.filter((_, i) => i !== index)
+  );
+}
 
   // Xử lý submit form
   const handleSubmit = async (e) => {
@@ -230,6 +291,44 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
 
+      //uplaod many images
+      const uploadedImageUrls = [];
+      for (const imageFile of imageFiles) {
+        const fileExt =
+          imageFile.name
+            .split(".")
+            .pop();
+
+        const fileName =
+          `${Date.now()}-${Math.random()}.${fileExt}`;
+
+        const filePath =
+          `places/${fileName}`;
+
+        const { error: uploadError } =
+          await supabase.storage
+            .from("place-images")
+            .upload(
+              filePath,
+              imageFile
+            );
+
+        if (uploadError)
+          throw uploadError;
+
+        const { data } =
+          supabase.storage
+            .from("place-images")
+            .getPublicUrl(
+              filePath
+            );
+
+        uploadedImageUrls.push(
+          data.publicUrl
+        );
+      }
+      
+          
       // Insert place vào Supabase
       const { data: insertedData, error } = await supabase
         .from("places")
@@ -252,8 +351,29 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         .select(); 
 
       if (error) throw error;
-      
+
       const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
+
+      // Save image URL into place_images table
+      // Because your database stores image separately from places table
+      if (uploadedImageUrls.length > 0 && savedPlace) {
+        const imageRows =
+          uploadedImageUrls.map(
+            (url, index) => ({
+              place_id: String(savedPlace.id),
+              url,
+              sort_order: index + 1,
+            })
+          );
+        const { error: imageInsertError } =
+          await supabase
+            .from("place_images")
+            .insert(imageRows);
+
+        if (imageInsertError)
+          throw imageInsertError;
+      }
+
       setAddressQuery(formData.name);
       
       // Cập nhật map với place vừa thêm
@@ -269,13 +389,16 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
       // THÊM: Success toast
       showToast("Place registered successfully!", "success");
+
+      // Refresh map markers immediately so new location appears without reload
+      if (onSuccess) onSuccess();
       
       // Đóng form sau 1.5 giây
       setTimeout(() => {
         if (onClose) onClose();
       }, 1500);
-
-    } catch (error) {
+    }
+      catch (error) {
       console.error("Insert error:", error.message);
       // THÊM: Error toast
       showToast(`Failed to register place: ${error.message}`, "error");
@@ -487,6 +610,59 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             </select>
           </div>
 
+          {/* Place Image */}
+          <div>
+            <label className="block font-medium text-gray-700 mb-1.5">
+              Place Image
+            </label>
+
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImageChange}
+              className="cursor-pointer
+              w-full
+              bg-gray-50
+              border
+              border-gray-200
+              rounded-xl
+              p-3
+              hover:border-blue-500
+              hover:bg-blue-50
+              transition"
+            />
+
+            <p className="text-xs text-gray-400 mt-1">
+            Max 3 images • Max 5MB each
+            </p>
+
+            {imagePreviews.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              {imagePreviews.map((preview, index) => (
+                <div
+                  key={index}
+                  className="relative"
+                >
+                  <img
+                    src={preview}
+                    className="w-full h-28 object-cover rounded-lg"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleRemoveImage(index)
+                    }
+                    className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
+                    aria-label="Remove image"
+                  >
+                    <X size={11} strokeWidth={3}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
           {/* Description */}
           <div>
             <label className="block font-medium text-gray-700 mb-1.5">Description</label>

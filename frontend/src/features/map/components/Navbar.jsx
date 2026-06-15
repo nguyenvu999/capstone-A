@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { LogOut, Map, Plus, Menu, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { LogOut, Map, Plus, Menu, X, BookMarked } from "lucide-react";
 
 export default function Navbar({ user, onSignOut, onRegisterClick }) {
+  const navigate = useNavigate();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -74,11 +76,19 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
               {/* Danh sách các link chuyển hướng */}
               <div className="py-1">
                 <button 
-                  onClick={() => setIsDropdownOpen(false)}
+                  onClick={() => { setIsDropdownOpen(false); navigate("/map"); }}
                   className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
                 >
                   <Map size={16} className="text-gray-400" />
                   <span>Map</span>
+                </button>
+                
+                <button
+                  onClick={() => { setIsDropdownOpen(false); navigate("/itineraries"); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                >
+                  <BookMarked size={16} className="text-gray-400" />
+                  <span>Itineraries</span>
                 </button>
                 
                 <div className="w-full text-left px-4 py-2.5 text-sm text-gray-300 flex items-center gap-2 select-none">
