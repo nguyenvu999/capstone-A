@@ -25,7 +25,25 @@ export default function MapPage() {
     ratings: []
   });
 
-  const API_KEY = "47c259f38d98bc1780380421e9735f2b0a";
+  const API_KEYS = [
+    "8193e665190bbc1781789003bbe9e009a8",
+    "77419a61591781935988168acf687f7dee",
+    "e0f1ad1781936067b59fec71b12732236d",
+    "11240f01781936110d1c8755abc1f409bf",
+    "1781936171b911e2359a65b021d8d9c089",
+    "f9fa81781936383165b107982082b1c25c",
+  ];
+  const [currentKeyIndex, setCurrentKeyIndex] = useState(0);
+  const API_KEY = API_KEYS[currentKeyIndex]; // Lấy key hiện tại dựa trên Index
+
+  // Hàm bổ trợ để chủ động chuyển sang Key tiếp theo trong mảng
+  const rotateApiKey = () => {
+    setCurrentKeyIndex((prevIndex) => {
+      const nextIndex = (prevIndex + 1) % API_KEYS.length;
+      console.warn(`🔄 [API Key] Key thứ ${prevIndex} gặp sự cố. Tự động chuyển sang key thứ ${nextIndex}: ${API_KEYS[nextIndex]}`);
+      return nextIndex;
+    });
+  };
 
   // ===== THÊM: Function mở Register Form + đóng Place Detail =====
   const handleOpenRegisterForm = () => {
@@ -272,6 +290,7 @@ export default function MapPage() {
           onClose={() => setShowRegisterForm(false)} 
           allPlaces={allPlaces} 
           onSuccess={handlePlaceRegistered}
+          currentUserCoords={currentUserCoords}
         />
       )}
 

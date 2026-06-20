@@ -15,7 +15,8 @@ const CATEGORIES = [
   { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" }
 ];
 
-export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose, allPlaces = [], onSuccess }) {
+// THÊM: prop currentUserCoords nhận từ MapPage truyền xuống
+export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose, allPlaces = [], onSuccess, currentUserCoords }) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -45,8 +46,49 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   // THÊM: useToast hook
   const { showToast, ToastComponent } = useToast();
 
-  // Nhận trực tiếp chuỗi địa chỉ từ Map Geocode
-  // Khi user click vào map → focusedLocation thay đổi → autofill form
+  // THÊM LOGIC: Hàm bổ trợ thực hiện Geocode ngược từ tọa độ của user thành tên địa chỉ
+  const fetchUserCurrentAddress = (lng, lat) => {
+    fetch(`https://maps.track-asia.com/api/v2/geocode/json?result_type=street_address&latlng=${lat},${lng}&key=${apiKey}&size=1`)
+      .then((res) => res.json())
+      .then((data) => {
+        let detectedAddress = `Coordinates: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+        let detectedCity = "";
+
+        if (data.status === "OK" && data.results && data.results.length > 0) {
+          const topPlace = data.results[0];
+          detectedAddress = topPlace.formatted_address || topPlace.name || detectedAddress;
+
+          if (topPlace.address_components) {
+            const cityComp = topPlace.address_components.find(comp => 
+              comp.types.includes("administrative_area_level_1") || comp.types.includes("province")
+            );
+            if (cityComp) detectedCity = cityComp.long_name;
+          }
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          address: detectedAddress,
+          city: detectedCity || prev.city,
+          latitude: lat,
+          longitude: lng,
+        }));
+        setAddressQuery(detectedAddress);
+      })
+      .catch((err) => {
+        console.error("Geocoding current user location error:", err);
+        const fallbackAddress = `Coordinates: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+        setFormData((prev) => ({
+          ...prev,
+          address: fallbackAddress,
+          latitude: lat,
+          longitude: lng,
+        }));
+        setAddressQuery(fallbackAddress);
+      });
+  };
+
+  // CẬP NHẬT LOGIC: Xử lý autofill đồng bộ theo focusedLocation hoặc currentUserCoords
   useEffect(() => {
     if (focusedLocation) {
       setFormData((prev) => ({
@@ -62,8 +104,12 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       if (focusedLocation.address) {
         setAddressQuery(focusedLocation.address);
       }
+    } else if (currentUserCoords && currentUserCoords.length === 2) {
+      // Khi user bỏ chọn vị trí trên map (focusedLocation === null) -> Tự động quay về vị trí hiện tại của user
+      const [lng, lat] = currentUserCoords;
+      fetchUserCurrentAddress(lng, lat);
     }
-  }, [focusedLocation]);
+  }, [focusedLocation, currentUserCoords]);
 
   // Track-Asia Autocomplete logic
   // Gợi ý địa chỉ khi user gõ vào search box
@@ -177,6 +223,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       return updated;
     });
   };
+
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
 
@@ -219,19 +266,18 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     e.target.value = "";
   };
   
+  // Xử lý xoá ảnh 
+  const handleRemoveImage = (index) => {
+    URL.revokeObjectURL(imagePreviews[index]);
 
- //Xử lý xoá ảnh 
-const handleRemoveImage = (index) => {
-  URL.revokeObjectURL(imagePreviews[index]);
+    setImageFiles((prev) =>
+      prev.filter((_, i) => i !== index)
+    );
 
-  setImageFiles((prev) =>
-    prev.filter((_, i) => i !== index)
-  );
-
-  setImagePreviews((prev) =>
-    prev.filter((_, i) => i !== index)
-  );
-}
+    setImagePreviews((prev) =>
+      prev.filter((_, i) => i !== index)
+    );
+  };
 
   // Xử lý submit form
   const handleSubmit = async (e) => {
@@ -291,7 +337,7 @@ const handleRemoveImage = (index) => {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError) console.warn("Auth context warning:", authError.message);
 
-      //uplaod many images
+      // upload many images
       const uploadedImageUrls = [];
       for (const imageFile of imageFiles) {
         const fileExt =
@@ -328,7 +374,6 @@ const handleRemoveImage = (index) => {
         );
       }
       
-          
       // Insert place vào Supabase
       const { data: insertedData, error } = await supabase
         .from("places")
@@ -355,7 +400,6 @@ const handleRemoveImage = (index) => {
       const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
 
       // Save image URL into place_images table
-      // Because your database stores image separately from places table
       if (uploadedImageUrls.length > 0 && savedPlace) {
         const imageRows =
           uploadedImageUrls.map(
@@ -398,7 +442,7 @@ const handleRemoveImage = (index) => {
         if (onClose) onClose();
       }, 1500);
     }
-      catch (error) {
+    catch (error) {
       console.error("Insert error:", error.message);
       // THÊM: Error toast
       showToast(`Failed to register place: ${error.message}`, "error");
@@ -488,7 +532,6 @@ const handleRemoveImage = (index) => {
                         : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
                     }`}
                   >
-                    {/* Hiển thị icon hoặc emoji tùy theo category */}
                     <div 
                       className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white"
                       style={{ backgroundColor: cat.bgColor }}
@@ -621,48 +664,32 @@ const handleRemoveImage = (index) => {
               accept="image/*"
               multiple
               onChange={handleImageChange}
-              className="cursor-pointer
-              w-full
-              bg-gray-50
-              border
-              border-gray-200
-              rounded-xl
-              p-3
-              hover:border-blue-500
-              hover:bg-blue-50
-              transition"
+              className="cursor-pointer w-full bg-gray-50 border border-gray-200 rounded-xl p-3 hover:border-blue-500 hover:bg-blue-50 transition"
             />
 
             <p className="text-xs text-gray-400 mt-1">
-            Max 3 images • Max 5MB each
+              Max 3 images • Max 5MB each
             </p>
 
             {imagePreviews.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 mt-3">
-              {imagePreviews.map((preview, index) => (
-                <div
-                  key={index}
-                  className="relative"
-                >
-                  <img
-                    src={preview}
-                    className="w-full h-28 object-cover rounded-lg"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleRemoveImage(index)
-                    }
-                    className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
-                    aria-label="Remove image"
-                  >
-                    <X size={11} strokeWidth={3}/>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                {imagePreviews.map((preview, index) => (
+                  <div key={index} className="relative">
+                    <img src={preview} className="w-full h-28 object-cover rounded-lg" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(index)}
+                      className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
+                      aria-label="Remove image"
+                    >
+                      <X size={11} strokeWidth={3}/>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
           {/* Description */}
           <div>
             <label className="block font-medium text-gray-700 mb-1.5">Description</label>
