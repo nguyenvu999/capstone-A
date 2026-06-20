@@ -91,13 +91,17 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
                   <span>Itineraries</span>
                 </button>
                 
-                <div className="w-full text-left px-4 py-2.5 text-sm text-gray-300 flex items-center gap-2 select-none">
-                  <Plus size={16} className="text-gray-200" />
-                  <span className="flex items-center gap-1 flex-wrap">
-                    My Places 
-                    <span className="text-[10px] text-gray-400 font-normal italic">(coming soon)</span>
-                  </span>
-                </div>
+                <button
+                  onClick={() => { 
+                    setIsDropdownOpen(false); 
+                    // Force navigate với timestamp để trigger re-render
+                    navigate(`/map?view=myplaces&t=${Date.now()}`); 
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                >
+                  <Plus size={16} className="text-gray-400" />
+                  <span>My Places</span>
+                </button>
               </div>
 
               <div className="border-t border-gray-100 my-1"></div>
