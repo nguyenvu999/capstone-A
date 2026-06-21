@@ -339,7 +339,11 @@ export default function MapPage() {
           currentUserCoords={activeCoords}
           onTriggerDirectionPanel={(place) => setForceOpenDirectionPlace(place)}
           onFilterChange={handleFilterChange} 
-          onPlaceClick={setSelectedPlace} 
+          onPlaceClick={(place) => {
+            setShowRegisterForm(false);
+            setShowMyPlaces(false);
+            setSelectedPlace(place);
+          }}
         />
         
         <MapContainer 
@@ -349,7 +353,14 @@ export default function MapPage() {
           categoryResults={categoryResults.filter(place => place.isSupabaseData === true)} 
           onCategoryResultsChange={setCategoryResults}
           setFocusedLocation={setFocusedLocation} 
-          setShowRegisterForm={setShowRegisterForm}
+          setShowRegisterForm={(value) => {
+            if (value) {
+              setSelectedPlace(null);
+              setShowMyPlaces(false);
+            }
+
+            setShowRegisterForm(value);
+          }}
           onUserLocationDetected={(coords) => { 
             setCurrentUserCoords(coords); // Lưu GPS thật
             
