@@ -188,21 +188,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   // Xử lý khi user thay đổi input trong form
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => {
-      const updated = { ...prev, [name]: value };
-      
-      // Nếu đổi tên place → cập nhật marker trên map
-      if ((name === "name") && prev.latitude && prev.longitude) {
-        setFocusedLocation({
-          lat: Number(prev.latitude),
-          lng: Number(prev.longitude),
-          name: value,
-          address: prev.address,
-          category: prev.category,
-        });
-      }
-      return updated;
-    });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   // Xử lý khi user chọn category
@@ -419,28 +405,29 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       }
 
       setAddressQuery(formData.name);
+
       
       // Cập nhật map với place vừa thêm
-      setFocusedLocation({
-        id: savedPlace ? savedPlace.id : Date.now(),
+      const newPlace = {
+      id: savedPlace ? savedPlace.id : Date.now(),
         lat: Number(formData.latitude),
         lng: Number(formData.longitude),
         name: formData.name,
         address: formData.address,
         category: formData.category,
-        isConfirmed: true
-      });
+        isConfirmed: true,
+        created_by: user ? user.id : null,
+        created_by_email: user ? user.email : null
+      };
+
+      setFocusedLocation({newPlace});
 
       // THÊM: Success toast
       showToast("Place registered successfully!", "success");
 
       // Refresh map markers immediately so new location appears without reload
-      if (onSuccess) onSuccess();
+      if (onSuccess){ onSuccess(newPlace)};
       
-      // Đóng form sau 1.5 giây
-      setTimeout(() => {
-        if (onClose) onClose();
-      }, 1500);
     }
     catch (error) {
       console.error("Insert error:", error.message);

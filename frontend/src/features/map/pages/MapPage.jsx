@@ -215,17 +215,37 @@ export default function MapPage() {
     fetchPlacesFromSupabase(activeCoords, nextCat, activeFilters);
   };
 
-  const handlePlaceRegistered = () => {
-    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+  //After register a place successfully it will navigate to the place detail 
+  const handlePlaceRegistered = async (newPlace) => {
+  await fetchPlacesFromSupabase();
+
+  setSelectedPlace(newPlace);
+  setShowRegisterForm(false);
   };
 
   // Called after a place is edited — update the open modal immediately,
   // then re-fetch so map markers stay in sync
   const handlePlaceUpdated = (updatedPlace) => {
-    if (updatedPlace) {
-      setSelectedPlace(updatedPlace);
-    }
-    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+      if (updatedPlace) {
+        setSelectedPlace(updatedPlace);
+        
+        // ✅ FIX: Cập nhật focusedLocation để popup update real-time
+        setFocusedLocation(prev => {
+          // Chỉ update nếu đang focus vào place này
+          if (prev && 
+              Math.abs(Number(prev.lat) - Number(updatedPlace.latitude)) < 0.0001 &&
+              Math.abs(Number(prev.lng) - Number(updatedPlace.longitude)) < 0.0001) {
+            return {
+              ...prev,
+              name: updatedPlace.name,
+              address: updatedPlace.address,
+              rating: updatedPlace.rating || 0,
+            };
+          }
+          return prev;
+        });
+      }
+      fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
   };
 
   const handleMyPlaceClick = (place) => {
