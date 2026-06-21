@@ -258,9 +258,17 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   };
 
   const handleRemoveEditImage = async (image) => {
+    // Remove from edit UI immediately
     setEditImages((prev) =>
       prev.filter((img) => img.url !== image.url)
     );
+
+    // Remove from view mode images immediately
+    setPlaceImages((prev) =>
+      prev.filter((img) => img.url !== image.url)
+    );
+
+    // If image is newly selected but not uploaded yet
     if (image.isNew) {
       URL.revokeObjectURL(image.url);
       return;
@@ -271,10 +279,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       .delete()
       .eq("url", image.url)
       .eq("place_id", String(place.id));
+
     if (error) {
       showToast(`Failed to remove image: ${error.message}`, "error");
       return;
     }
+
     showToast("Image removed", "success");
   };
 
@@ -413,11 +423,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           });
         }
 
-        const { error: imageInsertError } = await supabase
+        const { data: insertedImages, error: imageInsertError } = await supabase
           .from("place_images")
-          .insert(uploadedRows);
+          .insert(uploadedRows)
+          .select("id, url, sort_order");
 
         if (imageInsertError) throw imageInsertError;
+
+        setPlaceImages((prev) => [...prev, ...(insertedImages || [])]);
+
+        setEditImages((prev) => [
+          ...prev.filter((img) => !img.isNew),
+          ...(insertedImages || []),
+        ]);
       }
 
       showToast("Place updated successfully!", "success");
