@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Plus, MapPin, Tag, Globe, Share2, Pencil, Trash2, Lock, Loader2 } from "lucide-react";
 import Navbar from "../../map/components/Navbar";
 import { useAuth } from "../../auth/context/AuthContext";
@@ -128,6 +128,7 @@ function ItineraryCard({ itinerary, onDelete }) {
 export default function ItinerariesPage() {
   const { user, logoutUser } = useAuth();
   const { showToast, ToastComponent } = useToast();
+  const navigate = useNavigate();
 
   const [itineraries, setItineraries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -136,7 +137,7 @@ export default function ItinerariesPage() {
   const [newDescription, setNewDescription] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // ── Fetch itineraries + their places from Supabase ─────────────────────────
+  //  Fetch itineraries + their places from Supabase 
   const fetchItineraries = async () => {
     setLoading(true);
     try {
@@ -176,23 +177,27 @@ export default function ItinerariesPage() {
     if (user) fetchItineraries();
   }, [user]);
 
-  // ── Create new itinerary ────────────────────────────────────────────────────
+  //  Create new itinerary 
   const handleCreate = async () => {
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const { error } = await supabase.from("itineraries").insert({
-        name: newName.trim(),
-        description: newDescription.trim() || null,
-        created_by: user.id,
-        is_public: false,
-      });
+      const { data, error } = await supabase
+        .from("itineraries")
+        .insert({
+          name: newName.trim(),
+          description: newDescription.trim() || null,
+          created_by: user.id,
+          is_public: false,
+        })
+        .select()
+        .single();
       if (error) throw error;
       showToast("Itinerary created!", "success");
       setNewName("");
       setNewDescription("");
       setShowNewModal(false);
-      fetchItineraries();
+      navigate(`/itineraries/${data.id}`);
     } catch (err) {
       console.error("Create itinerary error:", err);
       showToast("Failed to create itinerary", "error");
@@ -201,7 +206,7 @@ export default function ItinerariesPage() {
     }
   };
 
-  // ── Delete itinerary ────────────────────────────────────────────────────────
+  //  Delete itinerary 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this itinerary?")) return;
     try {
