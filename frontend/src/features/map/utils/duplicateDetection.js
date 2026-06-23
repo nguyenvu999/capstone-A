@@ -76,6 +76,11 @@ export async function checkDuplicatePlace(newPlace, existingPlaces) {
   const EXACT_COORDS_PRECISION = 0.00001; // ~1 mét
 
   for (const existing of existingPlaces) {
+    // ✅ BỎ QUA BUILDING PLACES (sẽ được xử lý bởi checkAddressForBuilding)
+    if (existing.place_type === "building") {
+      continue;
+    }
+
     // Tính độ tương đồng tên
     const nameSimilarity = stringSimilarity(newPlace.name, existing.name);
     
@@ -131,4 +136,36 @@ export async function checkDuplicatePlace(newPlace, existingPlaces) {
   }
 
   return null; // Không tìm thấy duplicate
+}
+
+// ===== BUILDING FEATURE: CHECK IF ADDRESS HAS BUILDING =====
+export async function checkAddressForBuilding(newPlace, existingPlaces) {
+  for (const existing of existingPlaces) {
+    // Kiểm tra nếu place này là building
+    if (existing.place_type !== "building") continue;
+    
+    // Tính độ tương đồng địa chỉ
+    const addressSimilarity = stringSimilarity(newPlace.address, existing.building_address || existing.address);
+    
+    // Tính khoảng cách GPS
+    const distance = calculateDistance(
+      Number(newPlace.latitude),
+      Number(newPlace.longitude),
+      Number(existing.latitude),
+      Number(existing.longitude)
+    );
+
+    // Nếu cùng địa chỉ + gần nhau → đây là building
+    if (addressSimilarity >= 0.7 && distance <= 0.05) {
+      return {
+        ...existing,
+        distance,
+        isBuilding: true,
+        building_name: existing.building_name,
+        building_address: existing.building_address || existing.address
+      };
+    }
+  }
+
+  return null; // Không tìm thấy building
 }

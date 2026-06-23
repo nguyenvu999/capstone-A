@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import trackasiagl from "trackasia-gl";
 import { Navigation, MapPin, X } from "lucide-react"; 
 import "trackasia-gl/dist/trackasia-gl.css";
+import BuildingDetailPanel from "./BuildingDetailPanel";
 
 export default function MapContainer({ 
   apiKey, 
@@ -25,6 +26,10 @@ export default function MapContainer({
   const userLocationMarkerRef = useRef(null);  
   const userCoordsRef = useRef([106.694945, 10.769034]);
   const isSwitchingLocationRef = useRef(false);
+
+  // BUILDING DETAIL STATE 
+  const [showBuildingDetail, setShowBuildingDetail] = useState(false);
+  const [selectedBuildingAddress, setSelectedBuildingAddress] = useState(null);
   
   // PIN POINT STATE
   const [isPinPointMode, setIsPinPointMode] = useState(false);
@@ -447,16 +452,131 @@ export default function MapContainer({
     }
   }, [activeCategory, allPlaces, pinPointLocation]);
 
-  // 3. Render Markers Loop (Giữ nguyên)
+  // 3. Render Markers Loop - WITH BUILDING GROUPING
   useEffect(() => {
     if (!mapRef.current) return;
     
+    // Clear existing markers
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
     
     if (!categoryResults || categoryResults.length === 0) return;
 
+    // ===== STEP 1: GROUP PLACES BY BUILDING ADDRESS =====
+    const buildingGroups = {};
+    const standalonePlaces = [];
+
     categoryResults.forEach(place => {
+      if (place.place_type === "building" && place.building_address) {
+        // Group by building_address
+        if (!buildingGroups[place.building_address]) {
+          buildingGroups[place.building_address] = [];
+        }
+        buildingGroups[place.building_address].push(place);
+      } else {
+        // Standalone place
+        standalonePlaces.push(place);
+      }
+    });
+
+    // ===== STEP 2: RENDER BUILDING MARKERS =====
+    Object.entries(buildingGroups).forEach(([buildingAddress, places]) => {
+      // Use first place's coordinates for building marker
+      const firstPlace = places[0];
+      const lat = Number(firstPlace.latitude);
+      const lng = Number(firstPlace.longitude);
+      
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+      // Create building marker
+      const el = document.createElement("div");
+      el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer group z-20 bg-gray-700";
+      el.innerHTML = `<span class="text-xl">🏢</span>`;
+
+      // Hover popup (chỉ hiện tên building)
+      const hoverPopup = new trackasiagl.Popup({ 
+        offset: [0, -20], 
+        closeButton: false, 
+        closeOnClick: false 
+      }).setHTML(`
+        <div class="p-1.5 max-w-xs text-slate-800">
+          <div class="font-bold text-xs line-clamp-1">${firstPlace.building_name || "Building"}</div>
+        </div>
+      `);
+
+      el.addEventListener("mouseenter", () => hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current));
+      el.addEventListener("mouseleave", () => hoverPopup.remove());
+
+      // Click → Show popup with "See Details" button
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hoverPopup.remove();
+        
+        // Create focused popup for building
+        const buildingPopup = new trackasiagl.Popup({
+          offset: [0, -32],
+          closeButton: true,
+          closeOnClick: false,
+          className: "focused-place-popup"
+        }).setHTML(`
+          <div class="p-2">
+            <div class="font-bold text-sm mb-1">${firstPlace.building_name || "Building"}</div>
+            <div class="text-xs text-gray-600 mb-1">${places.length} place${places.length > 1 ? 's' : ''} inside</div>
+            <div class="text-xs text-gray-600 mb-2">${buildingAddress}</div>
+            <button 
+              class="see-building-details-btn w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              See Details
+            </button>
+          </div>
+        `);
+
+        // Add marker at building location
+        if (focusMarkerRef.current) {
+          focusMarkerRef.current.remove();
+        }
+
+        const pin = document.createElement("div");
+        pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
+        pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
+
+        focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
+          .setLngLat([lng, lat])
+          .setPopup(buildingPopup)
+          .addTo(mapRef.current)
+          .togglePopup();
+
+        // Attach click handler to "See Details" button
+        setTimeout(() => {
+          const btn = document.querySelector('.see-building-details-btn');
+          if (btn) {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              console.log("🏢 [MapContainer] Building See Details clicked");
+              
+              // Remove popup and marker
+              if (focusMarkerRef.current) {
+                focusMarkerRef.current.remove();
+                focusMarkerRef.current = null;
+              }
+              
+              // Open Building Detail Panel
+              setSelectedBuildingAddress(buildingAddress);
+              setShowBuildingDetail(true);
+            });
+          }
+        }, 100);
+      });
+
+      const m = new trackasiagl.Marker({ element: el, anchor: "center" })
+        .setLngLat([lng, lat])
+        .addTo(mapRef.current);
+      
+      markersRef.current.push(m);
+    });
+
+    // ===== STEP 3: RENDER STANDALONE MARKERS (GIỮ NGUYÊN LOGIC CŨ) =====
+    standalonePlaces.forEach(place => {
       const lat = Number(place.latitude);
       const lng = Number(place.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
@@ -464,22 +584,22 @@ export default function MapContainer({
       const el = document.createElement("div");
       el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer group z-20";
       
-      const isSupabase = place.id !== undefined; 
+      const isSupabase = place.id !== undefined;
       const category = (place.category || "").toLowerCase();
-      const types = place.types || []; 
+      const types = place.types || [];
 
-      let markerConfig = { bgColor: "#3b82f6", iconHtml: `🏢` }; 
+      let markerConfig = { bgColor: "#3b82f6", iconHtml: `🏢` };
 
       if (category === "restaurant" || types.includes("restaurant") || types.includes("food")) {
         markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "bar" || types.includes("bar") || types.includes("night_club")) {
         markerConfig = { bgColor: "#a855f7", iconHtml: `<span class="text-xl">🍷</span>` };
       } else if (category === "beverage" || types.includes("cafe") || types.includes("coffee_shop")) {
-        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<span class="text-xl">☕</span>` }; 
+        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<span class="text-xl">☕</span>` };
       } else if (category === "sight" || types.includes("tourist_attraction") || types.includes("point_of_interest")) {
         markerConfig = { bgColor: "#3b82f6", iconHtml: `<span class="text-xl">👁️</span>` };
       } else if (category === "entertainment" || types.includes("amusement_park") || types.includes("casino") || types.includes("movie_theater")) {
-        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
+        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "team_event") {
         markerConfig = { bgColor: "#10b981", iconHtml: `<span class="text-xl">👥</span>` };
       }
@@ -500,14 +620,18 @@ export default function MapContainer({
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
-        hoverPopup.remove(); 
+        hoverPopup.remove();
         setFocusedLocation({
           lat: lat,
           lng: lng,
           name: place.name,
           address: place.address || place.formatted_address || place.vicinity,
-          rating: place.rating || 0, 
-          isNewCustomPoint: false
+          rating: place.rating || 0,
+          isNewCustomPoint: false,
+          // ✅ THÊM: Building info
+          place_type: place.place_type,
+          building_name: place.building_name,
+          floor_level: place.floor_level,
         });
       });
 
@@ -576,16 +700,25 @@ if (focusMarkerRef.current) {
     pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
     pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
     
+    // ✅ Format popup title + address cho place thuộc building
+    const displayName =
+      focusedLocation.place_type === "building" && focusedLocation.building_name
+        ? `${name} · Level ${focusedLocation.floor_level}, ${focusedLocation.building_name}`
+        : (name || "Selected Location");
+
+    // ✅ Dòng địa chỉ chỉ giữ địa chỉ gốc, KHÔNG lặp lại level/building
+    const displayAddress = address || "";
+
     const popupHTML = `
       <div class="p-2">
-        <div class="font-bold text-sm mb-1">${name || "Selected Location"}</div>
+        <div class="font-bold text-sm mb-1">${displayName}</div>
         ${rating ? `
           <div class="flex items-center gap-1 mb-1">
             <span class="text-yellow-500 text-sm">${renderStars(rating)}</span>
             <span class="text-xs text-gray-600">${Number(rating).toFixed(1)}</span>
           </div>
         ` : ''}
-        <div class="text-xs text-gray-600 mb-2">${address || ""}</div>
+        <div class="text-xs text-gray-600 mb-2">${displayAddress}</div>
         ${!focusedLocation.isNewCustomPoint ? `
           <button 
             class="see-details-btn w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
@@ -825,6 +958,26 @@ if (focusMarkerRef.current) {
           </div>
         </div>
       </div>
+      {/* ===== BUILDING DETAIL PANEL ===== */}
+      {showBuildingDetail && selectedBuildingAddress && (
+        <BuildingDetailPanel
+          buildingAddress={selectedBuildingAddress}
+          onClose={() => {
+            setShowBuildingDetail(false);
+            setSelectedBuildingAddress(null);
+          }}
+          onAddPlace={() => {
+            console.log("🏢 Add more place to building:", selectedBuildingAddress);
+            setShowBuildingDetail(false);
+            if (setShowRegisterForm) setShowRegisterForm(true);
+          }}
+          onPlaceClick={(place) => {
+            console.log("📍 Place clicked in building:", place.name);
+            setShowBuildingDetail(false);
+            if (onPlaceClick) onPlaceClick(place);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -220,14 +220,24 @@ export default function MapSidebar({
         created_by_email: dbItem.created_by_email,
         description: dbItem.description,
         isSupabaseData: true,
-        distanceText: `${distance.toFixed(1)} km`  
+        distanceText: `${distance.toFixed(1)} km`,
+
+        // ✅ THÊM building fields
+        place_type: dbItem.place_type || "standalone",
+        building_name: dbItem.building_name || null,
+        floor_level: dbItem.floor_level || null,
+        building_address: dbItem.building_address || null,
       };
       setFocusedLocation({
         lat: normalizedPlace.latitude,
         lng: normalizedPlace.longitude,
         name: normalizedPlace.name,
         address: normalizedPlace.address,
-        isNewCustomPoint: false  
+        isNewCustomPoint: false,
+        place_type: normalizedPlace.place_type,
+        building_name: normalizedPlace.building_name,
+        floor_level: normalizedPlace.floor_level,
+        rating: normalizedPlace.rating || 0
       });
       setCategoryResults(prev => {        
         const existingIds = prev.map(p => p.id);
@@ -348,6 +358,13 @@ export default function MapSidebar({
     stars += "☆".repeat(emptyStarsNeeded);
 
     return stars;
+  };
+
+  const formatPlaceAddress = (place) => {
+    if (place.place_type === "building" && place.building_name) {
+      return `Level ${place.floor_level}, ${place.building_name}, ${place.address}`;
+    }
+    return place.address || place.formatted_address || place.vicinity || "";
   };
 
   return (
@@ -682,12 +699,23 @@ export default function MapSidebar({
                     key={place.id || place.place_id || index} 
                     onClick={() => {
                       if (lat && lng) {
-                        setFocusedLocation({ lat, lng, name: place.name, address: addressText });
+                        setFocusedLocation({
+                          lat,
+                          lng,
+                          name: place.name,
+                          address: place.address || place.formatted_address || place.vicinity,
+                          place_type: place.place_type || null,
+                          building_name: place.building_name || null,
+                          floor_level: place.floor_level || null,
+                          rating: place.rating || 0,
+                          isNewCustomPoint: false
+                        });
+
                         if (onTriggerDirectionPanel) onTriggerDirectionPanel(place);
                         setIsMobileExpanded(false);
                         if (onPlaceClick) onPlaceClick(place);
                       }
-                    }} 
+                    }}
                     className="flex items-start justify-between p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-50 transition-all duration-150 active:bg-gray-100"
                   >
                     <div className="flex items-start gap-3 overflow-hidden max-w-[78%]">
@@ -707,7 +735,7 @@ export default function MapSidebar({
                             <span className="text-gray-600">{Number(place.rating).toFixed(1)}</span>
                           </p>
                         )}
-                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">{addressText}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">{formatPlaceAddress(place)}</p>
                       </div>
                     </div>
 

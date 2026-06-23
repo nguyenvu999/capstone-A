@@ -861,7 +861,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             {/* Location */}
             <div className="py-4">
               <h2 className="text-lg font-bold text-gray-900 mb-3">Location</h2>
-              <p className="text-gray-600 mb-3">{place.address}</p>
+              
+              {/* ✅ Hiển thị building info nếu có */}
+              {place.place_type === "building" && place.building_name ? (
+                <>
+                  <p className="text-sm font-semibold text-gray-900 mb-1">
+                    Level {place.floor_level}, {place.building_name}
+                  </p>
+                  <p className="text-sm text-gray-600 mb-3">{place.address}</p>
+                </>
+              ) : (
+                <p className="text-gray-600 mb-3">{place.address}</p>
+              )}
+              
               <button 
                 onClick={handleCopyAddress}
                 className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1.5"

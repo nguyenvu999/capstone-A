@@ -145,7 +145,13 @@ export default function MapPage() {
           created_by: item.created_by, 
           created_by_email: item.created_by_email, 
           description: item.description,
-          isSupabaseData: true 
+          isSupabaseData: true,
+          
+          // ✅ THÊM: Building fields (với default values an toàn)
+          place_type: item.place_type || "standalone",
+          building_name: item.building_name || null,
+          floor_level: item.floor_level ? Number(item.floor_level) : null,
+          building_address: item.building_address || null,
         }));
 
         const [userLng, userLat] = userCoords;
