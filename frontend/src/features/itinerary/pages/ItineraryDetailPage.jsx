@@ -33,6 +33,21 @@ const CATEGORY_IMAGES = {
 
 const PRICE_LABEL = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
 const MARKER_COLORS = ["#F97316", "#8B5CF6", "#3B82F6", "#10B981", "#EC4899", "#6366F1"];
+const TRACKASIA_API_KEY = "1261782203853972b1f08c54c5fc30a6e2";
+const DEFAULT_COORDS = [106.694945, 10.769034]; // [lng, lat] fallback (HCMC)
+
+// Haversine distance in km between two [lng, lat] points
+function distanceKm(lng1, lat1, lng2, lat2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 function getCatConfig(cat) {
   return CATEGORY_CONFIG[cat?.toLowerCase()] || { label: cat, color: "#6B7280" };
@@ -73,6 +88,10 @@ export default function ItineraryDetailPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [userCoords, setUserCoords] = useState(DEFAULT_COORDS); // [lng, lat]
+  const [nearbyPlaces, setNearbyPlaces] = useState([]);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [addingPlaceId, setAddingPlaceId] = useState(null);
 
   // ── Fetch itinerary + places ────────────────────────────────────────────────
   const fetchItinerary = async () => {
@@ -110,37 +129,210 @@ export default function ItineraryDetailPage() {
 
   useEffect(() => { fetchItinerary(); }, [id]);
 
-  // ── Search places from Supabase ─────────────────────────────────────────────
+  // ── Get user's current location for "nearby" calculations ──────────────────
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => setUserCoords([coords.longitude, coords.latitude]),
+        () => {}, // keep default fallback on error/denial
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, []);
+
+  // ── Search places: combine saved Supabase places + Track-Asia (any place) ──
   useEffect(() => {
     if (searchQuery.trim().length < 2) { setSearchResults([]); return; }
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const { data, error } = await supabase
-          .from("places")
-          .select("*")
-          .ilike("name", `%${searchQuery.trim()}%`)
-          .limit(10);
-        if (error) throw error;
-        // Filter out places already in the itinerary
         const existingIds = new Set(places.map((p) => String(p.id)));
-        setSearchResults((data || []).filter((p) => !existingIds.has(String(p.id))));
-      } catch (err) {
-        console.error("Search error:", err);
+        const [lng, lat] = userCoords;
+
+        // 1. Saved places already in our DB
+        let savedResults = [];
+        try {
+          const { data, error } = await supabase
+            .from("places")
+            .select("*")
+            .ilike("name", `%${searchQuery.trim()}%`)
+            .limit(10);
+          if (error) throw error;
+          savedResults = (data || [])
+            .filter((p) => !existingIds.has(String(p.id)))
+            .map((p) => ({
+              ...p,
+              isSaved: true,
+              distanceKm: distanceKm(lng, lat, Number(p.longitude), Number(p.latitude)),
+            }));
+        } catch (err) {
+          console.error("Saved places search error:", err);
+        }
+
+        // 2. Track-Asia — search for ANY place, not limited to 5km
+        let trackAsiaResults = [];
+        try {
+          const res = await fetch(
+            `https://maps.track-asia.com/api/v2/place/autocomplete/json?input=${encodeURIComponent(searchQuery.trim())}&location=${lat},${lng}&key=${TRACKASIA_API_KEY}`
+          );
+          const data = await res.json();
+          if (data.predictions) {
+            trackAsiaResults = data.predictions.map((pred) => ({
+              id: `trackasia_${pred.place_id}`,
+              place_id: pred.place_id,
+              name: pred.structured_formatting?.main_text || pred.description,
+              address: pred.structured_formatting?.secondary_text || pred.description,
+              isSaved: false,
+              isTrackAsia: true,
+            }));
+          }
+        } catch (err) {
+          console.error("Track-Asia search error:", err);
+        }
+
+        // De-dupe Track-Asia results that match an already-saved place by name
+        const savedNames = new Set(savedResults.map((p) => p.name.toLowerCase().trim()));
+        const filteredTrackAsia = trackAsiaResults.filter((p) => !savedNames.has(p.name.toLowerCase().trim()));
+
+        setSearchResults([...savedResults, ...filteredTrackAsia]);
       } finally {
         setSearching(false);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, places]);
+  }, [searchQuery, places, userCoords]);
 
-  // ── Add place to itinerary ──────────────────────────────────────────────────
+  // ── Nearby places (within 5km) shown by default when add panel opens ───────
+  useEffect(() => {
+    if (!showAddPanel || searchQuery.trim().length > 0) return;
+
+    const fetchNearby = async () => {
+      setNearbyLoading(true);
+      try {
+        const existingIds = new Set(places.map((p) => String(p.id)));
+        const [lng, lat] = userCoords;
+
+        // 1. Saved places within 5km
+        let savedNearby = [];
+        try {
+          const { data, error } = await supabase.from("places").select("*");
+          if (error) throw error;
+          savedNearby = (data || [])
+            .filter((p) => !existingIds.has(String(p.id)) && p.latitude && p.longitude)
+            .map((p) => ({
+              ...p,
+              isSaved: true,
+              distanceKm: distanceKm(lng, lat, Number(p.longitude), Number(p.latitude)),
+            }))
+            .filter((p) => p.distanceKm <= 5);
+        } catch (err) {
+          console.error("Nearby saved places error:", err);
+        }
+
+        // 2. Track-Asia nearby search within 5km (radius in metres)
+        let trackAsiaNearby = [];
+        try {
+          const params = new URLSearchParams({
+            location: `${lat},${lng}`,
+            radius: "5000",
+            key: TRACKASIA_API_KEY,
+          });
+          const res = await fetch(`https://maps.track-asia.com/api/v2/place/nearbysearch/json?${params}`);
+          const data = await res.json();
+          if (data.results) {
+            trackAsiaNearby = data.results
+              .map((r) => ({
+                id: `trackasia_${r.place_id}`,
+                place_id: r.place_id,
+                name: r.name,
+                address: r.vicinity || r.formatted_address,
+                category: "TrackAsiaPlace",
+                latitude: r.geometry?.location?.lat,
+                longitude: r.geometry?.location?.lng,
+                rating: r.rating || 0,
+                isSaved: false,
+                isTrackAsia: true,
+                distanceKm: r.geometry?.location
+                  ? distanceKm(lng, lat, Number(r.geometry.location.lng), Number(r.geometry.location.lat))
+                  : null,
+              }))
+              .filter((p) => p.distanceKm === null || p.distanceKm <= 5);
+          }
+        } catch (err) {
+          console.error("Track-Asia nearby search error:", err);
+        }
+
+        const savedNames = new Set(savedNearby.map((p) => p.name.toLowerCase().trim()));
+        const filteredTrackAsiaNearby = trackAsiaNearby.filter((p) => !savedNames.has(p.name.toLowerCase().trim()));
+
+        const combined = [...savedNearby, ...filteredTrackAsiaNearby].sort(
+          (a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999)
+        );
+        setNearbyPlaces(combined);
+      } finally {
+        setNearbyLoading(false);
+      }
+    };
+
+    fetchNearby();
+  }, [showAddPanel, searchQuery, places, userCoords]);
+
+  // ── Add place to itinerary (saved place OR a fresh Track-Asia result) ──────
   const handleAddPlace = async (place) => {
+    setAddingPlaceId(place.id);
     try {
+      let placeId = place.id;
+
+      // If this came from Track-Asia and isn't saved yet, fetch full details
+      // and insert it into our `places` table first so it has a real id.
+      if (place.isTrackAsia) {
+        let details = null;
+        try {
+          const res = await fetch(
+            `https://maps.track-asia.com/api/v2/place/details/json?place_id=${place.place_id}&key=${TRACKASIA_API_KEY}`
+          );
+          const data = await res.json();
+          details = data.result || null;
+        } catch (err) {
+          console.error("Place details fetch error:", err);
+        }
+
+        const lat = details?.geometry?.location?.lat ?? place.latitude;
+        const lng = details?.geometry?.location?.lng ?? place.longitude;
+
+        if (!lat || !lng) {
+          showToast("Couldn't fetch location details for this place", "error");
+          setAddingPlaceId(null);
+          return;
+        }
+
+        const { data: inserted, error: insertError } = await supabase
+          .from("places")
+          .insert({
+            name: details?.name || place.name,
+            description: null,
+            address: details?.formatted_address || place.address || null,
+            city: null,
+            latitude: lat,
+            longitude: lng,
+            price_level: null,
+            business_status: "open",
+            source: "track_asia",
+            category: place.category || "sight",
+            created_by: user?.id || null,
+            created_by_email: user?.email || null,
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        placeId = inserted.id;
+      }
+
       const nextPosition = places.length > 0 ? Math.max(...places.map((p) => p.position)) + 1 : 0;
       const { error } = await supabase.from("itinerary_places").insert({
         itinerary_id: id,
-        place_id: place.id,
+        place_id: placeId,
         position: nextPosition,
         note: "",
       });
@@ -153,6 +345,8 @@ export default function ItineraryDetailPage() {
     } catch (err) {
       console.error("Add place error:", err);
       showToast("Failed to add place", "error");
+    } finally {
+      setAddingPlaceId(null);
     }
   };
 
@@ -260,7 +454,7 @@ export default function ItineraryDetailPage() {
 
     setOptimising(true);
     try {
-      const API_KEY = "39178044807001d0d52907a027ac689e61";
+      const API_KEY = "1261782203853972b1f08c54c5fc30a6e2";
 
       // Build coordinate string: all place coords
       const coordsStr = places
@@ -342,13 +536,14 @@ export default function ItineraryDetailPage() {
     setDirectionsData(null);
 
     try {
-      const API_KEY = "fbe052e2f17788443245e0c54f3084b0a2";
+      const API_KEY = "1261782203853972b1f08c54c5fc30a6e2";
       const profile = mode === "walking" ? "foot" : "moto";
       const coords  = `${Number(from.longitude)},${Number(from.latitude)};${Number(to.longitude)},${Number(to.latitude)}`;
       const res  = await fetch(
         `https://maps.track-asia.com/route/v1/${profile}/${coords}?steps=true&overview=full&geometries=geojson&key=${API_KEY}`
       );
       const data = await res.json();
+      console.log("Directions response:", data);
       if (data.code !== "Ok" || !data.routes?.length) throw new Error("No route found");
 
       const route = data.routes[0];
@@ -672,7 +867,7 @@ export default function ItineraryDetailPage() {
                 <Search size={15} className="text-gray-400 mr-2 shrink-0" />
                 <input
                   type="text"
-                  placeholder="Search saved places..."
+                  placeholder="Search for any place..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="bg-transparent focus:outline-none text-sm w-full"
@@ -681,34 +876,102 @@ export default function ItineraryDetailPage() {
                 {searching && <Loader2 size={14} className="animate-spin text-gray-400 ml-2" />}
               </div>
 
-              {searchResults.length > 0 && (
-                <div className="space-y-1 max-h-52 overflow-y-auto">
-                  {searchResults.map((place) => {
-                    const cat = getCatConfig(place.category);
-                    return (
-                      <button
-                        key={place.id}
-                        onClick={() => handleAddPlace(place)}
-                        className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors"
-                      >
-                        <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
-                          <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
-                          <p className="text-xs text-gray-400 truncate">{place.address}</p>
-                        </div>
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: `${cat.color}18`, color: cat.color }}>
-                          {cat.label}
-                        </span>
-                      </button>
-                    );
-                  })}
+              {/* Typed search results — any place, not distance-limited */}
+              {searchQuery.trim().length >= 2 ? (
+                <>
+                  {searchResults.length > 0 && (
+                    <div className="space-y-1 max-h-52 overflow-y-auto">
+                      {searchResults.map((place) => {
+                        const cat = getCatConfig(place.category);
+                        const isAdding = addingPlaceId === place.id;
+                        return (
+                          <button
+                            key={place.id}
+                            onClick={() => handleAddPlace(place)}
+                            disabled={isAdding}
+                            className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
+                          >
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                              <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
+                                {!place.isSaved && (
+                                  <span className="text-[9px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-medium shrink-0">New</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-400 truncate">{place.address}</p>
+                            </div>
+                            {isAdding ? (
+                              <Loader2 size={14} className="animate-spin text-gray-400 shrink-0" />
+                            ) : place.isSaved ? (
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: `${cat.color}18`, color: cat.color }}>
+                                {cat.label}
+                              </span>
+                            ) : (
+                              <Plus size={16} className="text-gray-300 shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!searching && searchResults.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-4">No matching places found</p>
+                  )}
+                </>
+              ) : (
+                /* Default: nearby places within 5km */
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 mb-1.5">
+                    Nearby (within 5km)
+                  </p>
+                  {nearbyLoading ? (
+                    <div className="flex items-center justify-center py-6 text-gray-300">
+                      <Loader2 size={18} className="animate-spin" />
+                    </div>
+                  ) : nearbyPlaces.length > 0 ? (
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {nearbyPlaces.map((place) => {
+                        const cat = getCatConfig(place.category);
+                        const isAdding = addingPlaceId === place.id;
+                        return (
+                          <button
+                            key={place.id}
+                            onClick={() => handleAddPlace(place)}
+                            disabled={isAdding}
+                            className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
+                          >
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                              <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
+                                {!place.isSaved && (
+                                  <span className="text-[9px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-medium shrink-0">New</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-400 truncate">{place.address}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {isAdding ? (
+                                <Loader2 size={14} className="animate-spin text-gray-400" />
+                              ) : (
+                                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+                                  {place.distanceKm != null ? `${place.distanceKm.toFixed(1)} km` : "--- km"}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center py-4">No places found within 5km</p>
+                  )}
                 </div>
-              )}
-
-              {searchQuery.length >= 2 && !searching && searchResults.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-4">No matching saved places found</p>
               )}
             </div>
           )}
@@ -733,7 +996,7 @@ export default function ItineraryDetailPage() {
           </div>
         </div>
 
-        {/* ── Right: real TrackAsia map ─────────────────────────────────── */}
+        {/* ── Right: real TrackAsia map  */}
         <div className="lg:w-[60%] h-64 lg:h-auto lg:sticky lg:top-16 relative overflow-hidden">
           <ItineraryMapView places={places} focusedIndex={focusedIndex} directionsRoute={directionsData?.geometry ?? null} />
         </div>
