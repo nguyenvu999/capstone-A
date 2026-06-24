@@ -298,7 +298,11 @@ export default function MapPage() {
       name: place.name,
       address: place.address,
       rating: place.rating || 0,
-      isNewCustomPoint: false
+      isNewCustomPoint: false,
+      // ✅ THÊM: Building info
+      place_type: place.place_type || null,
+      building_name: place.building_name || null,
+      floor_level: place.floor_level || null,
     });
     
     // ❌ KHÔNG mở Place Detail

@@ -507,18 +507,32 @@ export default function MapContainer({
       el.addEventListener("mouseenter", () => hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current));
       el.addEventListener("mouseleave", () => hoverPopup.remove());
 
-      // Click → Show popup with "See Details" button
+      // Click → Show popup with "See Details" button (SAME behavior as normal place)
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         hoverPopup.remove();
-        
-        // Create focused popup for building
-        const buildingPopup = new trackasiagl.Popup({
-          offset: [0, -32],
-          closeButton: true,
-          closeOnClick: false,
-          className: "focused-place-popup"
-        }).setHTML(`
+
+        // ✅ Fly to building location
+        mapRef.current.flyTo({ 
+          center: [lng, lat], 
+          essential: true 
+        });
+
+        // ✅ Remove old focused marker (same pattern as normal place)
+        if (focusMarkerRef.current) {
+          isSwitchingLocationRef.current = true;
+          focusMarkerRef.current.remove();
+          focusMarkerRef.current = null;
+          setTimeout(() => { isSwitchingLocationRef.current = false; }, 50);
+        }
+
+        // ✅ Create pin marker
+        const pin = document.createElement("div");
+        pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
+        pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
+
+        // ✅ Create popup HTML
+        const buildingPopupHTML = `
           <div class="p-2">
             <div class="font-bold text-sm mb-1">${firstPlace.building_name || "Building"}</div>
             <div class="text-xs text-gray-600 mb-1">${places.length} place${places.length > 1 ? 's' : ''} inside</div>
@@ -529,38 +543,61 @@ export default function MapContainer({
               See Details
             </button>
           </div>
-        `);
+        `;
 
-        // Add marker at building location
-        if (focusMarkerRef.current) {
-          focusMarkerRef.current.remove();
-        }
+        const buildingPopup = new trackasiagl.Popup({
+          offset: [0, -32],
+          closeButton: true,
+          closeOnClick: false,
+          className: "focused-place-popup"
+        }).setHTML(buildingPopupHTML);
 
-        const pin = document.createElement("div");
-        pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
-        pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
+        // ✅ Popup close event (SAME behavior as normal place)
+        buildingPopup.on("close", () => {
+          if (isSwitchingLocationRef.current) return;
 
+          // Remove marker
+          if (focusMarkerRef.current) {
+            focusMarkerRef.current.remove();
+            focusMarkerRef.current = null;
+          }
+
+          // ✅ Fly back to pin point or GPS
+          if (pinPointLocation) {
+            mapRef.current?.flyTo({
+              center: [pinPointLocation.lng, pinPointLocation.lat],
+              zoom: 14,
+              essential: true,
+            });
+          } else {
+            navigator.geolocation.getCurrentPosition((position) => {
+              const { latitude, longitude } = position.coords;
+              mapRef.current?.flyTo({
+                center: [longitude, latitude],
+                zoom: 14,
+                essential: true,
+              });
+            });
+          }
+        });
+
+        // ✅ Add marker + popup to map
         focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
           .setLngLat([lng, lat])
           .setPopup(buildingPopup)
           .addTo(mapRef.current)
           .togglePopup();
 
-        // Attach click handler to "See Details" button
+        // ✅ Attach "See Details" button handler (KEEP marker + popup)
         setTimeout(() => {
           const btn = document.querySelector('.see-building-details-btn');
           if (btn) {
             btn.addEventListener('click', (e) => {
               e.stopPropagation();
               console.log("🏢 [MapContainer] Building See Details clicked");
-              
-              // Remove popup and marker
-              if (focusMarkerRef.current) {
-                focusMarkerRef.current.remove();
-                focusMarkerRef.current = null;
-              }
-              
-              // Open Building Detail Panel
+
+              // ✅ KHÔNG remove marker + popup (giữ nguyên like normal place)
+              // Chỉ mở Building Detail Panel
               setSelectedBuildingAddress(buildingAddress);
               setShowBuildingDetail(true);
             });
