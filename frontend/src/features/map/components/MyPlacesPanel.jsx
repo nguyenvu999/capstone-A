@@ -136,7 +136,12 @@ export default function MyPlacesPanel({ onClose, onPlaceClick, currentUserCoords
                       <span className="text-gray-600">{Number(place.rating).toFixed(1)}</span>
                     </p>
                   )}
-                  <p className="text-[11px] text-gray-500 mt-0.5 truncate">{place.address}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                    {place.place_type === "building" && place.building_name
+                      ? `Level ${place.floor_level}, ${place.building_name}, ${place.address}`
+                      : place.address
+                    }
+                  </p>
                 </div>
               </div>
 

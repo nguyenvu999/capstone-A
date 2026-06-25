@@ -5,7 +5,7 @@ import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
 
-export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey }) {
+export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
   const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
   
@@ -52,6 +52,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     longitude: place?.longitude || "",
     price_level: place?.price_level || 1,
     business_status: place?.business_status || "open",
+    floor_level: place?.floor_level || 1,
   });
 
   const [addressQuery, setAddressQuery] = useState(place?.address || "");
@@ -390,6 +391,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           longitude: Number(editData.longitude),
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
+          ...(place.place_type === "building" && {
+            floor_level: Number(editData.floor_level),
+          }),
         })
         .eq("id", place.id);
 
@@ -450,6 +454,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         longitude: Number(editData.longitude),
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
+        ...(place.place_type === "building" && {
+          floor_level: Number(editData.floor_level),
+        }),
       };
       if (onStatusUpdated) onStatusUpdated(updatedPlace);
 
@@ -727,9 +734,20 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         
         {/* Header Bar - Fixed */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
-          <h2 className="text-base font-bold text-gray-800">
-            {showEditForm ? "Edit Place" : "Place Details"}
-          </h2>
+          <div className="flex-1 min-w-0">
+            {/* ✅ Back to Building button */}
+            {!showEditForm && openedFromBuilding && onBackToBuilding && (
+              <button
+                onClick={onBackToBuilding}
+                className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 mb-1"
+              >
+                ← Back to Building
+              </button>
+            )}
+            <h2 className="text-base font-bold text-gray-800">
+              {showEditForm ? "Edit Place" : "Place Details"}
+            </h2>
+          </div>
           
           <div className="flex items-center gap-2">
             {/* ===== 3 CHẤM DROPDOWN (chỉ hiện khi View mode + isOwner) ===== */}
@@ -1319,6 +1337,28 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 />
               </div>
             </div>
+
+            {/* Floor Level - chỉ hiện nếu place thuộc building */}
+            {place.place_type === "building" && (
+              <div>
+                <label className="block font-medium text-gray-700 mb-1.5 text-sm">
+                  Floor Level
+                </label>
+                <select
+                  value={editData.floor_level}
+                  onChange={(e) =>
+                    setEditData(prev => ({ ...prev, floor_level: e.target.value }))
+                  }
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
+                >
+                  {Array.from({ length: 100 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      Floor {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Price Level */}
             <div>

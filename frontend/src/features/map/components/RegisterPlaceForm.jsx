@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { X, Check, Search, MapPin } from "lucide-react";
 import { useToast } from "../../../shared/ui/Toast";
-import { checkDuplicatePlace, checkAddressForBuilding } from "../utils/duplicateDetection";
+import { checkDuplicatePlace, checkAddressForBuilding, checkBuildingDuplicate } from "../utils/duplicateDetection";
 import DuplicatePlaceModal from "./DuplicatePlaceModal";
 
 // CẬP NHẬT: 6 categories đồng bộ với MapSidebar + MapContainer
@@ -16,7 +16,7 @@ const CATEGORIES = [
 ];
 
 // THÊM: prop currentUserCoords nhận từ MapPage truyền xuống
-export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose, allPlaces = [], onSuccess, currentUserCoords }) {
+export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedLocation, onClose, allPlaces = [], onSuccess, currentUserCoords, buildingDataForRegister = null }) {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -157,6 +157,39 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Khi nhận building data từ "Add More Place" button
+  useEffect(() => {
+    if (!buildingDataForRegister) return;
+    
+    console.log("🏢 [RegisterForm] Received building data:", buildingDataForRegister);
+    
+    // Chuyển sang building mode "adding"
+    setPlaceType("building");
+    setBuildingMode("adding");
+    
+    // Set building info (tất cả locked)
+    setBuildingInfo({
+      buildingName: buildingDataForRegister.buildingName,
+      buildingAddress: buildingDataForRegister.buildingAddress,
+      buildingCity: buildingDataForRegister.buildingCity,
+      buildingLatitude: buildingDataForRegister.buildingLatitude,
+      buildingLongitude: buildingDataForRegister.buildingLongitude,
+    });
+    
+    // Reset place info để user nhập mới
+    setFormData(prev => ({
+      ...prev,
+      name: "",
+      description: "",
+      address: buildingDataForRegister.buildingAddress,
+      city: buildingDataForRegister.buildingCity,
+      latitude: buildingDataForRegister.buildingLatitude,
+      longitude: buildingDataForRegister.buildingLongitude,
+    }));
+    
+    setFloorLevel(1);
+  }, [buildingDataForRegister]);
 
   // Xử lý khi user chọn 1 gợi ý địa chỉ
   const handleSelectSuggestion = (prediction) => {
@@ -364,23 +397,50 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     try {
       // ===== BUILDING FEATURE: DUPLICATE CHECK =====
       
-      // ✅ BỎ QUA DUPLICATE CHECK NẾU ĐANG Ở CONVERTING HOẶC ADDING MODE
-      // (Vì user đã confirm building rồi, không cần check lại)
-      if (buildingMode !== "converting" && buildingMode !== "adding") {
-        
-        // STEP 1: Kiểm tra xem địa chỉ này đã là building chưa
+      // ===== DUPLICATE CHECK LOGIC =====
+      if (buildingMode === "converting" || buildingMode === "adding") {
+        // ✅ ĐANG TRONG BUILDING MODE → CHECK DUPLICATE BÊN TRONG BUILDING
+        const buildingAddr = buildingMode === "converting" 
+          ? (buildingInfo.buildingAddress || formData.address)
+          : buildingInfo.buildingAddress;
+
+        // Lấy tất cả places trong building này
+        const { data: buildingPlaces, error: fetchError } = await supabase
+          .from("places")
+          .select("*")
+          .eq("building_address", buildingAddr)
+          .eq("place_type", "building");
+
+        if (!fetchError && buildingPlaces && buildingPlaces.length > 0) {
+          const buildingDup = checkBuildingDuplicate(
+            { name: formData.name, floor_level: floorLevel },
+            buildingPlaces
+          );
+
+          if (buildingDup) {
+            if (buildingDup.reason === "SAME_FLOOR_DUPLICATE") {
+              showToast(
+                `"${buildingDup.name}" already exists on Floor ${buildingDup.floor_level}. Please use a different name or floor.`,
+                "warning"
+              );
+            } else {
+              showToast(
+                `A place with nearly identical name "${buildingDup.name}" already exists in this building (Floor ${buildingDup.floor_level}).`,
+                "warning"
+              );
+            }
+            setLoading(false);
+            return;
+          }
+        }
+      } else if (buildingMode === "first") {
+        // ✅ FIRST BUILDING MODE → CHECK ADDRESS DUPLICATE BÌNH THƯỜNG
         const existingBuilding = await checkAddressForBuilding(
-          {
-            name: formData.name,
-            address: formData.address,
-            latitude: formData.latitude,
-            longitude: formData.longitude
-          },
+          { name: formData.name, address: formData.address, latitude: formData.latitude, longitude: formData.longitude },
           allPlaces
         );
 
         if (existingBuilding) {
-          // Địa chỉ đã là building → Modal "Add to Building"
           setDuplicatePlace(existingBuilding);
           setDuplicateModalType("ADD_TO_BUILDING");
           setShowDuplicateModal(true);
@@ -388,19 +448,39 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           return;
         }
 
-        // STEP 2: Nếu chưa phải building, check duplicate bình thường
         const duplicate = await checkDuplicatePlace(
-          {
-            name: formData.name,
-            address: formData.address,
-            latitude: formData.latitude,
-            longitude: formData.longitude
-          },
+          { name: formData.name, address: formData.address, latitude: formData.latitude, longitude: formData.longitude },
           allPlaces
         );
 
         if (duplicate) {
-          // Phát hiện duplicate standalone → Modal "Convert to Building"
+          setDuplicatePlace(duplicate);
+          setDuplicateModalType("CONVERT_TO_BUILDING");
+          setShowDuplicateModal(true);
+          setLoading(false);
+          return;
+        }
+      } else {
+        // ✅ STANDALONE MODE → CHECK DUPLICATE BÌNH THƯỜNG
+        const existingBuilding = await checkAddressForBuilding(
+          { name: formData.name, address: formData.address, latitude: formData.latitude, longitude: formData.longitude },
+          allPlaces
+        );
+
+        if (existingBuilding) {
+          setDuplicatePlace(existingBuilding);
+          setDuplicateModalType("ADD_TO_BUILDING");
+          setShowDuplicateModal(true);
+          setLoading(false);
+          return;
+        }
+
+        const duplicate = await checkDuplicatePlace(
+          { name: formData.name, address: formData.address, latitude: formData.latitude, longitude: formData.longitude },
+          allPlaces
+        );
+
+        if (duplicate) {
           setDuplicatePlace(duplicate);
           setDuplicateModalType("CONVERT_TO_BUILDING");
           setShowDuplicateModal(true);
@@ -555,7 +635,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           created_by_email: user ? user.email : null,
         };
 
-        setFocusedLocation({ newPlace });
+        setFocusedLocation(null); // Clear focused location sau khi register
         if (onSuccess) onSuccess(newPlace);
 
       } else {
@@ -613,56 +693,9 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           created_by_email: user ? user.email : null,
         };
 
-        setFocusedLocation({ newPlace });
+        setFocusedLocation(null); // Clear focused location sau khi register
         if (onSuccess) onSuccess(newPlace);
       }
-
-      if (error) throw error;
-
-      const savedPlace = insertedData && insertedData[0] ? insertedData[0] : null;
-
-      // Save image URL into place_images table
-      if (uploadedImageUrls.length > 0 && savedPlace) {
-        const imageRows =
-          uploadedImageUrls.map(
-            (url, index) => ({
-              place_id: String(savedPlace.id),
-              url,
-              sort_order: index + 1,
-            })
-          );
-        const { error: imageInsertError } =
-          await supabase
-            .from("place_images")
-            .insert(imageRows);
-
-        if (imageInsertError)
-          throw imageInsertError;
-      }
-
-      setAddressQuery(formData.name);
-
-      
-      // Cập nhật map với place vừa thêm
-      const newPlace = {
-      id: savedPlace ? savedPlace.id : Date.now(),
-        lat: Number(formData.latitude),
-        lng: Number(formData.longitude),
-        name: formData.name,
-        address: formData.address,
-        category: formData.category,
-        isConfirmed: true,
-        created_by: user ? user.id : null,
-        created_by_email: user ? user.email : null
-      };
-
-      setFocusedLocation({newPlace});
-
-      // THÊM: Success toast
-      showToast("Place registered successfully!", "success");
-
-      // Refresh map markers immediately so new location appears without reload
-      if (onSuccess){ onSuccess(newPlace)};
       
     }
     catch (error) {

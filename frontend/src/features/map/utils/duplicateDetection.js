@@ -169,3 +169,41 @@ export async function checkAddressForBuilding(newPlace, existingPlaces) {
 
   return null; // Không tìm thấy building
 }
+
+// ===== BUILDING FEATURE: CHECK DUPLICATE INSIDE BUILDING =====
+// Rule 1: Cùng tầng + name similarity >= 80% → BLOCK
+// Rule 2: Khác tầng + name similarity >= 95% → BLOCK (chặn spam hoàn toàn trùng tên)
+// Rule 3: Khác tầng + name similarity < 95% → ALLOW
+export function checkBuildingDuplicate(newPlace, placesInBuilding) {
+  // Check cùng tầng trước (strict)
+  const sameLevelPlaces = placesInBuilding.filter(
+    p => Number(p.floor_level) === Number(newPlace.floor_level)
+  );
+
+  for (const existing of sameLevelPlaces) {
+    const nameSim = stringSimilarity(newPlace.name, existing.name);
+    if (nameSim >= 0.8) {
+      return {
+        ...existing,
+        reason: "SAME_FLOOR_DUPLICATE",
+        similarity: nameSim
+      };
+    }
+  }
+
+  // Check khác tầng (loose — chỉ block nếu gần như giống hệt)
+  for (const existing of placesInBuilding) {
+    if (Number(existing.floor_level) === Number(newPlace.floor_level)) continue;
+    
+    const nameSim = stringSimilarity(newPlace.name, existing.name);
+    if (nameSim >= 0.95) {
+      return {
+        ...existing,
+        reason: "BUILDING_WIDE_DUPLICATE",
+        similarity: nameSim
+      };
+    }
+  }
+
+  return null;
+}

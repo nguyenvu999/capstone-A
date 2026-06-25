@@ -23,6 +23,9 @@ export default function MapPage() {
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [showMyPlaces, setShowMyPlaces] = useState(false);
   const [searchParams] = useSearchParams(); 
+  const [buildingDataForRegister, setBuildingDataForRegister] = useState(null);
+  const [openedFromBuilding, setOpenedFromBuilding] = useState(null);
+  const [reopenBuildingAddress, setReopenBuildingAddress] = useState(null);
 
   const [activeFilters, setActiveFilters] = useState({
     priceLevels: [],
@@ -223,35 +226,78 @@ export default function MapPage() {
 
   //After register a place successfully it will navigate to the place detail 
   const handlePlaceRegistered = async (newPlace) => {
-  await fetchPlacesFromSupabase();
-
-  setSelectedPlace(newPlace);
-  setShowRegisterForm(false);
+    await fetchPlacesFromSupabase();
+    setShowRegisterForm(false);
+    
+    // ✅ Sau khi fetch xong, tìm place vừa tạo từ DB để có đầy đủ data
+    // Dùng setTimeout nhỏ để đảm bảo state đã update
+    setTimeout(() => {
+      setSelectedPlace(prev => {
+        // Nếu newPlace có id hợp lệ → set selectedPlace để mở PlaceDetailModal
+        if (newPlace && newPlace.id) {
+          return {
+            ...newPlace,
+            latitude: newPlace.lat || newPlace.latitude,
+            longitude: newPlace.lng || newPlace.longitude,
+          };
+        }
+        return null;
+      });
+    }, 100);
+    
+    // ✅ Update focusedLocation để thẻ hiện đúng tên place mới
+    if (newPlace && newPlace.lat && newPlace.lng) {
+      setFocusedLocation({
+        lat: newPlace.lat || newPlace.latitude,
+        lng: newPlace.lng || newPlace.longitude,
+        name: newPlace.name,
+        address: newPlace.address,
+        rating: 0,
+        isNewCustomPoint: false,
+        place_type: newPlace.place_type || "standalone",
+        building_name: newPlace.building_name || null,
+        floor_level: newPlace.floor_level || null,
+      });
+    }
   };
 
   // Called after a place is edited — update the open modal immediately,
   // then re-fetch so map markers stay in sync
   const handlePlaceUpdated = (updatedPlace) => {
-      if (updatedPlace) {
-        setSelectedPlace(updatedPlace);
-        
-        // ✅ FIX: Cập nhật focusedLocation để popup update real-time
-        setFocusedLocation(prev => {
-          // Chỉ update nếu đang focus vào place này
-          if (prev && 
-              Math.abs(Number(prev.lat) - Number(updatedPlace.latitude)) < 0.0001 &&
-              Math.abs(Number(prev.lng) - Number(updatedPlace.longitude)) < 0.0001) {
-            return {
-              ...prev,
-              name: updatedPlace.name,
-              address: updatedPlace.address,
-              rating: updatedPlace.rating || 0,
-            };
-          }
-          return prev;
-        });
-      }
-      fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
+    if (updatedPlace) {
+      // ✅ Place được update (không phải delete)
+      setSelectedPlace(updatedPlace);
+      
+      setFocusedLocation(prev => {
+        if (
+          prev &&
+          Math.abs(Number(prev.lat) - Number(updatedPlace.latitude)) < 0.0001 &&
+          Math.abs(Number(prev.lng) - Number(updatedPlace.longitude)) < 0.0001
+        ) {
+          return {
+            ...prev,
+            name: updatedPlace.name,
+            address: updatedPlace.address,
+            rating: updatedPlace.rating || 0,
+
+            // ✅ THÊM: building info để popup update luôn
+            place_type: updatedPlace.place_type ?? prev.place_type,
+            building_name: updatedPlace.building_name ?? prev.building_name,
+            floor_level: updatedPlace.floor_level ?? prev.floor_level,
+
+            // ✅ THÊM: key để force popup rebuild
+            popupRefreshKey: Date.now(),
+          };
+        }
+        return prev;
+      });
+    } else {
+      // ✅ Place bị DELETE (updatedPlace = undefined/null)
+      setFocusedLocation(null);
+      setSelectedPlace(null);
+    }
+
+    fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
   };
 
   const handleMyPlaceClick = (place) => {
@@ -307,6 +353,15 @@ export default function MapPage() {
     
     // ❌ KHÔNG mở Place Detail
     // User phải click "See Details" trong popup mới mở
+  };
+
+  // Mở Register Form ở building mode "adding" từ Building Detail Panel
+  const handleAddPlaceToBuilding = (buildingData) => {
+    console.log("🏢 [MapPage] Add place to building:", buildingData);
+    setSelectedPlace(null);
+    setShowMyPlaces(false);
+    setShowRegisterForm(true);
+    setBuildingDataForRegister(buildingData);
   };
 
   const handlePinPointChange = (coords) => {
@@ -386,13 +441,18 @@ export default function MapPage() {
           currentUserCoords={activeCoords}
           forceOpenDirectionPlace={forceOpenDirectionPlace} 
           setForceOpenDirectionPlace={setForceOpenDirectionPlace}
-          onPlaceClick={(place) => {
+          onPlaceClick={(place, fromBuildingAddress) => {
             setSelectedPlace(place);
-            setShowMyPlaces(false); 
+            setShowMyPlaces(false);
+            setOpenedFromBuilding(fromBuildingAddress || null);
           }}
-          showRegisterForm={showRegisterForm}           // ← THÊM
-          selectedPlace={selectedPlace}                 // ← THÊM
-          onPinPointChange={handlePinPointChange}       // ← THÊM
+          onAddPlaceToBuilding={handleAddPlaceToBuilding}
+          showRegisterForm={showRegisterForm}           
+          selectedPlace={selectedPlace}                 
+          onPinPointChange={handlePinPointChange}       
+          activeFilters={activeFilters}
+          reopenBuildingAddress={reopenBuildingAddress}
+          onReopenBuildingHandled={() => setReopenBuildingAddress(null)}
         />
       </div>
       
@@ -403,7 +463,7 @@ export default function MapPage() {
           setFocusedLocation={setFocusedLocation} 
           onClose={() => {
             setShowRegisterForm(false);
-            // Clear URL param nếu có
+            setBuildingDataForRegister(null);
             if (searchParams.get("view")) {
               window.history.replaceState({}, '', '/map');
             }
@@ -411,6 +471,7 @@ export default function MapPage() {
           allPlaces={allPlaces} 
           onSuccess={handlePlaceRegistered}
           currentUserCoords={currentUserCoords}
+          buildingDataForRegister={buildingDataForRegister}
         />
       )}
 
@@ -420,13 +481,21 @@ export default function MapPage() {
           place={selectedPlace}
           onClose={() => {
             setSelectedPlace(null);
-            // Clear URL param nếu có
+            setOpenedFromBuilding(null);
             if (searchParams.get("view")) {
               window.history.replaceState({}, '', '/map');
             }
           }}
           onStatusUpdated={handlePlaceUpdated}
           apiKey={API_KEY}
+          openedFromBuilding={openedFromBuilding}
+          onBackToBuilding={() => {
+            // Đóng Place Detail
+            setSelectedPlace(null);
+            // Re-open Building Panel bằng cách set lại address
+            setReopenBuildingAddress(openedFromBuilding);
+            setOpenedFromBuilding(null);
+          }}
         />
       )}
 

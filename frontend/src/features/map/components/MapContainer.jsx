@@ -18,6 +18,10 @@ export default function MapContainer({
   showRegisterForm,      
   selectedPlace,         
   onPinPointChange,  
+  reopenBuildingAddress,
+  onReopenBuildingHandled,
+  activeFilters,
+  onAddPlaceToBuilding,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -31,6 +35,15 @@ export default function MapContainer({
   const [showBuildingDetail, setShowBuildingDetail] = useState(false);
   const [selectedBuildingAddress, setSelectedBuildingAddress] = useState(null);
   
+  // ✅ Reopen Building Panel khi user click "Back to Building"
+  useEffect(() => {
+    if (reopenBuildingAddress) {
+      setSelectedBuildingAddress(reopenBuildingAddress);
+      setShowBuildingDetail(true);
+      if (onReopenBuildingHandled) onReopenBuildingHandled();
+    }
+  }, [reopenBuildingAddress]);
+
   // PIN POINT STATE
   const [isPinPointMode, setIsPinPointMode] = useState(false);
   const isPinPointModeRef = useRef(false); 
@@ -891,9 +904,11 @@ if (focusMarkerRef.current) {
       }
     }, 100);
 
-  // THAY ĐỔI QUAN TRỌNG: Chỉ lắng nghe sự thay đổi của TỌA ĐỘ (lat, lng).
-  // Loại bỏ hoàn toàn sự phụ thuộc vào text 'name' hay 'address' để khi bạn gõ, useEffect này KHÔNG bị chạy lại.
-  }, [focusedLocation?.lat, focusedLocation?.lng, onPlaceClick]); 
+  // CHỈ rerender popup khi:
+  // - đổi tọa độ
+  // - hoặc có popupRefreshKey (commit update sau khi edit/register)
+  // Không phụ thuộc trực tiếp vào name/address để tránh bug mất focus khi đang gõ form.
+  }, [focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.popupRefreshKey, onPlaceClick]);
 
   return (
     <div className="relative h-full w-full flex-1 z-0">
@@ -999,19 +1014,37 @@ if (focusMarkerRef.current) {
       {showBuildingDetail && selectedBuildingAddress && (
         <BuildingDetailPanel
           buildingAddress={selectedBuildingAddress}
+          initialBuildingName={
+            categoryResults.find(p => p.building_address === selectedBuildingAddress)?.building_name || "Building"
+          }
+          activeFilters={activeFilters}
           onClose={() => {
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
           }}
           onAddPlace={() => {
-            console.log("🏢 Add more place to building:", selectedBuildingAddress);
+            const buildingPlaces = categoryResults.filter(
+              p => p.place_type === "building" && p.building_address === selectedBuildingAddress
+            );
+            const firstPlace = buildingPlaces[0];
             setShowBuildingDetail(false);
-            if (setShowRegisterForm) setShowRegisterForm(true);
+            if (onAddPlaceToBuilding) {
+              onAddPlaceToBuilding({
+                buildingName: firstPlace?.building_name || "",
+                buildingAddress: selectedBuildingAddress,
+                buildingCity: firstPlace?.city || "",
+                buildingLatitude: firstPlace?.latitude || "",
+                buildingLongitude: firstPlace?.longitude || "",
+              });
+            }
           }}
           onPlaceClick={(place) => {
-            console.log("📍 Place clicked in building:", place.name);
             setShowBuildingDetail(false);
-            if (onPlaceClick) onPlaceClick(place);
+            if (onPlaceClick) onPlaceClick(place, selectedBuildingAddress);
+          }}
+          onBuildingConverted={() => {
+            setShowBuildingDetail(false);
+            setSelectedBuildingAddress(null);
           }}
         />
       )}
