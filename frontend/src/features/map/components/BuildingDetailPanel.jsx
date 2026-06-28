@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, MoreVertical } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { useAuth } from "../../auth/context/AuthContext";
+import { sortFloorLevels } from "../utils/floorLevelValidation";
 
 export default function BuildingDetailPanel({ 
   buildingAddress,
@@ -14,7 +15,7 @@ export default function BuildingDetailPanel({
 }) {
   const { user } = useAuth();
   const [places, setPlaces] = useState([]);
-  const [selectedFloor, setSelectedFloor] = useState(1);
+  const [selectedFloor, setSelectedFloor] = useState("");
   const [loading, setLoading] = useState(true);
   const [buildingName, setBuildingName] = useState(initialBuildingName || "Building");
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
@@ -28,8 +29,10 @@ export default function BuildingDetailPanel({
   // ✅ Auto-select floor đầu tiên có place match filter
   useEffect(() => {
     if (filteredPlaces.length > 0) {
-      const sortedFloors = [...new Set(filteredPlaces.map(p => p.floor_level))].sort((a, b) => a - b);
-      if (sortedFloors.length > 0 && !sortedFloors.includes(selectedFloor)) {
+      const uniqueFloors = [...new Set(filteredPlaces.map(p => String(p.floor_level)))];
+      const sortedFloors = sortFloorLevels(uniqueFloors);
+      
+      if (sortedFloors.length > 0 && !sortedFloors.includes(String(selectedFloor))) {
         setSelectedFloor(sortedFloors[0]);
       }
     }
@@ -68,7 +71,7 @@ export default function BuildingDetailPanel({
         
         // Auto-select floor có place đầu tiên
         const firstFloor = data[0].floor_level;
-        if (firstFloor) setSelectedFloor(firstFloor);
+        if (firstFloor) setSelectedFloor(String(firstFloor));
       }
     }
     
@@ -112,7 +115,7 @@ export default function BuildingDetailPanel({
 
   // ✅ Floors có places sau khi filter
   const floorsWithPlaces = [...new Set(filteredPlaces.map(p => p.floor_level))].sort((a, b) => a - b);
-  const placesOnFloor = filteredPlaces.filter(p => p.floor_level === selectedFloor);
+  const placesOnFloor = filteredPlaces.filter(p => String(p.floor_level) === String(selectedFloor));
 
   const isOwnerOfAll = places.length > 0 && places.every(p => 
     user && (p.created_by === user.id || String(p.created_by) === String(user.id))
@@ -143,8 +146,12 @@ export default function BuildingDetailPanel({
 
       if (error) throw error;
 
-      if (onBuildingConverted) onBuildingConverted();
+      // ✅ Đóng Building Panel
       onClose();
+
+      // ✅ Gọi callback để refresh map
+      if (onBuildingConverted) onBuildingConverted();
+
     } catch (error) {
       console.error("Failed to convert:", error);
       alert("Failed to convert building.");
@@ -209,17 +216,15 @@ export default function BuildingDetailPanel({
         <label className="block text-sm font-medium text-gray-700 mb-2">Floor Level</label>
         <select 
           value={selectedFloor} 
-          onChange={(e) => setSelectedFloor(Number(e.target.value))}
+          onChange={(e) => setSelectedFloor(e.target.value)}
           disabled={loading}
           className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 cursor-pointer transition-all disabled:opacity-70"
         >
-          {Array.from({ length: 100 }, (_, i) => i + 1).map(floor => {
-            const hasPlaces = floorsWithPlaces.includes(floor);
-            // ✅ Đếm filtered places, không phải tất cả places
-            const placeCount = filteredPlaces.filter(p => p.floor_level === floor).length;
+          {sortFloorLevels(floorsWithPlaces).map(floor => {
+            const placeCount = filteredPlaces.filter(p => String(p.floor_level) === String(floor)).length;
             return (
-              <option key={floor} value={floor} className={hasPlaces ? 'font-bold' : ''}>
-                Level {floor} {hasPlaces ? `(${placeCount} place${placeCount > 1 ? 's' : ''})` : ''}
+              <option key={floor} value={floor}>
+                Level {floor} ({placeCount} place{placeCount > 1 ? 's' : ''})
               </option>
             );
           })}

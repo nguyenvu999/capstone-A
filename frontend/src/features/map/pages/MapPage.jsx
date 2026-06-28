@@ -153,7 +153,7 @@ export default function MapPage() {
           // ✅ THÊM: Building fields (với default values an toàn)
           place_type: item.place_type || "standalone",
           building_name: item.building_name || null,
-          floor_level: item.floor_level ? Number(item.floor_level) : null,
+          floor_level: item.floor_level ? String(item.floor_level).toUpperCase() : null,
           building_address: item.building_address || null,
         }));
 
@@ -259,6 +259,12 @@ export default function MapPage() {
         floor_level: newPlace.floor_level || null,
       });
     }
+  };
+
+  // Handle khi building được convert thành standalone
+  const handleBuildingConverted = async () => {
+    // Re-fetch places để cập nhật marker icon từ 🏢 → category icon
+    await fetchPlacesFromSupabase(activeCoords, activeCategory, activeFilters);
   };
 
   // Called after a place is edited — update the open modal immediately,
@@ -453,6 +459,7 @@ export default function MapPage() {
           activeFilters={activeFilters}
           reopenBuildingAddress={reopenBuildingAddress}
           onReopenBuildingHandled={() => setReopenBuildingAddress(null)}
+          onBuildingConverted={handleBuildingConverted}
         />
       </div>
       

@@ -22,6 +22,7 @@ export default function MapContainer({
   onReopenBuildingHandled,
   activeFilters,
   onAddPlaceToBuilding,
+  onBuildingConverted,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -1045,6 +1046,11 @@ if (focusMarkerRef.current) {
           onBuildingConverted={() => {
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
+            
+            // ✅ Gọi callback từ MapPage để refresh data
+            if (onBuildingConverted) {
+              onBuildingConverted();
+            }
           }}
         />
       )}

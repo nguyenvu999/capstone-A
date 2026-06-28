@@ -4,6 +4,7 @@ import { supabase } from "../../auth/api/supabaseClient";
 import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
+import { validateFloorLevel } from "../utils/floorLevelValidation";
 
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
   const { user } = useAuth();
@@ -52,9 +53,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     longitude: place?.longitude || "",
     price_level: place?.price_level || 1,
     business_status: place?.business_status || "open",
-    floor_level: place?.floor_level || 1,
+    floor_level: place?.floor_level ? String(place.floor_level) : "1",
   });
 
+  const [floorLevelError, setFloorLevelError] = useState(null);
   const [addressQuery, setAddressQuery] = useState(place?.address || "");
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -174,6 +176,28 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const handleCopyAddress = () => {
     navigator.clipboard.writeText(place.address);
     showToast("Address copied to clipboard!", "success");
+  };
+
+  
+  const handleFloorLevelChange = (e) => {
+    const value = e.target.value.toUpperCase();
+    
+    if (value === "") {
+      setEditData(prev => ({ ...prev, floor_level: "" }));
+      setFloorLevelError(null);
+      return;
+    }
+
+    if (value.length > 2) return;
+
+    setEditData(prev => ({ ...prev, floor_level: value }));
+
+    const validation = validateFloorLevel(value);
+    if (!validation.isValid) {
+      setFloorLevelError(validation.error);
+    } else {
+      setFloorLevelError(null);
+    }
   };
 
   useEffect(() => {
@@ -378,6 +402,15 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       return;
     }
 
+    // Validate floor level if building
+    if (place.place_type === "building") {
+      const floorValidation = validateFloorLevel(editData.floor_level);
+      if (!floorValidation.isValid) {
+        showToast(floorValidation.error, "warning");
+        return;
+      }
+    }
+
     setUpdating(true);
 
     try {
@@ -392,7 +425,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
           ...(place.place_type === "building" && {
-            floor_level: Number(editData.floor_level),
+            floor_level: validateFloorLevel(editData.floor_level).normalized,
           }),
         })
         .eq("id", place.id);
@@ -455,7 +488,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
         ...(place.place_type === "building" && {
-          floor_level: Number(editData.floor_level),
+          floor_level: validateFloorLevel(editData.floor_level).normalized,
         }),
       };
       if (onStatusUpdated) onStatusUpdated(updatedPlace);
@@ -1344,19 +1377,24 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 <label className="block font-medium text-gray-700 mb-1.5 text-sm">
                   Floor Level
                 </label>
-                <select
+                <input
+                  type="text"
+                  maxLength={2}
                   value={editData.floor_level}
-                  onChange={(e) =>
-                    setEditData(prev => ({ ...prev, floor_level: e.target.value }))
-                  }
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-                >
-                  {Array.from({ length: 100 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      Floor {i + 1}
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleFloorLevelChange}
+                  placeholder="e.g. 1, 15, B1"
+                  className={`w-full bg-gray-50 border rounded-xl p-2.5 text-sm focus:outline-none transition-all uppercase ${
+                    floorLevelError
+                      ? "border-red-300 focus:border-red-500 bg-red-50"
+                      : "border-gray-200 focus:border-blue-500 focus:bg-white"
+                  }`}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  eg: 01 or 1 → 99 / Basement: B1 → B3
+                </p>
+                {floorLevelError && (
+                  <p className="text-xs text-red-600 mt-1">{floorLevelError}</p>
+                )}
               </div>
             )}
 

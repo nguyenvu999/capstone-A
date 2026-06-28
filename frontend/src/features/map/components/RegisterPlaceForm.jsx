@@ -4,6 +4,7 @@ import { X, Check, Search, MapPin } from "lucide-react";
 import { useToast } from "../../../shared/ui/Toast";
 import { checkDuplicatePlace, checkAddressForBuilding, checkBuildingDuplicate } from "../utils/duplicateDetection";
 import DuplicatePlaceModal from "./DuplicatePlaceModal";
+import { validateFloorLevel } from "../utils/floorLevelValidation";
 
 // CẬP NHẬT: 6 categories đồng bộ với MapSidebar + MapContainer
 const CATEGORIES = [
@@ -50,7 +51,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     buildingLatitude: "",
     buildingLongitude: "",
   });
-  const [floorLevel, setFloorLevel] = useState(1);
+  const [floorLevel, setFloorLevel] = useState("1");
+  const [floorLevelError, setFloorLevelError] = useState(null);
   const MAX_IMAGE_SIZE_MB = 5;
   const MAX_IMAGE_SIZE_BYTES =
     MAX_IMAGE_SIZE_MB * 1024 * 1024;
@@ -188,7 +190,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       longitude: buildingDataForRegister.buildingLongitude,
     }));
     
-    setFloorLevel(1);
+      setFloorLevel("1");
+      setFloorLevelError(null);
   }, [buildingDataForRegister]);
 
   // Xử lý khi user chọn 1 gợi ý địa chỉ
@@ -236,6 +239,31 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Handle floor level input change
+  const handleFloorLevelChange = (e) => {
+    const value = e.target.value.toUpperCase(); // Auto-convert to uppercase
+    
+    // Allow empty for typing
+    if (value === "") {
+      setFloorLevel("");
+      setFloorLevelError(null);
+      return;
+    }
+
+    // Max 2 characters
+    if (value.length > 2) return;
+
+    setFloorLevel(value);
+
+    // Validate on change
+    const validation = validateFloorLevel(value);
+    if (!validation.isValid) {
+      setFloorLevelError(validation.error);
+    } else {
+      setFloorLevelError(null);
+    }
+  };
+
   // Handle Place Type change
   const handlePlaceTypeChange = (newType) => {
     setPlaceType(newType);
@@ -250,7 +278,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         buildingLatitude: "",
         buildingLongitude: "",
       });
-      setFloorLevel(1);
+      setFloorLevel("1");
+      setFloorLevelError(null);
     } else if (newType === "building") {
       // Set building mode to "first" (user registering new building)
       setBuildingMode("first");
@@ -361,6 +390,13 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
             return;
           }
         }
+      }
+
+      // Validate floor level
+      const floorValidation = validateFloorLevel(floorLevel);
+      if (!floorValidation.isValid) {
+        showToast(floorValidation.error, "warning");
+        return;
       }
 
       // buildingMode = "adding" không cần validate building info (đã có sẵn)
@@ -552,7 +588,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               place_type: "building",
               building_name: finalBuildingName,
               building_address: finalBuildingAddress,
-              floor_level: 1, // Default floor 1
+              floor_level: "1", // Default floor 1
             })
             .eq("id", duplicatePlace.id); // duplicatePlace = place A
 
@@ -586,7 +622,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               place_type: "building",
               building_name: finalBuildingName,
               building_address: finalBuildingAddress,
-              floor_level: floorLevel,
+              floor_level: validateFloorLevel(floorLevel).normalized,
+
             },
           ])
           .select();
@@ -629,7 +666,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           category: formData.category,
           place_type: "building",
           building_name: finalBuildingName,
-          floor_level: floorLevel,
+          floor_level: validateFloorLevel(floorLevel).normalized,
           isConfirmed: true,
           created_by: user ? user.id : null,
           created_by_email: user ? user.email : null,
@@ -1230,17 +1267,26 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                     <label className="block font-medium text-gray-700 mb-1.5 text-sm">
                       Floor Level <span className="text-red-500">*</span>
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      maxLength={2}
                       value={floorLevel}
-                      onChange={(e) => setFloorLevel(Number(e.target.value))}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white cursor-pointer transition-all"
-                    >
-                      {Array.from({ length: 100 }, (_, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          Floor {i + 1}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={handleFloorLevelChange}
+                      placeholder="e.g. 1, 15, B1"
+                      className={`w-full bg-gray-50 border rounded-xl p-3 md:p-2.5 text-sm focus:outline-none transition-all uppercase ${
+                        floorLevelError
+                          ? "border-red-300 focus:border-red-500 bg-red-50"
+                          : "border-gray-200 focus:border-blue-500 focus:bg-white"
+                      }`}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      eg: 01 or 1 → 99
+                      <br />
+                      Basement: B1 → B3
+                    </p>
+                    {floorLevelError && (
+                      <p className="text-xs text-red-600 mt-1">{floorLevelError}</p>
+                    )}
                   </div>
 
                   {/* Category Grid */}
