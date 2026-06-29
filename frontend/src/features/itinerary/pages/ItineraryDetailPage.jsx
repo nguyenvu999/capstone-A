@@ -4,7 +4,7 @@ import {
   ArrowLeft, Pencil, Lock, Globe, Share2, MoreHorizontal,
   GripVertical, MapPin, Trash2, Plus, RotateCw,
   Footprints, Car, X, Check, Loader2, Search,
-  ChevronDown, ChevronUp, Navigation2, Clock, Ruler,
+  ChevronDown, ChevronUp, Navigation2, Clock, Ruler, ExternalLink,
 } from "lucide-react";
 import Navbar from "../../map/components/Navbar";
 import { useAuth } from "../../auth/context/AuthContext";
@@ -194,7 +194,7 @@ export default function ItineraryDetailPage() {
         const savedNames = new Set(savedResults.map((p) => p.name.toLowerCase().trim()));
         const filteredTrackAsia = trackAsiaResults.filter((p) => !savedNames.has(p.name.toLowerCase().trim()));
 
-        setSearchResults([...savedResults, ...filteredTrackAsia]);
+        setSearchResults(savedResults);
       } finally {
         setSearching(false);
       }
@@ -265,10 +265,9 @@ export default function ItineraryDetailPage() {
         const savedNames = new Set(savedNearby.map((p) => p.name.toLowerCase().trim()));
         const filteredTrackAsiaNearby = trackAsiaNearby.filter((p) => !savedNames.has(p.name.toLowerCase().trim()));
 
-        const combined = [...savedNearby, ...filteredTrackAsiaNearby].sort(
-          (a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999)
-        );
-        setNearbyPlaces(combined);
+        setNearbyPlaces(
+  savedNearby.sort((a, b) => a.distanceKm - b.distanceKm)
+);
       } finally {
         setNearbyLoading(false);
       }
@@ -443,6 +442,32 @@ export default function ItineraryDetailPage() {
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
     showToast("Link copied to clipboard!", "success");
+  };
+
+  // ── Export to Maps ──────────────────────────────────────────────────────────
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const getGoogleMapsUrl = () => {
+    if (places.length === 0) return null;
+    if (places.length === 1) {
+      const p = places[0];
+      return `https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`;
+    }
+    const origin = `${places[0].latitude},${places[0].longitude}`;
+    const destination = `${places[places.length - 1].latitude},${places[places.length - 1].longitude}`;
+    const waypoints = places.slice(1, -1).map((p) => `${p.latitude},${p.longitude}`).join("|");
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}`;
+  };
+
+  const getAppleMapsUrl = () => {
+    if (places.length === 0) return null;
+    if (places.length === 1) {
+      const p = places[0];
+      return `https://maps.apple.com/?ll=${p.latitude},${p.longitude}&q=${encodeURIComponent(p.name)}`;
+    }
+    const first = places[0];
+    const last = places[places.length - 1];
+    return `https://maps.apple.com/?saddr=${first.latitude},${first.longitude}&daddr=${last.latitude},${last.longitude}`;
   };
 
   // ── Optimise route (nearest-neighbour TSP via Distance Matrix API) ─────────
@@ -669,6 +694,51 @@ export default function ItineraryDetailPage() {
               <button onClick={handleShare} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-full hover:bg-gray-50 text-gray-600">
                 <Share2 size={13} /> Share
               </button>
+              {/* Export to Maps */}
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-full hover:bg-gray-50 text-gray-600"
+                >
+                  <ExternalLink size={13} /> Open in Maps
+                </button>
+                {showExportMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                    <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50">
+                      <a
+                        href={getGoogleMapsUrl()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowExportMenu(false)}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                      >
+                        <img src="https://www.google.com/favicon.ico" alt="" className="w-4 h-4 rounded" />
+                        Google Maps
+                      </a>
+                      <a
+                        href={getAppleMapsUrl()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowExportMenu(false)}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
+                          <rect width="24" height="24" rx="5" fill="#fff"/>
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="url(#apple_grad)"/>
+                          <defs>
+                            <linearGradient id="apple_grad" x1="5" y1="2" x2="19" y2="22" gradientUnits="userSpaceOnUse">
+                              <stop stopColor="#34C759"/>
+                              <stop offset="1" stopColor="#007AFF"/>
+                            </linearGradient>
+                          </defs>
+                        </svg>
+                        Apple Maps
+                      </a>
+                    </div>
+                  </>
+                )}
+              </div>
               <div className="relative">
                 <button onClick={() => setShowMore(!showMore)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
                   <MoreHorizontal size={18} />
