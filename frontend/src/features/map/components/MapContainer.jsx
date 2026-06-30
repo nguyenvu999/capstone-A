@@ -1044,6 +1044,12 @@ if (focusMarkerRef.current) {
             if (onPlaceClick) onPlaceClick(place, selectedBuildingAddress);
           }}
           onBuildingConverted={() => {
+            // ✅ Xóa focused marker + popup cũ (building popup)
+            if (focusMarkerRef.current) {
+              focusMarkerRef.current.remove();
+              focusMarkerRef.current = null;
+            }
+            
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
             
