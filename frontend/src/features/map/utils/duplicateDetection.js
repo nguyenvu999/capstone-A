@@ -76,6 +76,11 @@ export async function checkDuplicatePlace(newPlace, existingPlaces) {
   const EXACT_COORDS_PRECISION = 0.00001; // ~1 mét
 
   for (const existing of existingPlaces) {
+    // ✅ BỎ QUA BUILDING PLACES (sẽ được xử lý bởi checkAddressForBuilding)
+    if (existing.place_type === "building") {
+      continue;
+    }
+
     // Tính độ tương đồng tên
     const nameSimilarity = stringSimilarity(newPlace.name, existing.name);
     
@@ -131,4 +136,74 @@ export async function checkDuplicatePlace(newPlace, existingPlaces) {
   }
 
   return null; // Không tìm thấy duplicate
+}
+
+// ===== BUILDING FEATURE: CHECK IF ADDRESS HAS BUILDING =====
+export async function checkAddressForBuilding(newPlace, existingPlaces) {
+  for (const existing of existingPlaces) {
+    // Kiểm tra nếu place này là building
+    if (existing.place_type !== "building") continue;
+    
+    // Tính độ tương đồng địa chỉ
+    const addressSimilarity = stringSimilarity(newPlace.address, existing.building_address || existing.address);
+    
+    // Tính khoảng cách GPS
+    const distance = calculateDistance(
+      Number(newPlace.latitude),
+      Number(newPlace.longitude),
+      Number(existing.latitude),
+      Number(existing.longitude)
+    );
+
+    // Nếu cùng địa chỉ + gần nhau → đây là building
+    if (addressSimilarity >= 0.7 && distance <= 0.05) {
+      return {
+        ...existing,
+        distance,
+        isBuilding: true,
+        building_name: existing.building_name,
+        building_address: existing.building_address || existing.address
+      };
+    }
+  }
+
+  return null; // Không tìm thấy building
+}
+
+// ===== BUILDING FEATURE: CHECK DUPLICATE INSIDE BUILDING =====
+// Rule 1: Cùng tầng + name similarity >= 80% → BLOCK
+// Rule 2: Khác tầng + name similarity >= 95% → BLOCK (chặn spam hoàn toàn trùng tên)
+// Rule 3: Khác tầng + name similarity < 95% → ALLOW
+export function checkBuildingDuplicate(newPlace, placesInBuilding) {
+  // Check cùng tầng trước (strict)
+  const sameLevelPlaces = placesInBuilding.filter(
+    p => Number(p.floor_level) === Number(newPlace.floor_level)
+  );
+
+  for (const existing of sameLevelPlaces) {
+    const nameSim = stringSimilarity(newPlace.name, existing.name);
+    if (nameSim >= 0.8) {
+      return {
+        ...existing,
+        reason: "SAME_FLOOR_DUPLICATE",
+        similarity: nameSim
+      };
+    }
+  }
+
+  // Check khác tầng (loose — chỉ block nếu gần như giống hệt)
+  for (const existing of placesInBuilding) {
+    if (Number(existing.floor_level) === Number(newPlace.floor_level)) continue;
+    
+    const nameSim = stringSimilarity(newPlace.name, existing.name);
+    if (nameSim >= 0.95) {
+      return {
+        ...existing,
+        reason: "BUILDING_WIDE_DUPLICATE",
+        similarity: nameSim
+      };
+    }
+  }
+
+  return null;
 }

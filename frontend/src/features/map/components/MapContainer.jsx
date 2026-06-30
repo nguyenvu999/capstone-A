@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import trackasiagl from "trackasia-gl";
 import { Navigation, MapPin, X } from "lucide-react"; 
 import "trackasia-gl/dist/trackasia-gl.css";
+import BuildingDetailPanel from "./BuildingDetailPanel";
 
 export default function MapContainer({ 
   apiKey, 
@@ -17,6 +18,11 @@ export default function MapContainer({
   showRegisterForm,      
   selectedPlace,         
   onPinPointChange,  
+  reopenBuildingAddress,
+  onReopenBuildingHandled,
+  activeFilters,
+  onAddPlaceToBuilding,
+  onBuildingConverted,
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -25,7 +31,20 @@ export default function MapContainer({
   const userLocationMarkerRef = useRef(null);  
   const userCoordsRef = useRef([106.694945, 10.769034]);
   const isSwitchingLocationRef = useRef(false);
+
+  // BUILDING DETAIL STATE 
+  const [showBuildingDetail, setShowBuildingDetail] = useState(false);
+  const [selectedBuildingAddress, setSelectedBuildingAddress] = useState(null);
   
+  // ✅ Reopen Building Panel khi user click "Back to Building"
+  useEffect(() => {
+    if (reopenBuildingAddress) {
+      setSelectedBuildingAddress(reopenBuildingAddress);
+      setShowBuildingDetail(true);
+      if (onReopenBuildingHandled) onReopenBuildingHandled();
+    }
+  }, [reopenBuildingAddress]);
+
   // PIN POINT STATE
   const [isPinPointMode, setIsPinPointMode] = useState(false);
   const isPinPointModeRef = useRef(false); 
@@ -172,10 +191,15 @@ export default function MapContainer({
     setIsPinPointMode(false);
     isPinPointModeRef.current = false; // ← RESET REF
     
-    // Tạo pin marker mới
+    // Tạo pin marker mới (icon cây kim)
     const pinEl = document.createElement("div");
     pinEl.className = "w-12 h-12 flex items-center justify-center cursor-pointer drop-shadow-lg z-30";
-    pinEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-10 h-10 text-red-500"><path fill-rule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" /></svg>`;
+    pinEl.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-10 h-10 text-red-500">
+        <circle cx="12" cy="6" r="4" fill="#EF4444" />
+        <path d="M12 10 L12 22" stroke="#EF4444" stroke-width="2" stroke-linecap="round" />
+      </svg>
+    `;
     
     fetch(`https://maps.track-asia.com/api/v2/geocode/json?result_type=street_address&latlng=${lat},${lng}&key=${apiKey}&size=1&radius=100`)
       .then((res) => res.json())
@@ -442,16 +466,168 @@ export default function MapContainer({
     }
   }, [activeCategory, allPlaces, pinPointLocation]);
 
-  // 3. Render Markers Loop (Giữ nguyên)
+  // 3. Render Markers Loop - WITH BUILDING GROUPING
   useEffect(() => {
     if (!mapRef.current) return;
     
+    // Clear existing markers
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
     
     if (!categoryResults || categoryResults.length === 0) return;
 
+    // ===== STEP 1: GROUP PLACES BY BUILDING ADDRESS =====
+    const buildingGroups = {};
+    const standalonePlaces = [];
+
     categoryResults.forEach(place => {
+      if (place.place_type === "building" && place.building_address) {
+        // Group by building_address
+        if (!buildingGroups[place.building_address]) {
+          buildingGroups[place.building_address] = [];
+        }
+        buildingGroups[place.building_address].push(place);
+      } else {
+        // Standalone place
+        standalonePlaces.push(place);
+      }
+    });
+
+    // ===== STEP 2: RENDER BUILDING MARKERS =====
+    Object.entries(buildingGroups).forEach(([buildingAddress, places]) => {
+      // Use first place's coordinates for building marker
+      const firstPlace = places[0];
+      const lat = Number(firstPlace.latitude);
+      const lng = Number(firstPlace.longitude);
+      
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+      // Create building marker
+      const el = document.createElement("div");
+      el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer group z-20 bg-gray-700";
+      el.innerHTML = `<span class="text-xl">🏢</span>`;
+
+      // Hover popup (chỉ hiện tên building)
+      const hoverPopup = new trackasiagl.Popup({ 
+        offset: [0, -20], 
+        closeButton: false, 
+        closeOnClick: false 
+      }).setHTML(`
+        <div class="p-1.5 max-w-xs text-slate-800">
+          <div class="font-bold text-xs line-clamp-1">${firstPlace.building_name || "Building"}</div>
+        </div>
+      `);
+
+      el.addEventListener("mouseenter", () => hoverPopup.setLngLat([lng, lat]).addTo(mapRef.current));
+      el.addEventListener("mouseleave", () => hoverPopup.remove());
+
+      // Click → Show popup with "See Details" button (SAME behavior as normal place)
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        hoverPopup.remove();
+
+        // ✅ Fly to building location
+        mapRef.current.flyTo({ 
+          center: [lng, lat], 
+          essential: true 
+        });
+
+        // ✅ Remove old focused marker (same pattern as normal place)
+        if (focusMarkerRef.current) {
+          isSwitchingLocationRef.current = true;
+          focusMarkerRef.current.remove();
+          focusMarkerRef.current = null;
+          setTimeout(() => { isSwitchingLocationRef.current = false; }, 50);
+        }
+
+        // ✅ Create pin marker
+        const pin = document.createElement("div");
+        pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
+        pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
+
+        // ✅ Create popup HTML
+        const buildingPopupHTML = `
+          <div class="p-2">
+            <div class="font-bold text-sm mb-1">${firstPlace.building_name || "Building"}</div>
+            <div class="text-xs text-gray-600 mb-1">${places.length} place${places.length > 1 ? 's' : ''} inside</div>
+            <div class="text-xs text-gray-600 mb-2">${buildingAddress}</div>
+            <button 
+              class="see-building-details-btn w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              See Details
+            </button>
+          </div>
+        `;
+
+        const buildingPopup = new trackasiagl.Popup({
+          offset: [0, -32],
+          closeButton: true,
+          closeOnClick: false,
+          className: "focused-place-popup"
+        }).setHTML(buildingPopupHTML);
+
+        // ✅ Popup close event (SAME behavior as normal place)
+        buildingPopup.on("close", () => {
+          if (isSwitchingLocationRef.current) return;
+
+          // Remove marker
+          if (focusMarkerRef.current) {
+            focusMarkerRef.current.remove();
+            focusMarkerRef.current = null;
+          }
+
+          // ✅ Fly back to pin point or GPS
+          if (pinPointLocation) {
+            mapRef.current?.flyTo({
+              center: [pinPointLocation.lng, pinPointLocation.lat],
+              zoom: 14,
+              essential: true,
+            });
+          } else {
+            navigator.geolocation.getCurrentPosition((position) => {
+              const { latitude, longitude } = position.coords;
+              mapRef.current?.flyTo({
+                center: [longitude, latitude],
+                zoom: 14,
+                essential: true,
+              });
+            });
+          }
+        });
+
+        // ✅ Add marker + popup to map
+        focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
+          .setLngLat([lng, lat])
+          .setPopup(buildingPopup)
+          .addTo(mapRef.current)
+          .togglePopup();
+
+        // ✅ Attach "See Details" button handler (KEEP marker + popup)
+        setTimeout(() => {
+          const btn = document.querySelector('.see-building-details-btn');
+          if (btn) {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              console.log("🏢 [MapContainer] Building See Details clicked");
+
+              // ✅ KHÔNG remove marker + popup (giữ nguyên like normal place)
+              // Chỉ mở Building Detail Panel
+              setSelectedBuildingAddress(buildingAddress);
+              setShowBuildingDetail(true);
+            });
+          }
+        }, 100);
+      });
+
+      const m = new trackasiagl.Marker({ element: el, anchor: "center" })
+        .setLngLat([lng, lat])
+        .addTo(mapRef.current);
+      
+      markersRef.current.push(m);
+    });
+
+    // ===== STEP 3: RENDER STANDALONE MARKERS (GIỮ NGUYÊN LOGIC CŨ) =====
+    standalonePlaces.forEach(place => {
       const lat = Number(place.latitude);
       const lng = Number(place.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
@@ -459,22 +635,22 @@ export default function MapContainer({
       const el = document.createElement("div");
       el.className = "w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center cursor-pointer group z-20";
       
-      const isSupabase = place.id !== undefined; 
+      const isSupabase = place.id !== undefined;
       const category = (place.category || "").toLowerCase();
-      const types = place.types || []; 
+      const types = place.types || [];
 
-      let markerConfig = { bgColor: "#3b82f6", iconHtml: `🏢` }; 
+      let markerConfig = { bgColor: "#3b82f6", iconHtml: `🏢` };
 
       if (category === "restaurant" || types.includes("restaurant") || types.includes("food")) {
         markerConfig = { bgColor: "#fb923c", iconHtml: `<img src="/restaurant-icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "bar" || types.includes("bar") || types.includes("night_club")) {
         markerConfig = { bgColor: "#a855f7", iconHtml: `<span class="text-xl">🍷</span>` };
       } else if (category === "beverage" || types.includes("cafe") || types.includes("coffee_shop")) {
-        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<span class="text-xl">☕</span>` }; 
+        markerConfig = { bgColor: "#8b5cf6", iconHtml: `<span class="text-xl">☕</span>` };
       } else if (category === "sight" || types.includes("tourist_attraction") || types.includes("point_of_interest")) {
         markerConfig = { bgColor: "#3b82f6", iconHtml: `<span class="text-xl">👁️</span>` };
       } else if (category === "entertainment" || types.includes("amusement_park") || types.includes("casino") || types.includes("movie_theater")) {
-        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` }; 
+        markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "team_event") {
         markerConfig = { bgColor: "#10b981", iconHtml: `<span class="text-xl">👥</span>` };
       }
@@ -495,14 +671,18 @@ export default function MapContainer({
 
       el.addEventListener("click", (e) => {
         e.stopPropagation();
-        hoverPopup.remove(); 
+        hoverPopup.remove();
         setFocusedLocation({
           lat: lat,
           lng: lng,
           name: place.name,
           address: place.address || place.formatted_address || place.vicinity,
-          rating: place.rating || 0, 
-          isNewCustomPoint: false
+          rating: place.rating || 0,
+          isNewCustomPoint: false,
+          // ✅ THÊM: Building info
+          place_type: place.place_type,
+          building_name: place.building_name,
+          floor_level: place.floor_level,
         });
       });
 
@@ -510,6 +690,28 @@ export default function MapContainer({
       markersRef.current.push(m);
     });
   }, [categoryResults]);
+
+  // ✅ useEffect riêng: Xóa marker + fly về pin point khi clear focused location
+  useEffect(() => {
+    if (focusedLocation === null) {
+      // XÓA MARKER + POPUP NẾU CÒN TỒN TẠI
+      if (focusMarkerRef.current) {
+        console.log("🗑️ [MapContainer] Removing focus marker because focusedLocation = null");
+        focusMarkerRef.current.remove();
+        focusMarkerRef.current = null;
+      }
+
+      // NẾU ĐANG TRONG PIN MODE → FLY VỀ PIN POINT
+      if (pinPointLocation && mapRef.current) {
+        console.log("🔄 [MapContainer] focusedLocation cleared, flying back to pin point");
+        mapRef.current.flyTo({
+          center: [pinPointLocation.lng, pinPointLocation.lat],
+          zoom: 14,
+          essential: true,
+        });
+      }
+    }
+  }, [focusedLocation, pinPointLocation]);
 
   // 4. FIX CHỈ ĐỊNH: Chặn nhảy chữ vào popup khi đang gõ text trong Form đăng ký
   useEffect(() => {
@@ -549,16 +751,25 @@ if (focusMarkerRef.current) {
     pin.className = "w-10 h-10 flex items-center justify-center cursor-pointer drop-shadow-md z-30";
     pin.innerHTML = `<img src="/pin_map_dot.svg" style="width: 100%; height: 100%; object-fit: contain;" />`;
     
+    // ✅ Format popup title + address cho place thuộc building
+    const displayName =
+      focusedLocation.place_type === "building" && focusedLocation.building_name
+        ? `${name} · Level ${focusedLocation.floor_level}, ${focusedLocation.building_name}`
+        : (name || "Selected Location");
+
+    // ✅ Dòng địa chỉ chỉ giữ địa chỉ gốc, KHÔNG lặp lại level/building
+    const displayAddress = address || "";
+
     const popupHTML = `
       <div class="p-2">
-        <div class="font-bold text-sm mb-1">${name || "Selected Location"}</div>
+        <div class="font-bold text-sm mb-1">${displayName}</div>
         ${rating ? `
           <div class="flex items-center gap-1 mb-1">
             <span class="text-yellow-500 text-sm">${renderStars(rating)}</span>
             <span class="text-xs text-gray-600">${Number(rating).toFixed(1)}</span>
           </div>
         ` : ''}
-        <div class="text-xs text-gray-600 mb-2">${address || ""}</div>
+        <div class="text-xs text-gray-600 mb-2">${displayAddress}</div>
         ${!focusedLocation.isNewCustomPoint ? `
           <button 
             class="see-details-btn w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
@@ -575,30 +786,97 @@ if (focusMarkerRef.current) {
       className: "focused-place-popup"
     }).setHTML(popupHTML);
     
-    // delete marker and return to user
- focusPopup.on("close", () => {
-  // Ignore popup closes caused by switching locations
-  if (isSwitchingLocationRef.current) {
-    return;
-  }
+  // ===== POPUP CLOSE EVENT ===== 
+  focusPopup.on("close", () => {
+    // Ignore popup closes caused by switching locations
+    if (isSwitchingLocationRef.current) {
+      return;
+    }
 
-  if (focusMarkerRef.current) {
-    focusMarkerRef.current.remove();
-    focusMarkerRef.current = null;
-  }
+    if (focusMarkerRef.current) {
+      focusMarkerRef.current.remove();
+      focusMarkerRef.current = null;
+    }
 
-  setFocusedLocation(null);
+    setFocusedLocation(null);
 
-  navigator.geolocation.getCurrentPosition((position) => {
-    const { latitude, longitude } = position.coords;
+    // ✅ CASE 1: Đang trong PIN MODE
+    if (pinPointLocation) {
+      const [pinLng, pinLat] = [pinPointLocation.lng, pinPointLocation.lat];
+      
+      // Tìm place đang focused
+      const focusedPlace = categoryResults.find(p => 
+        Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
+        Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
+      );
+      
+      if (focusedPlace) {
+        // Tính khoảng cách từ pin point đến place này
+        const R = 6371;
+        const dLat = ((focusedPlace.latitude - pinLat) * Math.PI) / 180;
+        const dLon = ((focusedPlace.longitude - pinLng) * Math.PI) / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((pinLat * Math.PI) / 180) * Math.cos((focusedPlace.latitude * Math.PI) / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+        
+        // Nếu place nằm NGOÀI 5km → xóa khỏi categoryResults
+        if (distance > 5) {
+          onCategoryResultsChange(prev => 
+            prev.filter(p => p.id !== focusedPlace.id)
+          );
+        }
+      }
+      
+      // Quay về pin location
+      mapRef.current?.flyTo({
+        center: [pinPointLocation.lng, pinPointLocation.lat],
+        zoom: 14,
+        essential: true,
+      });
+    } 
+    // ✅ CASE 2: GPS MODE (KHÔNG CÓ PIN)
+    else {
+      // Tìm place đang focused
+      const focusedPlace = categoryResults.find(p => 
+        Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
+        Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
+      );
+      
+      if (focusedPlace) {
+        // Tính khoảng cách từ GPS đến place này
+        const [gpsLng, gpsLat] = userCoordsRef.current;
+        const R = 6371;
+        const dLat = ((focusedPlace.latitude - gpsLat) * Math.PI) / 180;
+        const dLon = ((focusedPlace.longitude - gpsLng) * Math.PI) / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((gpsLat * Math.PI) / 180) * Math.cos((focusedPlace.latitude * Math.PI) / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+        
+        // ✅ FIX NOTE 1: Nếu place nằm NGOÀI 5km GPS → xóa khỏi categoryResults
+        if (distance > 5) {
+          console.log("🗑️ [MapContainer] Removing place outside 5km from GPS:", focusedPlace.name);
+          onCategoryResultsChange(prev => 
+            prev.filter(p => p.id !== focusedPlace.id)
+          );
+        }
+      }
+      
+      // Quay về GPS
+      navigator.geolocation.getCurrentPosition((position) => {
+        const { latitude, longitude } = position.coords;
 
-    mapRef.current?.flyTo({
-      center: [longitude, latitude],
-      zoom: 14,
-      essential: true,
-    });
+        mapRef.current?.flyTo({
+          center: [longitude, latitude],
+          zoom: 14,
+          essential: true,
+        });
+      });
+    }
   });
-});
     
     focusMarkerRef.current = new trackasiagl.Marker({ element: pin, anchor: "bottom" })
       .setLngLat([Number(lng), Number(lat)])
@@ -627,56 +905,161 @@ if (focusMarkerRef.current) {
       }
     }, 100);
 
-  // THAY ĐỔI QUAN TRỌNG: Chỉ lắng nghe sự thay đổi của TỌA ĐỘ (lat, lng).
-  // Loại bỏ hoàn toàn sự phụ thuộc vào text 'name' hay 'address' để khi bạn gõ, useEffect này KHÔNG bị chạy lại.
-  }, [focusedLocation?.lat, focusedLocation?.lng, onPlaceClick]); 
+  // CHỈ rerender popup khi:
+  // - đổi tọa độ
+  // - hoặc có popupRefreshKey (commit update sau khi edit/register)
+  // Không phụ thuộc trực tiếp vào name/address để tránh bug mất focus khi đang gõ form.
+  }, [focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.popupRefreshKey, onPlaceClick]);
 
   return (
     <div className="relative h-full w-full flex-1 z-0">
       <div ref={mapContainerRef} className="h-full w-full" />
       
-      {/* CONTROL BUTTONS (GPS + PIN POINT)*/}
+      {/* ===== TOOLBAR (PIN POINT + RECENTER) ===== */}
       <div 
-        className={`absolute bottom-6 max-md:bottom-28 z-40 flex gap-3 transition-all duration-300 ${
+        className={`absolute bottom-6 max-md:bottom-28 z-40 transition-all duration-300 ${
           showRegisterForm || selectedPlace 
-            ? 'right-[420px] max-md:right-6' // Nhảy sang trái khi form mở
+            ? 'right-[420px] max-md:right-6'
             : 'right-6'
         }`}
       >
-        {/* Pin Point / Clear Pin Button (toggle) */}
-        {pinPointLocation ? (
-          // ĐÃ ĐẶT PIN → HIỂN THỊ NÚT X
-          <button 
-            onClick={handleClearPin}
-            className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-xl border border-red-600 transition-all active:scale-95"
-            title="Clear pin point and back to my location"
-          >
-            <X size={20} />
-          </button>
-        ) : (
-          // CHƯA ĐẶT PIN → HIỂN THỊ NÚT PIN POINT
-          <button 
-            onClick={handlePinPointToggle}
-            className={`p-3 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 ${
-              isPinPointMode 
-                ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse' 
-                : 'bg-white hover:bg-gray-50 text-gray-600'
-            }`}
-            title={isPinPointMode ? "Click map to set pin" : "Set pin point to explore other areas"}
-          >
-            <MapPin size={20} />
-          </button>
-        )}
+        <div className="flex items-center gap-2 bg-white rounded-full shadow-xl border border-gray-200 px-2 py-2">
+          {/* ===== PIN POINT BUTTON ===== */}
+          <div className="relative group">
+            <button 
+              onClick={pinPointLocation ? handleClearPin : handlePinPointToggle}
+              className={`relative p-2.5 rounded-full transition-all active:scale-95 ${
+                isPinPointMode 
+                  ? 'bg-red-500 text-white animate-pulse' 
+                  : pinPointLocation
+                  ? 'bg-red-500 text-white'
+                  : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
+              }`}
+              aria-label={pinPointLocation ? "Clear pin point" : isPinPointMode ? "Click map to set pin" : "Set pin point"}
+            >
+              {/* Icon cây kim (quả bóng đỏ + kim) */}
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                fill="currentColor" 
+                className="w-5 h-5"
+              >
+                <circle cx="12" cy="6" r="4" className={pinPointLocation || isPinPointMode ? "fill-white" : "fill-red-500"} />
+                <path d="M12 10 L12 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              
+              {/* Dấu X góc phải trên (chỉ hiện khi pin active hoặc mode active) */}
+              {(pinPointLocation || isPinPointMode) && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-md">
+                  <X size={10} className="text-red-600" strokeWidth={3} />
+                </div>
+              )}
+            </button>
 
-        {/* GPS Recenter Button */}
-        <button 
-          onClick={handleRecenter} 
-          className="p-3 bg-white hover:bg-gray-50 text-blue-600 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 group"
-          title="Back to my location"
-        >
-          <Navigation size={20} className="fill-blue-50 group-hover:rotate-45 transition-transform" />
-        </button>
+            {/* Tooltip */}
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap">
+              <div className="bg-blue-600 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+                <div className="font-bold mb-0.5">Pin Point</div>
+                <div className="text-[10px] opacity-90">
+                  {pinPointLocation 
+                    ? "Click to clear pin and return to your location"
+                    : isPinPointMode
+                    ? "Click on map to place pin"
+                    : "Explore places in other areas"}
+                </div>
+                {/* Arrow */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                  <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-blue-600"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-6 bg-gray-300"></div>
+
+          {/* ===== RECENTER BUTTON ===== */}
+          <div className="relative group">
+            <button 
+              onClick={() => {
+                // ✅ Nếu pin đang active → clear pin trước
+                if (pinPointLocation) {
+                  handleClearPin();
+                } else {
+                  handleRecenter();
+                }
+              }}
+              className="p-2.5 bg-gray-50 hover:bg-gray-100 text-blue-600 rounded-full transition-all active:scale-95"
+              aria-label="Back to my location"
+            >
+              <Navigation size={18} className="fill-blue-50 group-hover:rotate-45 transition-transform" />
+            </button>
+
+            {/* Tooltip */}
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap">
+              <div className="bg-blue-600 text-white text-xs font-medium px-3 py-2 rounded-lg shadow-lg">
+                <div className="font-bold mb-0.5">Recenter</div>
+                <div className="text-[10px] opacity-90">
+                  {pinPointLocation ? "Clear pin and return to GPS" : "Go back to your location"}
+                </div>
+                {/* Arrow */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                  <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-blue-600"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+      {/* ===== BUILDING DETAIL PANEL ===== */}
+      {showBuildingDetail && selectedBuildingAddress && (
+        <BuildingDetailPanel
+          buildingAddress={selectedBuildingAddress}
+          initialBuildingName={
+            categoryResults.find(p => p.building_address === selectedBuildingAddress)?.building_name || "Building"
+          }
+          activeFilters={activeFilters}
+          onClose={() => {
+            setShowBuildingDetail(false);
+            setSelectedBuildingAddress(null);
+          }}
+          onAddPlace={() => {
+            const buildingPlaces = categoryResults.filter(
+              p => p.place_type === "building" && p.building_address === selectedBuildingAddress
+            );
+            const firstPlace = buildingPlaces[0];
+            setShowBuildingDetail(false);
+            if (onAddPlaceToBuilding) {
+              onAddPlaceToBuilding({
+                buildingName: firstPlace?.building_name || "",
+                buildingAddress: selectedBuildingAddress,
+                buildingCity: firstPlace?.city || "",
+                buildingLatitude: firstPlace?.latitude || "",
+                buildingLongitude: firstPlace?.longitude || "",
+              });
+            }
+          }}
+          onPlaceClick={(place) => {
+            setShowBuildingDetail(false);
+            if (onPlaceClick) onPlaceClick(place, selectedBuildingAddress);
+          }}
+          onBuildingConverted={() => {
+            // ✅ Xóa focused marker + popup cũ (building popup)
+            if (focusMarkerRef.current) {
+              focusMarkerRef.current.remove();
+              focusMarkerRef.current = null;
+            }
+            
+            setShowBuildingDetail(false);
+            setSelectedBuildingAddress(null);
+            
+            // ✅ Gọi callback từ MapPage để refresh data
+            if (onBuildingConverted) {
+              onBuildingConverted();
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -220,14 +220,24 @@ export default function MapSidebar({
         created_by_email: dbItem.created_by_email,
         description: dbItem.description,
         isSupabaseData: true,
-        distanceText: `${distance.toFixed(1)} km`  
+        distanceText: `${distance.toFixed(1)} km`,
+
+        // ✅ THÊM building fields
+        place_type: dbItem.place_type || "standalone",
+        building_name: dbItem.building_name || null,
+        floor_level: dbItem.floor_level || null,
+        building_address: dbItem.building_address || null,
       };
       setFocusedLocation({
         lat: normalizedPlace.latitude,
         lng: normalizedPlace.longitude,
         name: normalizedPlace.name,
         address: normalizedPlace.address,
-        isNewCustomPoint: false  
+        isNewCustomPoint: false,
+        place_type: normalizedPlace.place_type,
+        building_name: normalizedPlace.building_name,
+        floor_level: normalizedPlace.floor_level,
+        rating: normalizedPlace.rating || 0
       });
       setCategoryResults(prev => {        
         const existingIds = prev.map(p => p.id);
@@ -350,6 +360,13 @@ export default function MapSidebar({
     return stars;
   };
 
+  const formatPlaceAddress = (place) => {
+    if (place.place_type === "building" && place.building_name) {
+      return `Level ${place.floor_level}, ${place.building_name}, ${place.address}`;
+    }
+    return place.address || place.formatted_address || place.vicinity || "";
+  };
+
   return (
     <>
       {/* MOBILE LIST TOGGLE */}
@@ -395,8 +412,10 @@ export default function MapSidebar({
                 setSearchQuery(""); 
                 setSuggestions([]);
                 
-                // ✅ Khi xóa search → loại bỏ places ngoài 5km khỏi nearby panel
-                // Chỉ giữ lại places trong 5km (isSupabaseData + within radius)
+                // ✅ FIX 1: Xóa focused marker + popup trước
+                setFocusedLocation(null);
+                
+                // ✅ FIX 2: Xóa places ngoài 5km khỏi nearby panel
                 setCategoryResults(prev => {
                   const [userLng, userLat] = currentUserCoords;
                   return prev.filter(place => {
@@ -413,10 +432,6 @@ export default function MapSidebar({
                     return distance <= 5;
                   });
                 });
-                
-                // ✅ Xóa focused marker trên map
-                setFocusedLocation(null);
-                
               }} className="absolute right-3 text-gray-400 hover:text-gray-600">
                 <X size={14} />
               </button>
@@ -526,28 +541,138 @@ export default function MapSidebar({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
                     <Star size={12} className="text-gray-500" />
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Minimum Rating</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Rating Range</span>
                   </div>
                   {selectedRatings.length > 0 && (
-                    <button onClick={() => setSelectedRatings([])} className="text-[9px] text-blue-600 hover:underline">Clear</button>
+                    <button 
+                      onClick={() => setSelectedRatings([])} 
+                      className="text-[9px] text-blue-600 hover:underline"
+                    >
+                      Clear
+                    </button>
                   )}
                 </div>
-                <div className="flex gap-1.5">
-                  {[1, 2, 3, 4, 5].map(rating => (
-                    <button
-                      key={rating}
-                      onClick={() => toggleRating(rating)}
-                      className={`flex-1 px-1.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-0.5 ${
-                        selectedRatings.includes(rating)
-                          ? "bg-amber-500 text-white shadow-sm"
-                          : "bg-white text-gray-600 border border-gray-200 hover:border-amber-300"
-                      }`}
-                    >
-                      <span>{rating}</span>
-                      <Star size={10} className={selectedRatings.includes(rating) ? "fill-white" : "fill-gray-300"} />
-                    </button>
-                  ))}
+
+                {/* 2 DROPDOWN LAYOUT */}
+                <div className="flex items-center gap-2">
+                  {/* Dropdown 1: Min Rating */}
+                  <select
+                    value={selectedRatings.length > 0 ? Math.min(...selectedRatings) : ""}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      
+                      if (!value) {
+                        // User chọn "Min" (xóa filter)
+                        setSelectedRatings([]);
+                        return;
+                      }
+
+                      if (selectedRatings.length === 0) {
+                        // Chưa có gì → set min
+                        setSelectedRatings([value]);
+                      } else if (selectedRatings.length === 1) {
+                        // Đã có min → đổi min (GIỮ NGUYÊN max nếu có)
+                        setSelectedRatings([value]);
+                      } else {
+                        // Đã có min + max → đổi min, GIỮ NGUYÊN max
+                        const currentMax = Math.max(...selectedRatings);
+                        
+                        // Nếu min mới >= max hiện tại → chỉ giữ min (xóa max)
+                        if (value >= currentMax) {
+                          setSelectedRatings([value]);
+                        } else {
+                          setSelectedRatings([value, currentMax]);
+                        }
+                      }
+                    }}
+                    className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    <option value="">Min</option>
+                    {[1, 2, 3, 4, 5].map(rating => (
+                      <option key={rating} value={rating}>
+                        {rating} ★
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Chữ "To" */}
+                  <span className="text-xs font-medium text-gray-500 shrink-0">To</span>
+
+                  {/* Dropdown 2: Max Rating */}
+                  <select
+                    value={selectedRatings.length === 2 ? Math.max(...selectedRatings) : ""}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      
+                      if (!value) {
+                        // User chọn "Max" (xóa max, chỉ giữ min)
+                        if (selectedRatings.length === 2) {
+                          setSelectedRatings([Math.min(...selectedRatings)]);
+                        }
+                        return;
+                      }
+
+                      if (selectedRatings.length === 0) {
+                        // Chưa có min → KHÔNG CHO CHỌN MAX (disabled sẽ chặn, nhưng để logic safety)
+                        return;
+                      } else if (selectedRatings.length === 1) {
+                        // Đã có min → thêm max
+                        const currentMin = selectedRatings[0];
+                        
+                        // Chỉ cho phép max > min
+                        if (value > currentMin) {
+                          setSelectedRatings([currentMin, value]);
+                        }
+                      } else {
+                        // Đã có min + max → đổi max, GIỮ NGUYÊN min
+                        const currentMin = Math.min(...selectedRatings);
+                        
+                        // Chỉ cho phép max > min
+                        if (value > currentMin) {
+                          setSelectedRatings([currentMin, value]);
+                        }
+                      }
+                    }}
+                    disabled={selectedRatings.length === 0}
+                    className={`flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400 cursor-pointer ${
+                      selectedRatings.length === 0 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-white'
+                    }`}
+                  >
+                    <option value="">Max</option>
+                    {[1, 2, 3, 4, 5].map(rating => {
+                      const currentMin = selectedRatings.length > 0 ? Math.min(...selectedRatings) : 0;
+                      const isDisabled = rating <= currentMin;
+                      
+                      return (
+                        <option 
+                          key={rating} 
+                          value={rating}
+                          disabled={isDisabled}
+                          className={isDisabled ? 'text-gray-300' : ''}
+                        >
+                          {rating} ★
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
+
+                {/* Helper text */}
+                {selectedRatings.length === 1 && (
+                  <p className="text-[9px] text-gray-500 mt-1.5">
+                    Showing places with {selectedRatings[0]}+ stars
+                  </p>
+                )}
+                {selectedRatings.length === 2 && (
+                  <p className="text-[9px] text-gray-500 mt-1.5">
+                    {Math.max(...selectedRatings) === 5 
+                      ? `Showing places with ${Math.min(...selectedRatings)}+ stars`
+                      : `Showing places with ${Math.min(...selectedRatings)} to ${Math.max(...selectedRatings) - 0.1} stars`
+                    }
+                  </p>
+                )}
               </div>
 
               {activeFiltersCount > 0 && (
@@ -574,12 +699,23 @@ export default function MapSidebar({
                     key={place.id || place.place_id || index} 
                     onClick={() => {
                       if (lat && lng) {
-                        setFocusedLocation({ lat, lng, name: place.name, address: addressText });
+                        setFocusedLocation({
+                          lat,
+                          lng,
+                          name: place.name,
+                          address: place.address || place.formatted_address || place.vicinity,
+                          place_type: place.place_type || null,
+                          building_name: place.building_name || null,
+                          floor_level: place.floor_level || null,
+                          rating: place.rating || 0,
+                          isNewCustomPoint: false
+                        });
+
                         if (onTriggerDirectionPanel) onTriggerDirectionPanel(place);
                         setIsMobileExpanded(false);
                         if (onPlaceClick) onPlaceClick(place);
                       }
-                    }} 
+                    }}
                     className="flex items-start justify-between p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-50 transition-all duration-150 active:bg-gray-100"
                   >
                     <div className="flex items-start gap-3 overflow-hidden max-w-[78%]">
@@ -599,7 +735,7 @@ export default function MapSidebar({
                             <span className="text-gray-600">{Number(place.rating).toFixed(1)}</span>
                           </p>
                         )}
-                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">{addressText}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">{formatPlaceAddress(place)}</p>
                       </div>
                     </div>
 

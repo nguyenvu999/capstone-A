@@ -4,8 +4,9 @@ import { supabase } from "../../auth/api/supabaseClient";
 import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
+import { validateFloorLevel } from "../utils/floorLevelValidation";
 
-export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey }) {
+export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
   const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
   
@@ -52,8 +53,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     longitude: place?.longitude || "",
     price_level: place?.price_level || 1,
     business_status: place?.business_status || "open",
+    floor_level: place?.floor_level ? String(place.floor_level) : "1",
   });
 
+  const [floorLevelError, setFloorLevelError] = useState(null);
   const [addressQuery, setAddressQuery] = useState(place?.address || "");
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -175,6 +178,28 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     showToast("Address copied to clipboard!", "success");
   };
 
+  
+  const handleFloorLevelChange = (e) => {
+    const value = e.target.value.toUpperCase();
+    
+    if (value === "") {
+      setEditData(prev => ({ ...prev, floor_level: "" }));
+      setFloorLevelError(null);
+      return;
+    }
+
+    if (value.length > 2) return;
+
+    setEditData(prev => ({ ...prev, floor_level: value }));
+
+    const validation = validateFloorLevel(value);
+    if (!validation.isValid) {
+      setFloorLevelError(validation.error);
+    } else {
+      setFloorLevelError(null);
+    }
+  };
+
   useEffect(() => {
     if (addressQuery.trim().length < 2 || !showEditForm) {
       setSuggestions([]);
@@ -258,9 +283,17 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   };
 
   const handleRemoveEditImage = async (image) => {
+    // Remove from edit UI immediately
     setEditImages((prev) =>
       prev.filter((img) => img.url !== image.url)
     );
+
+    // Remove from view mode images immediately
+    setPlaceImages((prev) =>
+      prev.filter((img) => img.url !== image.url)
+    );
+
+    // If image is newly selected but not uploaded yet
     if (image.isNew) {
       URL.revokeObjectURL(image.url);
       return;
@@ -271,10 +304,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       .delete()
       .eq("url", image.url)
       .eq("place_id", String(place.id));
+
     if (error) {
       showToast(`Failed to remove image: ${error.message}`, "error");
       return;
     }
+
     showToast("Image removed", "success");
   };
 
@@ -367,6 +402,15 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       return;
     }
 
+    // Validate floor level if building
+    if (place.place_type === "building") {
+      const floorValidation = validateFloorLevel(editData.floor_level);
+      if (!floorValidation.isValid) {
+        showToast(floorValidation.error, "warning");
+        return;
+      }
+    }
+
     setUpdating(true);
 
     try {
@@ -380,6 +424,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           longitude: Number(editData.longitude),
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
+          ...(place.place_type === "building" && {
+            floor_level: validateFloorLevel(editData.floor_level).normalized,
+          }),
         })
         .eq("id", place.id);
 
@@ -413,11 +460,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           });
         }
 
-        const { error: imageInsertError } = await supabase
+        const { data: insertedImages, error: imageInsertError } = await supabase
           .from("place_images")
-          .insert(uploadedRows);
+          .insert(uploadedRows)
+          .select("id, url, sort_order");
 
         if (imageInsertError) throw imageInsertError;
+
+        setPlaceImages((prev) => [...prev, ...(insertedImages || [])]);
+
+        setEditImages((prev) => [
+          ...prev.filter((img) => !img.isNew),
+          ...(insertedImages || []),
+        ]);
       }
 
       showToast("Place updated successfully!", "success");
@@ -432,6 +487,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         longitude: Number(editData.longitude),
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
+        ...(place.place_type === "building" && {
+          floor_level: validateFloorLevel(editData.floor_level).normalized,
+        }),
       };
       if (onStatusUpdated) onStatusUpdated(updatedPlace);
 
@@ -709,9 +767,20 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         
         {/* Header Bar - Fixed */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
-          <h2 className="text-base font-bold text-gray-800">
-            {showEditForm ? "Edit Place" : "Place Details"}
-          </h2>
+          <div className="flex-1 min-w-0">
+            {/* ✅ Back to Building button */}
+            {!showEditForm && openedFromBuilding && onBackToBuilding && (
+              <button
+                onClick={onBackToBuilding}
+                className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 mb-1"
+              >
+                ← Back to Building
+              </button>
+            )}
+            <h2 className="text-base font-bold text-gray-800">
+              {showEditForm ? "Edit Place" : "Place Details"}
+            </h2>
+          </div>
           
           <div className="flex items-center gap-2">
             {/* ===== 3 CHẤM DROPDOWN (chỉ hiện khi View mode + isOwner) ===== */}
@@ -843,7 +912,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             {/* Location */}
             <div className="py-4">
               <h2 className="text-lg font-bold text-gray-900 mb-3">Location</h2>
-              <p className="text-gray-600 mb-3">{place.address}</p>
+              
+              {/* ✅ Hiển thị building info nếu có */}
+              {place.place_type === "building" && place.building_name ? (
+                <>
+                  <p className="text-sm font-semibold text-gray-900 mb-1">
+                    Level {place.floor_level}, {place.building_name}
+                  </p>
+                  <p className="text-sm text-gray-600 mb-3">{place.address}</p>
+                </>
+              ) : (
+                <p className="text-gray-600 mb-3">{place.address}</p>
+              )}
+              
               <button 
                 onClick={handleCopyAddress}
                 className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1.5"
@@ -1289,6 +1370,33 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 />
               </div>
             </div>
+
+            {/* Floor Level - chỉ hiện nếu place thuộc building */}
+            {place.place_type === "building" && (
+              <div>
+                <label className="block font-medium text-gray-700 mb-1.5 text-sm">
+                  Floor Level
+                </label>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={editData.floor_level}
+                  onChange={handleFloorLevelChange}
+                  placeholder="e.g. 1, 15, B1"
+                  className={`w-full bg-gray-50 border rounded-xl p-2.5 text-sm focus:outline-none transition-all uppercase ${
+                    floorLevelError
+                      ? "border-red-300 focus:border-red-500 bg-red-50"
+                      : "border-gray-200 focus:border-blue-500 focus:bg-white"
+                  }`}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  eg: 01 or 1 → 99 / Basement: B1 → B3
+                </p>
+                {floorLevelError && (
+                  <p className="text-xs text-red-600 mt-1">{floorLevelError}</p>
+                )}
+              </div>
+            )}
 
             {/* Price Level */}
             <div>
