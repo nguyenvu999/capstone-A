@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Menu, LogOut, Map, Users, FileText } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from "../../auth/context/AuthContext"; // Adjusted relative path based on your auth folder scheme
 import Logo from "../../../shared/ui/Logo";
 
 export default function AdminNavbar({ pendingRequestsCount = 0 }) {
@@ -8,6 +9,7 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const { logoutUser } = useAuth(); // Destructured the unified context session cleanup method
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -19,11 +21,16 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSignOut = () => {
-    if (confirm("Are you sure you want to sign out?")) {
-      alert("Signed out successfully!");
-    }
+  const handleSignOut = async () => {
     setShowDropdown(false);
+    if (confirm("Are you sure you want to sign out?")) {
+      try {
+        // Triggers the context logout sequence which clears local states and forces route redirection
+        await logoutUser();
+      } catch (err) {
+        console.error("Administrative signout execution exception:", err.message);
+      }
+    }
   };
 
   const menuItems = [
