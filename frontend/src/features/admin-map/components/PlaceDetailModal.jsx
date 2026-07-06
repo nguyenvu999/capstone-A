@@ -6,7 +6,6 @@ import { fetchReviewsByPlace } from "../api/reviewApi";
 import { validateFloorLevel } from "../utils/floorLevelValidation";
 import { checkDuplicatePlace, checkBuildingDuplicate, checkAddressForBuilding } from "../utils/duplicateDetection";
 import DuplicatePlaceModal from "./DuplicatePlaceModal";
-import { useAuth } from "../../auth/context/AuthContext";
 
 export default function PlaceDetailModal({ 
   place, 
@@ -17,7 +16,6 @@ export default function PlaceDetailModal({
   onBackToBuilding = null,
   onDuplicateViewPlace = null
 }) {
-  const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
   
   const [showEditForm, setShowEditForm] = useState(false); // Toggle View ↔ Edit mode
@@ -419,9 +417,6 @@ export default function PlaceDetailModal({
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
           category: editData.category,
-          updated_by: user?.id || null,
-          updated_by_email: user?.email || null,
-          updated_at: new Date().toISOString(),
           ...(place.place_type === "building" && {
             floor_level: validateFloorLevel(editData.floor_level).normalized,
           }),
@@ -486,9 +481,6 @@ export default function PlaceDetailModal({
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
         category: editData.category,
-        updated_by: user?.id || null,
-        updated_by_email: user?.email || null,
-        updated_at: new Date().toISOString(),
         ...(place.place_type === "building" && {
           floor_level: validateFloorLevel(editData.floor_level).normalized,
         }),
@@ -817,30 +809,6 @@ export default function PlaceDetailModal({
               </>
             )}
 
-            {/* Last Updated — Admin Only */}
-            <hr className="border-gray-200" />
-            <div className="py-4">
-              <h2 className="text-lg font-bold text-gray-900 mb-3">Last Updated</h2>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-purple-500 text-white flex items-center justify-center font-semibold text-sm">
-                  {(place.updated_by_email || place.created_by_email || "AD").substring(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-700 font-medium">
-                    {place.updated_by_email || place.created_by_email || "Unknown"}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {place.updated_at
-                      ? new Date(place.updated_at).toLocaleDateString('en-US', {
-                          year: 'numeric', month: 'short', day: 'numeric',
-                          hour: '2-digit', minute: '2-digit'
-                        })
-                      : "Not updated yet"
-                    }
-                  </p>
-                </div>
-              </div>
-            </div>
 
             {/* REVIEWS SECTION */}
             <hr className="border-gray-200" />

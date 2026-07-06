@@ -627,6 +627,11 @@ export default function AllPlacesSidebar({
 
           {/* Results Area */}
           <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="p-3 bg-blue-50 border-b border-blue-100">
+              <p className="text-xs font-bold text-blue-700">
+                {sortedResults.length} place{sortedResults.length !== 1 ? 's' : ''} total
+              </p>
+            </div>
             {sortedResults && sortedResults.length > 0 ? (
               sortedResults.map((place, index) => {
                 const lat = Number(place.latitude);

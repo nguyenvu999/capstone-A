@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { ArrowLeft, Check, X, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { MOCK_UPDATE_REQUESTS } from "../../../shared/data/mockPlaces";
 import AdminNavbar from "../../admin-map/components/AdminNavbar";
 
 export default function UpdateRequestsPage() {
   const navigate = useNavigate();
-  const [requests, setRequests] = useState(MOCK_UPDATE_REQUESTS);
+  const [requests, setRequests] = useState([]);
   const [activeTab, setActiveTab] = useState("pending");
   const [showApproveModal, setShowApproveModal] = useState(null);
   const [showRejectModal, setShowRejectModal] = useState(null);

@@ -87,7 +87,7 @@ function LoginPage() {
         </div>
         <div className="text-center">
           <h1 className="mb-2 text-2xl font-bold">
-            {isRegister ? "Create an account" : "Sign in to NetSuggest"}
+            {isRegister ? "Create an account" : "Sign in to NetSuggest Admin"}
           </h1>
           <p className="mb-6 text-sm text-[#5f6a60]">
             {isRegister ? "Sign up with your email" : "Use your email and password"}
