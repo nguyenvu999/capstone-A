@@ -830,9 +830,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
       )}
 
       {/* Container Form Chính: Mobile Fullscreen, Desktop Floating Card */}
-      <div className="fixed top-0 md:top-20 right-0 md:right-6 left-0 md:left-auto bottom-0 md:bottom-auto z-[999] w-full md:w-[400px] h-full md:h-auto max-h-full md:max-h-[calc(100vh-120px)] bg-white rounded-none md:rounded-2xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom-10 md:slide-in-from-right-10">
-        
-        {/* Close Button UI optimized for fingers */}
+      <div className="fixed top-16 md:top-20 right-0 md:right-6 left-0 md:left-auto bottom-0 md:bottom-auto z-40 w-full md:w-[400px] h-full md:h-auto max-h-full md:max-h-[calc(100vh-120px)] bg-white rounded-none md:rounded-2xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom-10 md:slide-in-from-right-10">
+      {/* Close Button UI optimized for fingers */}
         <button 
           type="button" 
           onClick={onClose} 
