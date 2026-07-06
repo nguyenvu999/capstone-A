@@ -21,15 +21,28 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // Kiểm tra xem URL hiện tại có chứa thông tin token từ Microsoft trả về không
+        // Validate and handle Microsoft OAuth provider hash latency fragments from URL redirection
         if (window.location.hash && (window.location.hash.includes("access_token") || window.location.hash.includes("error"))) {
-          // Trì hoãn nhẹ 300ms để SDK Supabase xử lý đồng bộ chuỗi hash từ URL vào local storage
           await new Promise((resolve) => setTimeout(resolve, 300));
         }
 
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
+          // Verify user activation status directly from the global profiles directory
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("is_active")
+            .eq("id", session.user.id)
+            .single();
+
+          // Security Restriction: Force exit immediately if account status is deactivated
+          if (profile && profile.is_active === false) {
+            console.error("This account has been deactivated by the administrator.");
+            await logoutUser();
+            return;
+          }
+
           const currentTime = Math.floor(Date.now() / 1000);
           let expiresAt = localStorage.getItem("session_expires_at");
 
@@ -57,19 +70,38 @@ export function AuthProvider({ children }) {
 
     initializeAuth();
 
-    // Lắng nghe sự kiện thay đổi trạng thái đăng nhập thời gian thực
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // Listen to real-time authentication status change streams
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
-        setUser(session.user);
-        
-        if (event === "SIGNED_IN") {
-          const expiresAt = Math.floor(Date.now() / 1000) + 21600;
-          localStorage.setItem("session_expires_at", expiresAt.toString());
-          
-          // Điều hướng trực tiếp bằng trình duyệt để đảm bảo sạch URL và vào thẳng trang Map
-          if (window.location.pathname === "/login" || window.location.pathname === "/") {
-            window.location.replace("/map");
+        try {
+          // Re-evaluate user profile state in real-time on session updates
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("is_active")
+            .eq("id", session.user.id)
+            .single();
+
+          // Live Security Sweep: Boot user immediately if deactivated during an active session
+          if (profile && profile.is_active === false) {
+            console.error("This account has been deactivated by the administrator.");
+            await logoutUser();
+            return;
           }
+
+          setUser(session.user);
+          
+          if (event === "SIGNED_IN") {
+            const expiresAt = Math.floor(Date.now() / 1000) + 21600;
+            localStorage.setItem("session_expires_at", expiresAt.toString());
+            
+            // Clean browser parameters and route standard user into map dashboard
+            if (window.location.pathname === "/login" || window.location.pathname === "/") {
+              window.location.replace("/map");
+            }
+          }
+        } catch (err) {
+          console.error("Real-time authorization status error:", err);
+          await logoutUser();
         }
       } else {
         setUser(null);
@@ -78,6 +110,7 @@ export function AuthProvider({ children }) {
       setLoading(false);
     });
 
+    // Check token expiry timelines periodically every 60 seconds
     const interval = setInterval(() => {
       const expiresAt = localStorage.getItem("session_expires_at");
       if (expiresAt) {
