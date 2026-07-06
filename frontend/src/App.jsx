@@ -1,16 +1,21 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./features/auth/context/AuthContext";
 import LoginPage from "./features/auth/pages/LoginPage";
-import MapPage from "./features/map/pages/MapPage";
-import ItinerariesPage from "./features/itinerary/pages/ItinerariesPage";
-import ItineraryDetailPage from "./features/itinerary/pages/ItineraryDetailPage";
 import ProtectedRoute from "./features/auth/components/ProtectedRoute";
 
-// Component trung gian xử lý trang gốc để tránh nuốt mất Token OAuth của Supabase
+// Admin features components
+import AdminMapPage from "./features/admin-map/pages/AdminMapPage";
+import UserManagementPage from "./features/admin-panel/pages/UserManagementPage";
+import UpdateRequestsPage from "./features/admin-panel/pages/UpdateRequestsPage";
+
+/**
+ * RootHandler avoids losing the Supabase OAuth hash fragments during redirection.
+ * Automatically routes authenticated administrators straight to the management dashboard.
+ */
 function RootHandler() {
   const { user, loading } = useAuth();
 
-  // Nếu đang nạp token, giữ nguyên giao diện loading đẹp mắt của bạn
+  // Displays a loading state while processing Supabase authentication state tokens
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#94AB71]">
@@ -19,8 +24,8 @@ function RootHandler() {
     );
   }
 
-  // Nếu đã có user thì vào thẳng /map, ngược lại thì sang /login
-  return user ? <Navigate to="/map" replace /> : <Navigate to="/login" replace />;
+  // Redirects directly to admin console if authenticated, otherwise forces back to authorization login
+  return user ? <Navigate to="/admin" replace /> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -28,41 +33,40 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Định tuyến mặc định thông minh - Fix lỗi nuốt mã băm hash token */}
+          {/* Smart Root Path handler to parse incoming auth hash tokens securely */}
           <Route path="/" element={<RootHandler />} />
           
+          {/* Public Login Route */}
           <Route path="/login" element={<LoginPage />} />
           
-          {/* Bảo vệ trang Map bằng ProtectedRoute */}
+          {/* Secured Isolated Admin Dashboard Routes */}
           <Route 
-            path="/map" 
+            path="/admin" 
             element={
               <ProtectedRoute>
-                <MapPage />
+                <AdminMapPage />
               </ProtectedRoute>
             } 
           />
-
-            {/* Itinerary pages */}
-          <Route
-            path="/itineraries"
+          <Route 
+            path="/admin/users" 
             element={
               <ProtectedRoute>
-                <ItinerariesPage />
+                <UserManagementPage />
               </ProtectedRoute>
-            }
+            } 
           />
-          <Route
-            path="/itineraries/:id"
+          <Route 
+            path="/admin/requests" 
             element={
               <ProtectedRoute>
-                <ItineraryDetailPage />
+                <UpdateRequestsPage />
               </ProtectedRoute>
-            }
+            } 
           />
           
-          {/* Xử lý các đường dẫn không tồn tại */}
-          <Route path="*" element={<Navigate to="/map" replace />} />
+          {/* Global Fallback Route - Redirects any unregistered endpoints back to control panel roots */}
+          <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
