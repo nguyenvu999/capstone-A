@@ -18,6 +18,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [deleting, setDeleting] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
   const [selectedReviewImage, setSelectedReviewImage] = useState(null); //Images popup in review
+  const [popupImages, setPopupImages] = useState([]);
 
   // REVIEW STATE
   const [reviews, setReviews] = useState([]);
@@ -852,7 +853,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                       <img
                         src={image.url}
                         alt="Place"
-                        onClick={() => setSelectedImageIndex(index)}
+                        onClick={() => {
+                          setPopupImages(placeImages);
+                          setSelectedImageIndex(index);
+                        }}
                         className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
                       />
                     </div>
@@ -1125,15 +1129,21 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                           {/*Upload images*/}
                           {review.review_images?.length > 0 && (
                             <div className="grid grid-cols-3 gap-2 mt-3">
-                              {review.review_images.map((image) => (
-                                <img
-                                  src={image.url || image}
-                                  alt="Review"
-                                  onClick={() => setSelectedReviewImage(image.url || image)}
-                                  className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80 hover:scale-105 transition"
-                                />
-                              ))}
-                            </div>
+                            {review.review_images.map((image, index) => (
+                              <img
+                                key={image.id || image.url}
+                                src={image.url}
+                                alt="Review"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setPopupImages(review.review_images);
+                                  setSelectedImageIndex(index);
+                                }}
+                                className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 hover:scale-105 transition"
+                              />
+                            ))}
+                          </div>
                           )}
                         </div>
                       );
@@ -1605,7 +1615,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           onClick={(e) => {
             e.stopPropagation();
             setSelectedImageIndex((prev) =>
-              prev === 0 ? editImages.length - 1 : prev - 1
+             prev === 0 ? popupImages.length - 1 : prev - 1
             );
           }}
           className="absolute left-5 text-white text-8xl cursor-pointer"
@@ -1614,7 +1624,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         </button>
 
         <img
-          src={editImages[selectedImageIndex].url}
+          src={popupImages[selectedImageIndex]?.url}
           alt="Selected"
           className="max-w-[75vh] max-h-[70vh] rounded-xl object-contain shadow-2xl"
           onClick={(e) => e.stopPropagation()}
