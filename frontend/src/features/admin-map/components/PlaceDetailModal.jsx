@@ -6,6 +6,7 @@ import { fetchReviewsByPlace } from "../api/reviewApi";
 import { validateFloorLevel } from "../utils/floorLevelValidation";
 import { checkDuplicatePlace, checkBuildingDuplicate, checkAddressForBuilding } from "../utils/duplicateDetection";
 import DuplicatePlaceModal from "./DuplicatePlaceModal";
+import { useAuth } from "../../auth/context/AuthContext";
 
 export default function PlaceDetailModal({ 
   place, 
@@ -16,6 +17,7 @@ export default function PlaceDetailModal({
   onBackToBuilding = null,
   onDuplicateViewPlace = null
 }) {
+  const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
   
   const [showEditForm, setShowEditForm] = useState(false); // Toggle View ↔ Edit mode
@@ -116,7 +118,7 @@ export default function PlaceDetailModal({
     loadReviews();
     
     return () => { mounted = false; };
-  }, [place?.id, user?.id]);
+  }, [place?.id]);
 
   // Close dropdown khi click ra ngoài
   useEffect(() => {
@@ -417,6 +419,9 @@ export default function PlaceDetailModal({
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
           category: editData.category,
+          updated_by: user?.id || null,
+          updated_by_email: user?.email || null,
+          updated_at: new Date().toISOString(),
           ...(place.place_type === "building" && {
             floor_level: validateFloorLevel(editData.floor_level).normalized,
           }),
@@ -481,6 +486,9 @@ export default function PlaceDetailModal({
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
         category: editData.category,
+        updated_by: user?.id || null,
+        updated_by_email: user?.email || null,
+        updated_at: new Date().toISOString(),
         ...(place.place_type === "building" && {
           floor_level: validateFloorLevel(editData.floor_level).normalized,
         }),

@@ -49,27 +49,20 @@ export default function AllPlacesSidebar({
       return;
     }
 
-    // Lọc trùng theo Tọa độ & Tên đối với dữ liệu danh mục trả về thực tế
     const uniquePlacesMap = new Map();
-    categoryResults.forEach(place => {
-      const lat = Number(place.latitude).toFixed(4); // Làm tròn 4 chữ số để tránh lệch coordinate siêu nhỏ
+
+    categoryResults.forEach((place) => {
+      const lat = Number(place.latitude).toFixed(4);
       const lng = Number(place.longitude).toFixed(4);
       const cleanName = (place.name || "").toLowerCase().replace(/\s+/g, "");
       const geoKey = `${cleanName}_${lat}_${lng}`;
 
-      // Nếu trùng tọa độ + tên, ưu tiên giữ lại dữ liệu không phải từ Track-Asia ngẫu nhiên
       if (!uniquePlacesMap.has(geoKey) || place.category !== "TrackAsiaPlace") {
         uniquePlacesMap.set(geoKey, place);
       }
     });
 
-    const sorted = Array.from(uniquePlacesMap.values()).sort((a, b) => {
-      const distA = parseFloat(a.distanceText) || 0;
-      const distB = parseFloat(b.distanceText) || 0;
-      return distA - distB;
-    });
-
-    setSortedResults(sorted);
+    setSortedResults(Array.from(uniquePlacesMap.values()));
   }, [categoryResults]);
 
   // Gửi filter thay đổi lên component cha
