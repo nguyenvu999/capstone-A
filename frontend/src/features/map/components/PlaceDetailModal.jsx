@@ -16,7 +16,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false); // Dropdown 3 chấm
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Modal xác nhận xóa
   const [deleting, setDeleting] = useState(false);
-   const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
+  const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
+  const [selectedReviewImage, setSelectedReviewImage] = useState(null); //Images popup in review
 
   // REVIEW STATE
   const [reviews, setReviews] = useState([]);
@@ -695,7 +696,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       setReviewImageFiles([]);
       setReviewImagePreviews([]);
 
-      if (onStatusUpdated) onStatusUpdated();
+      if (onStatusUpdated) {
+        onStatusUpdated(place);
+      }
     } catch (error) {
       console.error("Submit review error:", error);
       showToast(`Failed to submit review: ${error.message}`, "error");
@@ -1124,10 +1127,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                             <div className="grid grid-cols-3 gap-2 mt-3">
                               {review.review_images.map((image) => (
                                 <img
-                                  key={image.id}
-                                  src={image.url}
+                                  src={image.url || image}
                                   alt="Review"
-                                  className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                                  onClick={() => setSelectedReviewImage(image.url || image)}
+                                  className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80 hover:scale-105 transition"
                                 />
                               ))}
                             </div>
@@ -1559,6 +1562,28 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               </button>
             </div>
           </div>
+        </div>
+      )}
+       {/* Review Image Popup */}
+      {selectedReviewImage && (
+        <div
+          className="fixed inset-0 z-[10002] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setSelectedReviewImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedReviewImage(null)}
+            className="absolute top-5 right-5 text-white bg-black/50 rounded p-2 cursor-pointer hover:bg-black"
+          >
+            <X size={22} />
+          </button>
+
+          <img
+            src={selectedReviewImage}
+            alt="Selected review"
+            className="max-w-[75vw] max-h-[75vh] object-contain rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
        {/* Add pop-up images */}
