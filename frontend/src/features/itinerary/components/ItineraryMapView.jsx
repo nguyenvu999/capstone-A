@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import trackasiagl from "trackasia-gl";
-import { Navigation } from "lucide-react";
+import { Navigation, Compass } from "lucide-react";
 
 const API_KEY = "39178044807001d0d52907a027ac689e61";
 
@@ -21,16 +21,138 @@ export default function ItineraryMapView({ places, focusedIndex, directionsRoute
   const markersRef = useRef([]);
   const userMarkerRef = useRef(null);
 
+  // ===== DEVICE COMPASS / HEADING =====
+  const headingConeRef = useRef(null); // points to the cone element inside the CURRENT user marker
+  const compassListenerRef = useRef(null);
+  const [compassEnabled, setCompassEnabled] = useState(false);
+  const [compassSupported, setCompassSupported] = useState(true);
+
+  // Builds the user-location marker element (blue dot + direction cone) and
+  // keeps headingConeRef pointed at the cone that's currently in the DOM.
+  const createUserMarkerEl = () => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "user-location-wrapper";
+    wrapper.innerHTML = `
+      <div class="user-heading-cone"></div>
+      <div class="user-pulse-marker"></div>
+    `;
+    const cone = wrapper.querySelector(".user-heading-cone");
+    headingConeRef.current = cone;
+    if (compassEnabled && cone) cone.style.display = "block";
+    return wrapper;
+  };
+
+  // Apply a heading (degrees, 0 = North, clockwise) to the cone DOM node directly.
+  // Bypasses React state to avoid re-rendering on every orientation event (fires ~30-60x/sec).
+  const applyHeadingToCone = (headingDeg) => {
+    const cone = headingConeRef.current;
+    if (!cone) return;
+    cone.style.display = "block";
+    cone.style.transform = `rotate(${headingDeg}deg)`;
+  };
+
+  const handleDeviceOrientation = (e) => {
+    let heading = null;
+
+    // iOS Safari exposes a ready-to-use compass heading (0 = North, clockwise)
+    if (typeof e.webkitCompassHeading === "number" && !isNaN(e.webkitCompassHeading)) {
+      heading = e.webkitCompassHeading;
+    } else if (e.alpha !== null && e.alpha !== undefined) {
+      // Android / other browsers: alpha is counter-clockwise from device's initial orientation.
+      // 360 - alpha converts it to a clockwise compass-style heading (approximate, no full tilt compensation).
+      heading = 360 - e.alpha;
+    }
+
+    if (heading === null || isNaN(heading)) return;
+    heading = ((heading % 360) + 360) % 360;
+    applyHeadingToCone(heading);
+  };
+
+  const stopCompass = () => {
+    if (compassListenerRef.current) {
+      window.removeEventListener(compassListenerRef.current.eventName, compassListenerRef.current.handler, true);
+      compassListenerRef.current = null;
+    }
+    setCompassEnabled(false);
+    if (headingConeRef.current) headingConeRef.current.style.display = "none";
+  };
+
+  const startCompass = () => {
+    if (typeof window.DeviceOrientationEvent === "undefined") {
+      setCompassSupported(false);
+      return;
+    }
+
+    const eventName = "ondeviceorientationabsolute" in window ? "deviceorientationabsolute" : "deviceorientation";
+
+    const attach = () => {
+      window.addEventListener(eventName, handleDeviceOrientation, true);
+      compassListenerRef.current = { eventName, handler: handleDeviceOrientation };
+      setCompassEnabled(true);
+    };
+
+    // iOS 13+ requires an explicit user-gesture-triggered permission request
+    if (typeof window.DeviceOrientationEvent.requestPermission === "function") {
+      window.DeviceOrientationEvent.requestPermission()
+        .then((result) => {
+          if (result === "granted") {
+            attach();
+          } else {
+            setCompassSupported(false);
+          }
+        })
+        .catch(() => setCompassSupported(false));
+    } else {
+      attach();
+    }
+  };
+
+  const handleCompassToggle = () => {
+    if (compassEnabled) {
+      stopCompass();
+    } else {
+      startCompass();
+    }
+  };
+
+  // Cleanup compass listener on unmount
+  useEffect(() => {
+    return () => {
+      if (compassListenerRef.current) {
+        window.removeEventListener(compassListenerRef.current.eventName, compassListenerRef.current.handler, true);
+      }
+    };
+  }, []);
+
   // ── 1. Initialise map once ────────────────────────────────────────────────
   useEffect(() => {
-    // Pulse-marker CSS (same as MapContainer)
+    // Pulse-marker + heading-cone CSS (shared with MapContainer)
     if (!document.getElementById("pulse-marker-style")) {
       const style = document.createElement("style");
       style.id = "pulse-marker-style";
       style.innerHTML = `
-        .user-pulse-marker { width:16px;height:16px;background:#2563eb;border:2px solid white;border-radius:50%;position:relative;box-shadow:0 0 8px rgba(0,0,0,.3); }
+        .user-pulse-marker { width:16px;height:16px;background:#2563eb;border:2px solid white;border-radius:50%;position:relative;box-shadow:0 0 8px rgba(0,0,0,.3); z-index:10; }
         .user-pulse-marker::after { content:'';width:40px;height:40px;background:rgba(37,99,235,.4);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(.5);animation:mapPulse 2s infinite ease-out;opacity:0; }
         @keyframes mapPulse { 0%{transform:translate(-50%,-50%) scale(.2);opacity:0} 50%{opacity:.8} 100%{transform:translate(-50%,-50%) scale(1.5);opacity:0} }
+
+        .user-location-wrapper { position: relative; width: 16px; height: 16px; }
+        .user-heading-cone {
+          display: none;
+          position: absolute;
+          bottom: 8px;
+          left: 50%;
+          width: 0;
+          height: 0;
+          margin-left: -9px;
+          border-left: 9px solid transparent;
+          border-right: 9px solid transparent;
+          border-bottom: 32px solid rgba(37, 99, 235, 0.45);
+          transform-origin: 50% 100%;
+          transform: rotate(0deg);
+          pointer-events: none;
+          z-index: 9;
+          transition: transform 0.1s linear;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -51,8 +173,7 @@ export default function ItineraryMapView({ places, focusedIndex, directionsRoute
           ({ coords }) => {
             if (!mapRef.current) return;
             if (userMarkerRef.current) userMarkerRef.current.remove();
-            const el = document.createElement("div");
-            el.className = "user-pulse-marker";
+            const el = createUserMarkerEl();
             userMarkerRef.current = new trackasiagl.Marker({ element: el })
               .setLngLat([coords.longitude, coords.latitude])
               .setPopup(
@@ -237,13 +358,32 @@ export default function ItineraryMapView({ places, focusedIndex, directionsRoute
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
-      <button
-        onClick={handleRecenter}
-        title="Fit all places"
-        className="absolute bottom-6 right-6 z-50 p-3 bg-white hover:bg-gray-50 text-blue-600 rounded-full shadow-xl border border-gray-100 transition-all active:scale-95 group"
-      >
-        <Navigation size={20} className="fill-blue-50 group-hover:rotate-45 transition-transform" />
-      </button>
+      {/*
+        Sits at bottom-6 on desktop (no sheet to worry about).
+        On mobile, offset above the bottom sheet's peeked height (132px)
+        plus a bit of breathing room, so it's never covered by the sheet.
+      */}
+      <div className="absolute bottom-[152px] right-4 lg:bottom-6 lg:right-6 z-20 flex items-center gap-1.5 bg-white rounded-full shadow-xl border border-gray-100 px-1.5 py-1.5">
+        <button
+          onClick={handleRecenter}
+          title="Fit all places"
+          className="p-2.5 hover:bg-gray-50 text-blue-600 rounded-full transition-all active:scale-95 group"
+        >
+          <Navigation size={18} className="fill-blue-50 group-hover:rotate-45 transition-transform" />
+        </button>
+
+        <div className="w-px h-5 bg-gray-200" />
+
+        <button
+          onClick={handleCompassToggle}
+          title={compassEnabled ? "Hide direction" : "Show which way you're facing"}
+          className={`p-2.5 rounded-full transition-all active:scale-95 ${
+            compassEnabled ? "bg-blue-500 text-white" : "hover:bg-gray-50 text-blue-600"
+          }`}
+        >
+          <Compass size={18} />
+        </button>
+      </div>
     </div>
   );
 }
