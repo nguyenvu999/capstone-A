@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft, Pencil, Lock, Globe, Share2, MoreHorizontal,
@@ -35,6 +35,9 @@ const PRICE_LABEL = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
 const MARKER_COLORS = ["#F97316", "#8B5CF6", "#3B82F6", "#10B981", "#EC4899", "#6366F1"];
 const TRACKASIA_API_KEY = "1261782203853972b1f08c54c5fc30a6e2";
 const DEFAULT_COORDS = [106.694945, 10.769034]; // [lng, lat] fallback (HCMC)
+
+// Mobile bottom-sheet snap heights
+const SHEET_PEEK_HEIGHT = 84; // px — just the handle and title, low enough to clear floating map controls
 
 // Haversine distance in km between two [lng, lat] points
 function distanceKm(lng1, lat1, lng2, lat2) {
@@ -92,6 +95,64 @@ export default function ItineraryDetailPage() {
   const [nearbyPlaces, setNearbyPlaces] = useState([]);
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [addingPlaceId, setAddingPlaceId] = useState(null);
+
+  // ── Mobile bottom-sheet state ───────────────────────────────────────────────
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const sheetRef = useRef(null);
+  const dragInfo = useRef({ startY: 0, startHeight: 0, dragging: false });
+
+  const getExpandedSheetHeight = () =>
+    typeof window !== "undefined" ? Math.round(window.innerHeight * 0.88) : 600;
+
+  const applySheetHeight = (px, animate = true) => {
+    if (!sheetRef.current) return;
+    sheetRef.current.style.transition = animate
+      ? "height 0.28s cubic-bezier(0.32, 0.72, 0, 1)"
+      : "none";
+    sheetRef.current.style.height = `${px}px`;
+  };
+
+  // Sync sheet height whenever the expanded/collapsed state changes
+  useEffect(() => {
+    applySheetHeight(sheetExpanded ? getExpandedSheetHeight() : SHEET_PEEK_HEIGHT);
+  }, [sheetExpanded]);
+
+  // Keep the expanded height correct if the viewport resizes (e.g. rotation)
+  useEffect(() => {
+    const onResize = () => {
+      if (sheetExpanded) applySheetHeight(getExpandedSheetHeight(), false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [sheetExpanded]);
+
+  const onSheetDragStart = (clientY) => {
+    if (!sheetRef.current) return;
+    dragInfo.current = {
+      startY: clientY,
+      startHeight: sheetRef.current.getBoundingClientRect().height,
+      dragging: true,
+    };
+    applySheetHeight(dragInfo.current.startHeight, false);
+  };
+
+  const onSheetDragMove = (clientY) => {
+    if (!dragInfo.current.dragging || !sheetRef.current) return;
+    const delta = dragInfo.current.startY - clientY;
+    const next = Math.min(
+      Math.max(dragInfo.current.startHeight + delta, SHEET_PEEK_HEIGHT),
+      getExpandedSheetHeight()
+    );
+    applySheetHeight(next, false);
+  };
+
+  const onSheetDragEnd = () => {
+    if (!dragInfo.current.dragging || !sheetRef.current) return;
+    dragInfo.current.dragging = false;
+    const height = sheetRef.current.getBoundingClientRect().height;
+    const midpoint = (SHEET_PEEK_HEIGHT + getExpandedSheetHeight()) / 2;
+    setSheetExpanded(height > midpoint);
+  };
 
   // ── Fetch itinerary + places ────────────────────────────────────────────────
   const fetchItinerary = async () => {
@@ -445,7 +506,6 @@ export default function ItineraryDetailPage() {
   };
 
   // ── Export to Maps ──────────────────────────────────────────────────────────
-  const [showExportMenu, setShowExportMenu] = useState(false);
 
   const getGoogleMapsUrl = () => {
     if (places.length === 0) return null;
@@ -457,17 +517,6 @@ export default function ItineraryDetailPage() {
     const destination = `${places[places.length - 1].latitude},${places[places.length - 1].longitude}`;
     const waypoints = places.slice(1, -1).map((p) => `${p.latitude},${p.longitude}`).join("|");
     return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}`;
-  };
-
-  const getAppleMapsUrl = () => {
-    if (places.length === 0) return null;
-    if (places.length === 1) {
-      const p = places[0];
-      return `https://maps.apple.com/?ll=${p.latitude},${p.longitude}&q=${encodeURIComponent(p.name)}`;
-    }
-    const first = places[0];
-    const last = places[places.length - 1];
-    return `https://maps.apple.com/?saddr=${first.latitude},${first.longitude}&daddr=${last.latitude},${last.longitude}`;
   };
 
   // ── Optimise route (nearest-neighbour TSP via Distance Matrix API) ─────────
@@ -641,434 +690,442 @@ export default function ItineraryDetailPage() {
     );
   }
 
+  // ── Shared content rendered both in the desktop side panel and the mobile
+  //    bottom sheet, so the two stay in sync without duplicating logic ───────
+  const renderPaneContent = () => (
+    <>
+      <Link to="/itineraries" className="hidden lg:inline-flex items-center gap-1.5 text-sm text-[#2d5a1e] hover:underline mb-5">
+        <ArrowLeft size={16} /> Back to itineraries
+      </Link>
+
+      {/* Header */}
+      <div className="mb-6">
+        {editingTitle ? (
+          <div className="flex items-center gap-2 mb-1">
+            <input
+              className="text-2xl font-bold text-gray-900 border-b-2 border-[#2d5a1e] bg-transparent focus:outline-none flex-1"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
+              autoFocus
+            />
+            <button onClick={saveTitle} className="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600"><Check size={16} /></button>
+            <button onClick={() => setEditingTitle(false)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400"><X size={16} /></button>
+          </div>
+        ) : (
+          <div className="hidden lg:flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold text-gray-900">{itinerary.name}</h1>
+            <button onClick={() => { setTitleDraft(itinerary.name); setEditingTitle(true); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
+              <Pencil size={15} />
+            </button>
+          </div>
+        )}
+        <p className="text-gray-500 text-sm">{itinerary.description}</p>
+
+        <div className="flex flex-wrap items-center gap-3 mt-3">
+          <span className="flex items-center gap-1 text-sm text-gray-500">
+            <MapPin size={14} className="text-gray-400" />
+            {places.length} place{places.length !== 1 ? "s" : ""}
+          </span>
+          {itinerary.is_public ? (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-1 font-medium">
+              <Globe size={10} /> Public
+            </span>
+          ) : (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 flex items-center gap-1 font-medium">
+              <Lock size={10} /> Private
+            </span>
+          )}
+          <button onClick={handleShare} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-full hover:bg-gray-50 text-gray-600">
+            <Share2 size={13} /> Share
+          </button>
+          {/* Open in Google Maps */}
+          <a
+            href={getGoogleMapsUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-full hover:bg-gray-50 text-gray-600"
+          >
+            <ExternalLink size={13} /> Open in Maps
+          </a>
+          <div className="relative">
+            <button onClick={() => setShowMore(!showMore)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
+              <MoreHorizontal size={18} />
+            </button>
+            {showMore && (
+              <div className="absolute left-0 mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50">
+                <button onClick={togglePublic} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                  {itinerary.is_public ? <Lock size={14} /> : <Globe size={14} />}
+                  Make {itinerary.is_public ? "Private" : "Public"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Place list */}
+      <div className="space-y-0">
+        {places.map((place, index) => {
+          const cat = getCatConfig(place.category);
+          const markerColor = MARKER_COLORS[index % MARKER_COLORS.length];
+
+          return (
+            <div key={place.itinerary_place_id}>
+              <div className="flex gap-3 py-3 cursor-pointer hover:bg-gray-50/60 rounded-xl px-1 transition-colors" onClick={() => setFocusedIndex(index)}>
+                {/* Up/down */}
+                <div className="flex flex-col gap-0.5 self-start mt-2">
+                  <button onClick={() => movePlace(index, -1)} disabled={index === 0} className="text-gray-200 hover:text-gray-400 disabled:opacity-20 transition-colors">
+                    <GripVertical size={15} />
+                  </button>
+                </div>
+
+                {/* Number */}
+                <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-sm" style={{ backgroundColor: markerColor }}>
+                  {index + 1}
+                </div>
+
+                {/* Thumbnail */}
+                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                  <img src={getPlaceImage(place)} alt={place.name} className="w-full h-full object-cover" />
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 text-sm leading-tight">{place.name}</h3>
+                  <div className="flex items-center flex-wrap gap-1.5 mt-1">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${cat.color}18`, color: cat.color }}>
+                      {cat.label}
+                    </span>
+                    {place.price_level && <span className="text-xs text-gray-400">{PRICE_LABEL[place.price_level]}</span>}
+                    {place.address && (
+                      <span className="text-xs text-gray-400 flex items-center gap-0.5 truncate max-w-[160px]">
+                        <MapPin size={11} /> {place.address}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Note */}
+                  {editingNoteId === place.itinerary_place_id ? (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <input
+                        className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-[#2d5a1e]"
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveNote(place.itinerary_place_id); if (e.key === "Escape") setEditingNoteId(null); }}
+                        placeholder="Add a note..."
+                        autoFocus
+                      />
+                      <button onClick={() => saveNote(place.itinerary_place_id)} className="text-emerald-600"><Check size={14} /></button>
+                      <button onClick={() => setEditingNoteId(null)} className="text-gray-400"><X size={14} /></button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic mt-1 cursor-pointer hover:text-gray-600" onClick={() => { setEditingNoteId(place.itinerary_place_id); setNoteDraft(place.note || ""); }}>
+                      {place.note || <span className="not-italic text-gray-300">+ Add note...</span>}
+                    </p>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-0.5 self-start">
+                  <button onClick={() => { setEditingNoteId(place.itinerary_place_id); setNoteDraft(place.note || ""); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-300 hover:text-gray-500">
+                    <Pencil size={13} />
+                  </button>
+                  <button onClick={() => handleRemovePlace(place.itinerary_place_id, place.name)} className="p-1.5 hover:bg-red-50 rounded-lg text-gray-300 hover:text-red-400">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Connector + Directions */}
+              {index < places.length - 1 && (() => {
+                const isOpen    = directionsSegment?.fromIndex === index && directionsSegment?.toIndex === index + 1;
+                const isLoading = directionsLoading && directionsSegment?.fromIndex === index;
+                return (
+                  <div className="pl-[42px]">
+                    {/* Toggle button */}
+                    <div className="flex items-center gap-2 py-1">
+                      <div className="w-8 flex justify-center">
+                        <div className="w-px h-4 border-l-2 border-dashed border-gray-200" />
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); fetchDirections(index, index + 1); }}
+                        className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-all ${
+                          isOpen
+                            ? "bg-[#2d5a1e] text-white border-[#2d5a1e]"
+                            : "bg-gray-50 text-gray-400 border-gray-100 hover:border-[#2d5a1e] hover:text-[#2d5a1e]"
+                        }`}
+                      >
+                        {isLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
+                        <span>Directions</span>
+                        {isOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                      </button>
+                    </div>
+
+                    {/* Directions panel */}
+                    {isOpen && (
+                      <div className="ml-10 mb-2 bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                        {/* Mode toggle + summary */}
+                        <div className="px-3 pt-3 pb-2 border-b border-gray-50">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex rounded-lg overflow-hidden border border-gray-100 text-xs">
+                              {["driving", "walking"].map((m) => (
+                                <button
+                                  key={m}
+                                  onClick={() => toggleDirectionsMode(m)}
+                                  className={`px-2.5 py-1 flex items-center gap-1 transition-colors ${
+                                    directionsData?.mode === m || (!directionsData && directionsMode === m)
+                                      ? "bg-[#2d5a1e] text-white"
+                                      : "bg-white text-gray-500 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {m === "driving" ? <Car size={11} /> : <Footprints size={11} />}
+                                  {m === "driving" ? "Drive" : "Walk"}
+                                </button>
+                              ))}
+                            </div>
+                            {directionsData && (
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <span className="flex items-center gap-0.5"><Clock size={11} /> {formatDur(directionsData.duration)}</span>
+                                <span className="flex items-center gap-0.5"><Ruler size={11} /> {formatDist(directionsData.distance)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Steps */}
+                        {directionsLoading && directionsSegment?.fromIndex === index ? (
+                          <div className="flex items-center justify-center py-6 text-gray-300">
+                            <Loader2 size={18} className="animate-spin" />
+                          </div>
+                        ) : directionsData ? (
+                          <ul className="divide-y divide-gray-50 max-h-52 overflow-y-auto">
+                            {directionsData.steps.map((step, si) => (
+                              <li key={si} className="flex items-start gap-2 px-3 py-2">
+                                <span className="text-base leading-none mt-0.5 w-5 text-center flex-shrink-0">
+                                  {getManeuverIcon(step.type, step.modifier)}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-gray-700 leading-snug">{step.instruction}</p>
+                                </div>
+                                <span className="text-[10px] text-gray-300 flex-shrink-0 mt-0.5">
+                                  {formatDist(step.distance)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })}
+      </div>
+
+      {places.length === 0 && !showAddPanel && (
+        <div className="text-center py-16 text-gray-300">
+          <MapPin size={36} className="mx-auto mb-3 opacity-50" />
+          <p className="text-sm font-medium text-gray-400">No places yet</p>
+          <p className="text-xs mt-1">Search and add places below!</p>
+        </div>
+      )}
+
+      {/* Add place panel */}
+      {showAddPanel && (
+        <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-semibold text-gray-800 text-sm flex-1">Add a place</h3>
+            <button onClick={() => { setShowAddPanel(false); setSearchQuery(""); setSearchResults([]); }} className="text-gray-400 hover:text-gray-600">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-[#2d5a1e] transition-all mb-2">
+            <Search size={15} className="text-gray-400 mr-2 shrink-0" />
+            <input
+              type="text"
+              placeholder="Search for any place..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent focus:outline-none text-sm w-full"
+              autoFocus
+            />
+            {searching && <Loader2 size={14} className="animate-spin text-gray-400 ml-2" />}
+          </div>
+
+          {/* Typed search results — any place, not distance-limited */}
+          {searchQuery.trim().length >= 2 ? (
+            <>
+              {searchResults.length > 0 && (
+                <div className="space-y-1 max-h-52 overflow-y-auto">
+                  {searchResults.map((place) => {
+                    const cat = getCatConfig(place.category);
+                    const isAdding = addingPlaceId === place.id;
+                    return (
+                      <button
+                        key={place.id}
+                        onClick={() => handleAddPlace(place)}
+                        disabled={isAdding}
+                        className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
+                      >
+                        <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                          <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
+                            {!place.isSaved && (
+                              <span className="text-[9px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-medium shrink-0">New</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 truncate">{place.address}</p>
+                        </div>
+                        {isAdding ? (
+                          <Loader2 size={14} className="animate-spin text-gray-400 shrink-0" />
+                        ) : place.isSaved ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: `${cat.color}18`, color: cat.color }}>
+                            {cat.label}
+                          </span>
+                        ) : (
+                          <Plus size={16} className="text-gray-300 shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {!searching && searchResults.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">No matching places found</p>
+              )}
+            </>
+          ) : (
+            /* Default: nearby places within 5km */
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 mb-1.5">
+                Nearby (within 5km)
+              </p>
+              {nearbyLoading ? (
+                <div className="flex items-center justify-center py-6 text-gray-300">
+                  <Loader2 size={18} className="animate-spin" />
+                </div>
+              ) : nearbyPlaces.length > 0 ? (
+                <div className="space-y-1 max-h-60 overflow-y-auto">
+                  {nearbyPlaces.map((place) => {
+                    const cat = getCatConfig(place.category);
+                    const isAdding = addingPlaceId === place.id;
+                    return (
+                      <button
+                        key={place.id}
+                        onClick={() => handleAddPlace(place)}
+                        disabled={isAdding}
+                        className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
+                      >
+                        <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                          <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
+                            {!place.isSaved && (
+                              <span className="text-[9px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-medium shrink-0">New</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 truncate">{place.address}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          {isAdding ? (
+                            <Loader2 size={14} className="animate-spin text-gray-400" />
+                          ) : (
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              {place.distanceKm != null ? `${place.distanceKm.toFixed(1)} km` : "--- km"}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-4">No places found within 5km</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom actions */}
+      <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+        <button
+          onClick={() => setShowAddPanel(!showAddPanel)}
+          className="flex items-center gap-2 px-4 py-2.5 border-2 border-[#2d5a1e] text-[#2d5a1e] rounded-xl font-medium text-sm hover:bg-[#2d5a1e]/5 transition-colors"
+        >
+          <Plus size={15} />
+          Add Place
+        </button>
+        <button
+          onClick={optimiseRoute}
+          disabled={optimising || places.length < 3}
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#2d5a1e] text-white rounded-xl font-medium text-sm hover:bg-[#234617] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {optimising ? <Loader2 size={15} className="animate-spin" /> : <RotateCw size={15} />}
+          {optimising ? "Optimising…" : "Optimise Route"}
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       {ToastComponent}
       <Navbar user={user} onSignOut={logoutUser} onRegisterClick={() => {}} />
 
-      <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-64px)] pt-16">
-        {/* ── Left: place list ─────────────────────────────────────────────── */}
-        <div className="lg:w-[40%] p-4 lg:p-6 lg:overflow-y-auto">
-          <Link to="/itineraries" className="inline-flex items-center gap-1.5 text-sm text-[#2d5a1e] hover:underline mb-5">
-            <ArrowLeft size={16} /> Back to itineraries
-          </Link>
-
-          {/* Header */}
-          <div className="mb-6">
-            {editingTitle ? (
-              <div className="flex items-center gap-2 mb-1">
-                <input
-                  className="text-2xl font-bold text-gray-900 border-b-2 border-[#2d5a1e] bg-transparent focus:outline-none flex-1"
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") saveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
-                  autoFocus
-                />
-                <button onClick={saveTitle} className="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600"><Check size={16} /></button>
-                <button onClick={() => setEditingTitle(false)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400"><X size={16} /></button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl font-bold text-gray-900">{itinerary.name}</h1>
-                <button onClick={() => { setTitleDraft(itinerary.name); setEditingTitle(true); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
-                  <Pencil size={15} />
-                </button>
-              </div>
-            )}
-            <p className="text-gray-500 text-sm">{itinerary.description}</p>
-
-            <div className="flex flex-wrap items-center gap-3 mt-3">
-              <span className="flex items-center gap-1 text-sm text-gray-500">
-                <MapPin size={14} className="text-gray-400" />
-                {places.length} place{places.length !== 1 ? "s" : ""}
-              </span>
-              {itinerary.is_public ? (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 flex items-center gap-1 font-medium">
-                  <Globe size={10} /> Public
-                </span>
-              ) : (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 flex items-center gap-1 font-medium">
-                  <Lock size={10} /> Private
-                </span>
-              )}
-              <button onClick={handleShare} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-full hover:bg-gray-50 text-gray-600">
-                <Share2 size={13} /> Share
-              </button>
-              {/* Export to Maps */}
-              <div className="relative">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowExportMenu(!showExportMenu); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-full hover:bg-gray-50 text-gray-600"
-                >
-                  <ExternalLink size={13} /> Open in Maps
-                </button>
-                {showExportMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
-                    <div className="absolute left-0 mt-1 w-48 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50">
-                      <a
-                        href={getGoogleMapsUrl()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowExportMenu(false)}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <img src="https://www.google.com/favicon.ico" alt="" className="w-4 h-4 rounded" />
-                        Google Maps
-                      </a>
-                      <a
-                        href={getAppleMapsUrl()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setShowExportMenu(false)}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none">
-                          <rect width="24" height="24" rx="5" fill="#fff"/>
-                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="url(#apple_grad)"/>
-                          <defs>
-                            <linearGradient id="apple_grad" x1="5" y1="2" x2="19" y2="22" gradientUnits="userSpaceOnUse">
-                              <stop stopColor="#34C759"/>
-                              <stop offset="1" stopColor="#007AFF"/>
-                            </linearGradient>
-                          </defs>
-                        </svg>
-                        Apple Maps
-                      </a>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="relative">
-                <button onClick={() => setShowMore(!showMore)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
-                  <MoreHorizontal size={18} />
-                </button>
-                {showMore && (
-                  <div className="absolute left-0 mt-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50">
-                    <button onClick={togglePublic} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                      {itinerary.is_public ? <Lock size={14} /> : <Globe size={14} />}
-                      Make {itinerary.is_public ? "Private" : "Public"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Place list */}
-          <div className="space-y-0">
-            {places.map((place, index) => {
-              const cat = getCatConfig(place.category);
-              const markerColor = MARKER_COLORS[index % MARKER_COLORS.length];
-
-              return (
-                <div key={place.itinerary_place_id}>
-                  <div className="flex gap-3 py-3 cursor-pointer hover:bg-gray-50/60 rounded-xl px-1 transition-colors" onClick={() => setFocusedIndex(index)}>
-                    {/* Up/down */}
-                    <div className="flex flex-col gap-0.5 self-start mt-2">
-                      <button onClick={() => movePlace(index, -1)} disabled={index === 0} className="text-gray-200 hover:text-gray-400 disabled:opacity-20 transition-colors">
-                        <GripVertical size={15} />
-                      </button>
-                    </div>
-
-                    {/* Number */}
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white flex-shrink-0 shadow-sm" style={{ backgroundColor: markerColor }}>
-                      {index + 1}
-                    </div>
-
-                    {/* Thumbnail */}
-                    <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                      <img src={getPlaceImage(place)} alt={place.name} className="w-full h-full object-cover" />
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 text-sm leading-tight">{place.name}</h3>
-                      <div className="flex items-center flex-wrap gap-1.5 mt-1">
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${cat.color}18`, color: cat.color }}>
-                          {cat.label}
-                        </span>
-                        {place.price_level && <span className="text-xs text-gray-400">{PRICE_LABEL[place.price_level]}</span>}
-                        {place.address && (
-                          <span className="text-xs text-gray-400 flex items-center gap-0.5 truncate max-w-[160px]">
-                            <MapPin size={11} /> {place.address}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Note */}
-                      {editingNoteId === place.itinerary_place_id ? (
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          <input
-                            className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-[#2d5a1e]"
-                            value={noteDraft}
-                            onChange={(e) => setNoteDraft(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") saveNote(place.itinerary_place_id); if (e.key === "Escape") setEditingNoteId(null); }}
-                            placeholder="Add a note..."
-                            autoFocus
-                          />
-                          <button onClick={() => saveNote(place.itinerary_place_id)} className="text-emerald-600"><Check size={14} /></button>
-                          <button onClick={() => setEditingNoteId(null)} className="text-gray-400"><X size={14} /></button>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 italic mt-1 cursor-pointer hover:text-gray-600" onClick={() => { setEditingNoteId(place.itinerary_place_id); setNoteDraft(place.note || ""); }}>
-                          {place.note || <span className="not-italic text-gray-300">+ Add note...</span>}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex flex-col gap-0.5 self-start">
-                      <button onClick={() => { setEditingNoteId(place.itinerary_place_id); setNoteDraft(place.note || ""); }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-300 hover:text-gray-500">
-                        <Pencil size={13} />
-                      </button>
-                      <button onClick={() => handleRemovePlace(place.itinerary_place_id, place.name)} className="p-1.5 hover:bg-red-50 rounded-lg text-gray-300 hover:text-red-400">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Connector + Directions */}
-                  {index < places.length - 1 && (() => {
-                    const isOpen    = directionsSegment?.fromIndex === index && directionsSegment?.toIndex === index + 1;
-                    const isLoading = directionsLoading && directionsSegment?.fromIndex === index;
-                    return (
-                      <div className="pl-[42px]">
-                        {/* Toggle button */}
-                        <div className="flex items-center gap-2 py-1">
-                          <div className="w-8 flex justify-center">
-                            <div className="w-px h-4 border-l-2 border-dashed border-gray-200" />
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); fetchDirections(index, index + 1); }}
-                            className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-all ${
-                              isOpen
-                                ? "bg-[#2d5a1e] text-white border-[#2d5a1e]"
-                                : "bg-gray-50 text-gray-400 border-gray-100 hover:border-[#2d5a1e] hover:text-[#2d5a1e]"
-                            }`}
-                          >
-                            {isLoading ? <Loader2 size={11} className="animate-spin" /> : <Navigation2 size={11} />}
-                            <span>Directions</span>
-                            {isOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                          </button>
-                        </div>
-
-                        {/* Directions panel */}
-                        {isOpen && (
-                          <div className="ml-10 mb-2 bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-                            {/* Mode toggle + summary */}
-                            <div className="px-3 pt-3 pb-2 border-b border-gray-50">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex rounded-lg overflow-hidden border border-gray-100 text-xs">
-                                  {["driving", "walking"].map((m) => (
-                                    <button
-                                      key={m}
-                                      onClick={() => toggleDirectionsMode(m)}
-                                      className={`px-2.5 py-1 flex items-center gap-1 transition-colors ${
-                                        directionsData?.mode === m || (!directionsData && directionsMode === m)
-                                          ? "bg-[#2d5a1e] text-white"
-                                          : "bg-white text-gray-500 hover:bg-gray-50"
-                                      }`}
-                                    >
-                                      {m === "driving" ? <Car size={11} /> : <Footprints size={11} />}
-                                      {m === "driving" ? "Drive" : "Walk"}
-                                    </button>
-                                  ))}
-                                </div>
-                                {directionsData && (
-                                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                                    <span className="flex items-center gap-0.5"><Clock size={11} /> {formatDur(directionsData.duration)}</span>
-                                    <span className="flex items-center gap-0.5"><Ruler size={11} /> {formatDist(directionsData.distance)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Steps */}
-                            {directionsLoading && directionsSegment?.fromIndex === index ? (
-                              <div className="flex items-center justify-center py-6 text-gray-300">
-                                <Loader2 size={18} className="animate-spin" />
-                              </div>
-                            ) : directionsData ? (
-                              <ul className="divide-y divide-gray-50 max-h-52 overflow-y-auto">
-                                {directionsData.steps.map((step, si) => (
-                                  <li key={si} className="flex items-start gap-2 px-3 py-2">
-                                    <span className="text-base leading-none mt-0.5 w-5 text-center flex-shrink-0">
-                                      {getManeuverIcon(step.type, step.modifier)}
-                                    </span>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-xs text-gray-700 leading-snug">{step.instruction}</p>
-                                    </div>
-                                    <span className="text-[10px] text-gray-300 flex-shrink-0 mt-0.5">
-                                      {formatDist(step.distance)}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            })}
-          </div>
-
-          {places.length === 0 && !showAddPanel && (
-            <div className="text-center py-16 text-gray-300">
-              <MapPin size={36} className="mx-auto mb-3 opacity-50" />
-              <p className="text-sm font-medium text-gray-400">No places yet</p>
-              <p className="text-xs mt-1">Search and add places below!</p>
-            </div>
-          )}
-
-          {/* Add place panel */}
-          {showAddPanel && (
-            <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <h3 className="font-semibold text-gray-800 text-sm flex-1">Add a place</h3>
-                <button onClick={() => { setShowAddPanel(false); setSearchQuery(""); setSearchResults([]); }} className="text-gray-400 hover:text-gray-600">
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="relative flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus-within:border-[#2d5a1e] transition-all mb-2">
-                <Search size={15} className="text-gray-400 mr-2 shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Search for any place..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-transparent focus:outline-none text-sm w-full"
-                  autoFocus
-                />
-                {searching && <Loader2 size={14} className="animate-spin text-gray-400 ml-2" />}
-              </div>
-
-              {/* Typed search results — any place, not distance-limited */}
-              {searchQuery.trim().length >= 2 ? (
-                <>
-                  {searchResults.length > 0 && (
-                    <div className="space-y-1 max-h-52 overflow-y-auto">
-                      {searchResults.map((place) => {
-                        const cat = getCatConfig(place.category);
-                        const isAdding = addingPlaceId === place.id;
-                        return (
-                          <button
-                            key={place.id}
-                            onClick={() => handleAddPlace(place)}
-                            disabled={isAdding}
-                            className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
-                          >
-                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
-                              <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
-                                {!place.isSaved && (
-                                  <span className="text-[9px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-medium shrink-0">New</span>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-400 truncate">{place.address}</p>
-                            </div>
-                            {isAdding ? (
-                              <Loader2 size={14} className="animate-spin text-gray-400 shrink-0" />
-                            ) : place.isSaved ? (
-                              <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: `${cat.color}18`, color: cat.color }}>
-                                {cat.label}
-                              </span>
-                            ) : (
-                              <Plus size={16} className="text-gray-300 shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {!searching && searchResults.length === 0 && (
-                    <p className="text-sm text-gray-400 text-center py-4">No matching places found</p>
-                  )}
-                </>
-              ) : (
-                /* Default: nearby places within 5km */
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1 mb-1.5">
-                    Nearby (within 5km)
-                  </p>
-                  {nearbyLoading ? (
-                    <div className="flex items-center justify-center py-6 text-gray-300">
-                      <Loader2 size={18} className="animate-spin" />
-                    </div>
-                  ) : nearbyPlaces.length > 0 ? (
-                    <div className="space-y-1 max-h-60 overflow-y-auto">
-                      {nearbyPlaces.map((place) => {
-                        const cat = getCatConfig(place.category);
-                        const isAdding = addingPlaceId === place.id;
-                        return (
-                          <button
-                            key={place.id}
-                            onClick={() => handleAddPlace(place)}
-                            disabled={isAdding}
-                            className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
-                          >
-                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
-                              <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-sm font-semibold text-gray-800 truncate">{place.name}</p>
-                                {!place.isSaved && (
-                                  <span className="text-[9px] bg-blue-50 text-blue-600 px-1 py-0.5 rounded font-medium shrink-0">New</span>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-400 truncate">{place.address}</p>
-                            </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              {isAdding ? (
-                                <Loader2 size={14} className="animate-spin text-gray-400" />
-                              ) : (
-                                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded whitespace-nowrap">
-                                  {place.distanceKm != null ? `${place.distanceKm.toFixed(1)} km` : "--- km"}
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400 text-center py-4">No places found within 5km</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Bottom actions */}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
-            <button
-              onClick={() => setShowAddPanel(!showAddPanel)}
-              className="flex items-center gap-2 px-4 py-2.5 border-2 border-[#2d5a1e] text-[#2d5a1e] rounded-xl font-medium text-sm hover:bg-[#2d5a1e]/5 transition-colors"
-            >
-              <Plus size={15} />
-              Add Place
-            </button>
-            <button
-              onClick={optimiseRoute}
-              disabled={optimising || places.length < 3}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#2d5a1e] text-white rounded-xl font-medium text-sm hover:bg-[#234617] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {optimising ? <Loader2 size={15} className="animate-spin" /> : <RotateCw size={15} />}
-              {optimising ? "Optimising…" : "Optimise Route"}
-            </button>
-          </div>
+      <div className="flex flex-col lg:flex-row lg:h-screen pt-16">
+        {/* ── Desktop: static side panel ───────────────────────────────────── */}
+        <div className="hidden lg:block lg:w-[40%] p-4 lg:p-6 lg:overflow-y-auto">
+          {renderPaneContent()}
         </div>
 
-        {/* ── Right: real TrackAsia map  */}
-        <div className="lg:w-[60%] h-64 lg:h-auto lg:sticky lg:top-16 relative overflow-hidden">
+        {/* ── Map: full-bleed behind the sheet on mobile, right column on desktop ── */}
+        <div className="fixed inset-x-0 top-16 bottom-0 z-0 overflow-hidden lg:sticky lg:inset-auto lg:top-16 lg:w-[60%] lg:h-auto">
           <ItineraryMapView places={places} focusedIndex={focusedIndex} directionsRoute={directionsData?.geometry ?? null} />
+        </div>
+
+        {/* ── Mobile: draggable bottom sheet ──────────────────────────────── */}
+        <div
+          ref={sheetRef}
+          className="lg:hidden fixed inset-x-0 bottom-0 z-30 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.18)] flex flex-col overflow-hidden"
+        >
+          {/* Drag handle */}
+          <div className="shrink-0 pt-1.5">
+            <div
+              className="flex justify-center py-1.5 touch-none cursor-grab active:cursor-grabbing"
+              onTouchStart={(e) => onSheetDragStart(e.touches[0].clientY)}
+              onTouchMove={(e) => onSheetDragMove(e.touches[0].clientY)}
+              onTouchEnd={onSheetDragEnd}
+            >
+              <div className="w-10 h-1.5 bg-gray-300 rounded-full" />
+            </div>
+            <button
+              onClick={() => setSheetExpanded((v) => !v)}
+              className="flex items-center justify-between w-full px-4 pb-1.5"
+            >
+              <p className="font-bold text-gray-900 text-base leading-tight truncate text-left min-w-0">
+                {itinerary.name}
+              </p>
+              {sheetExpanded ? (
+                <ChevronDown size={20} className="text-gray-400 shrink-0" />
+              ) : (
+                <ChevronUp size={20} className="text-gray-400 shrink-0" />
+              )}
+            </button>
+          </div>
+
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-8">
+            {renderPaneContent()}
+          </div>
         </div>
       </div>
     </div>
