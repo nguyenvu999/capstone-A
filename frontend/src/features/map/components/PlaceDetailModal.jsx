@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { X, MapPin, Edit3, Star, Copy, Image as ImageIcon, Search, MoreVertical, Trash2 } from "lucide-react";
+import { X, MapPin, Edit3, Star, Copy, Image as ImageIcon, Search, MoreVertical, Trash2, Bookmark } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
 import { validateFloorLevel } from "../utils/floorLevelValidation";
+import AddToItineraryModal from "../../itinerary/components/AddToItineraryModal";
 
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
   const { user } = useAuth();
@@ -14,6 +15,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [updating, setUpdating] = useState(false);
   const [editImages, setEditImages] = useState([]);
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false); // Dropdown 3 chấm
+  const [showAddToItinerary, setShowAddToItinerary] = useState(false); // Bookmark → Add to Itinerary popup
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Modal xác nhận xóa
   const [deleting, setDeleting] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
@@ -781,12 +783,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 ← Back to Building
               </button>
             )}
-            <h2 className="text-base font-bold text-gray-800">
+            <h2 className="text-base font-bold text-gray-800 truncate">
               {showEditForm ? "Edit Place" : "Place Details"}
             </h2>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* ===== 3 CHẤM DROPDOWN (chỉ hiện khi View mode + isOwner) ===== */}
             {!showEditForm && isOwner && (
               <div className="relative" ref={dropdownRef}>
@@ -895,6 +897,22 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                     <span className="text-sm">{place.distanceText}</span>
                   </div>
                 )}
+
+                {/* Bookmark Button - Add to Itinerary (moved next to distance) */}
+                <button
+                  onClick={() => {
+                    if (!user) {
+                      showToast("Please log in to add places to an itinerary", "warning");
+                      return;
+                    }
+                    setShowAddToItinerary(true);
+                  }}
+                  className="ml-auto p-2 rounded-full text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                  aria-label="Add to itinerary"
+                  title="Add to itinerary"
+                >
+                  <Bookmark size={20} />
+                </button>
               </div>
 
               {/* Status */}
@@ -1595,6 +1613,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+      {/* Add to Itinerary Popup */}
+      {showAddToItinerary && (
+        <AddToItineraryModal
+          place={place}
+          onClose={() => setShowAddToItinerary(false)}
+          showToast={showToast}
+        />
       )}
        {/* Add pop-up images */}
       {selectedImageIndex !== null && (
