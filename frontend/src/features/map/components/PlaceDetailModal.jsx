@@ -5,6 +5,7 @@ import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
 import { validateFloorLevel } from "../utils/floorLevelValidation";
+import { checkBuildingDuplicate } from "../utils/duplicateDetection";
 import AddToItineraryModal from "../../itinerary/components/AddToItineraryModal";
 
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
@@ -392,6 +393,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
       setDeletedReviewImages((prev) => [...prev, image]);
     };
+    
   const handleUpdatePlace = async () => {
     if (!isOwner) {
       showToast("You don't have permission to edit this place", "error");
@@ -409,17 +411,51 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     }
 
     // Validate floor level if building
+    let normalizedFloorLevel = null;
     if (place.place_type === "building") {
       const floorValidation = validateFloorLevel(editData.floor_level);
       if (!floorValidation.isValid) {
         showToast(floorValidation.error, "warning");
         return;
       }
+      normalizedFloorLevel = floorValidation.normalized;
     }
 
     setUpdating(true);
 
     try {
+      // ✅ Building place edit cũng phải obey duplicate prevention
+      if (place.place_type === "building") {
+        const { data: buildingPlaces, error: buildingPlacesError } = await supabase
+          .from("places")
+          .select("*")
+          .eq("building_address", place.building_address)
+          .eq("place_type", "building")
+          .neq("id", place.id);
+
+        if (buildingPlacesError) throw buildingPlacesError;
+
+        const buildingDup = checkBuildingDuplicate(
+          { name: editData.name, floor_level: normalizedFloorLevel },
+          buildingPlaces || []
+        );
+
+        if (buildingDup) {
+          if (buildingDup.reason === "SAME_FLOOR_DUPLICATE") {
+            showToast(
+              `"${buildingDup.name}" already exists on Floor ${buildingDup.floor_level}. Please use a different name or floor.`,
+              "warning"
+            );
+          } else {
+            showToast(
+              `A place with nearly identical name "${buildingDup.name}" already exists in this building (Floor ${buildingDup.floor_level}).`,
+              "warning"
+            );
+          }
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from("places")
         .update({
@@ -432,7 +468,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           business_status: editData.business_status,
           category: editData.category,
           ...(place.place_type === "building" && {
-            floor_level: validateFloorLevel(editData.floor_level).normalized,
+            floor_level: normalizedFloorLevel,
           }),
         })
         .eq("id", place.id);
@@ -495,7 +531,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
         ...(place.place_type === "building" && {
-          floor_level: validateFloorLevel(editData.floor_level).normalized,
+          floor_level: normalizedFloorLevel,
         }),
         category: editData.category,
       };

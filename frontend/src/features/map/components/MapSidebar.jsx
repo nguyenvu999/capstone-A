@@ -52,17 +52,25 @@ export default function MapSidebar({
       return;
     }
 
-    // Lọc trùng theo Tọa độ & Tên đối với dữ liệu danh mục trả về thực tế
+    // Lọc trùng:
+    // - Supabase places thật: dùng id để luôn giữ riêng từng place
+    // - TrackAsia/search places tạm: vẫn dedupe theo name + lat + lng
     const uniquePlacesMap = new Map();
-    categoryResults.forEach(place => {
-      const lat = Number(place.latitude).toFixed(4); // Làm tròn 4 chữ số để tránh lệch coordinate siêu nhỏ
-      const lng = Number(place.longitude).toFixed(4);
-      const cleanName = (place.name || "").toLowerCase().replace(/\s+/g, "");
-      const geoKey = `${cleanName}_${lat}_${lng}`;
 
-      // Nếu trùng tọa độ + tên, ưu tiên giữ lại dữ liệu không phải từ Track-Asia ngẫu nhiên
-      if (!uniquePlacesMap.has(geoKey) || place.category !== "TrackAsiaPlace") {
-        uniquePlacesMap.set(geoKey, place);
+    categoryResults.forEach(place => {
+      let uniqueKey;
+
+      if (place.id !== undefined && place.id !== null) {
+        uniqueKey = `supabase_${place.id}`;
+      } else {
+        const lat = Number(place.latitude).toFixed(4);
+        const lng = Number(place.longitude).toFixed(4);
+        const cleanName = (place.name || "").toLowerCase().replace(/\s+/g, "");
+        uniqueKey = `${cleanName}_${lat}_${lng}`;
+      }
+
+      if (!uniquePlacesMap.has(uniqueKey)) {
+        uniquePlacesMap.set(uniqueKey, place);
       }
     });
 
@@ -230,6 +238,7 @@ export default function MapSidebar({
         building_address: dbItem.building_address || null,
       };
       setFocusedLocation({
+        id: normalizedPlace.id || null,
         lat: normalizedPlace.latitude,
         lng: normalizedPlace.longitude,
         name: normalizedPlace.name,
@@ -238,7 +247,8 @@ export default function MapSidebar({
         place_type: normalizedPlace.place_type,
         building_name: normalizedPlace.building_name,
         floor_level: normalizedPlace.floor_level,
-        rating: normalizedPlace.rating || 0
+        rating: normalizedPlace.rating || 0,
+        popupRefreshKey: Date.now(),
       });
       setCategoryResults(prev => {        
         const existingIds = prev.map(p => p.id);
@@ -701,6 +711,7 @@ export default function MapSidebar({
                     onClick={() => {
                       if (lat && lng) {
                         setFocusedLocation({
+                          id: place.id || null,
                           lat,
                           lng,
                           name: place.name,
@@ -709,7 +720,8 @@ export default function MapSidebar({
                           building_name: place.building_name || null,
                           floor_level: place.floor_level || null,
                           rating: place.rating || 0,
-                          isNewCustomPoint: false
+                          isNewCustomPoint: false,
+                          popupRefreshKey: Date.now(),
                         });
 
                         if (onTriggerDirectionPanel) onTriggerDirectionPanel(place);

@@ -19,6 +19,7 @@ export default function MapContainer({
   selectedPlace,         
   onPinPointChange,  
   reopenBuildingAddress,
+  reopenBuildingFloor,
   onReopenBuildingHandled,
   activeFilters,
   onAddPlaceToBuilding,
@@ -35,15 +36,19 @@ export default function MapContainer({
   // BUILDING DETAIL STATE 
   const [showBuildingDetail, setShowBuildingDetail] = useState(false);
   const [selectedBuildingAddress, setSelectedBuildingAddress] = useState(null);
+  const [selectedBuildingInitialFloor, setSelectedBuildingInitialFloor] = useState(null);
   
   // ✅ Reopen Building Panel khi user click "Back to Building"
   useEffect(() => {
     if (reopenBuildingAddress) {
       setSelectedBuildingAddress(reopenBuildingAddress);
+      setSelectedBuildingInitialFloor(
+        reopenBuildingFloor ? String(reopenBuildingFloor) : null
+      );
       setShowBuildingDetail(true);
       if (onReopenBuildingHandled) onReopenBuildingHandled();
     }
-  }, [reopenBuildingAddress]);
+  }, [reopenBuildingAddress, reopenBuildingFloor]);
 
   // PIN POINT STATE
   const [isPinPointMode, setIsPinPointMode] = useState(false);
@@ -612,6 +617,7 @@ export default function MapContainer({
 
               // ✅ KHÔNG remove marker + popup (giữ nguyên like normal place)
               // Chỉ mở Building Detail Panel
+              setSelectedBuildingInitialFloor(null);
               setSelectedBuildingAddress(buildingAddress);
               setShowBuildingDetail(true);
             });
@@ -675,16 +681,17 @@ export default function MapContainer({
         e.stopPropagation();
         hoverPopup.remove();
         setFocusedLocation({
+          id: place.id || null,
           lat: lat,
           lng: lng,
           name: place.name,
           address: place.address || place.formatted_address || place.vicinity,
           rating: place.rating || 0,
           isNewCustomPoint: false,
-          // ✅ THÊM: Building info
           place_type: place.place_type,
           building_name: place.building_name,
           floor_level: place.floor_level,
+          popupRefreshKey: Date.now(),
         });
       });
 
@@ -893,10 +900,20 @@ if (focusMarkerRef.current) {
           e.stopPropagation();
           
           // ✅ Tìm place bằng tọa độ (tolerance 0.0001 cho floating point)
-          const clickedPlace = categoryResults.find(p => 
-            Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
-            Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
-          );
+          let clickedPlace = null;
+
+          if (focusedLocation?.id !== undefined && focusedLocation?.id !== null) {
+            clickedPlace = categoryResults.find(
+              p => String(p.id) === String(focusedLocation.id)
+            );
+          }
+
+          if (!clickedPlace) {
+            clickedPlace = categoryResults.find(p => 
+              Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
+              Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
+            );
+          }
           
           if (clickedPlace && clickedPlace.id) {
             onPlaceClick(clickedPlace);
@@ -911,7 +928,7 @@ if (focusMarkerRef.current) {
   // - đổi tọa độ
   // - hoặc có popupRefreshKey (commit update sau khi edit/register)
   // Không phụ thuộc trực tiếp vào name/address để tránh bug mất focus khi đang gõ form.
-  }, [focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.popupRefreshKey, onPlaceClick]);
+  }, [focusedLocation?.id, focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.popupRefreshKey, onPlaceClick]);
 
   return (
     <div className="relative h-full w-full flex-1 z-0">
@@ -1020,10 +1037,13 @@ if (focusMarkerRef.current) {
           initialBuildingName={
             categoryResults.find(p => p.building_address === selectedBuildingAddress)?.building_name || "Building"
           }
+          initialSelectedFloor={selectedBuildingInitialFloor}
+          activeCategory={activeCategory}
           activeFilters={activeFilters}
           onClose={() => {
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
+            setSelectedBuildingInitialFloor(null);
           }}
           onAddPlace={() => {
             const buildingPlaces = categoryResults.filter(
@@ -1031,6 +1051,7 @@ if (focusMarkerRef.current) {
             );
             const firstPlace = buildingPlaces[0];
             setShowBuildingDetail(false);
+            setSelectedBuildingInitialFloor(null);
             if (onAddPlaceToBuilding) {
               onAddPlaceToBuilding({
                 buildingName: firstPlace?.building_name || "",
@@ -1043,6 +1064,7 @@ if (focusMarkerRef.current) {
           }}
           onPlaceClick={(place) => {
             setShowBuildingDetail(false);
+            setSelectedBuildingInitialFloor(null);
             if (onPlaceClick) onPlaceClick(place, selectedBuildingAddress);
           }}
           onBuildingConverted={() => {
@@ -1054,6 +1076,7 @@ if (focusMarkerRef.current) {
             
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
+            setSelectedBuildingInitialFloor(null);
             
             // ✅ Gọi callback từ MapPage để refresh data
             if (onBuildingConverted) {

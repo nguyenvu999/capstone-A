@@ -26,6 +26,8 @@ export default function MapPage() {
   const [buildingDataForRegister, setBuildingDataForRegister] = useState(null);
   const [openedFromBuilding, setOpenedFromBuilding] = useState(null);
   const [reopenBuildingAddress, setReopenBuildingAddress] = useState(null);
+  const [openedFromBuildingFloor, setOpenedFromBuildingFloor] = useState(null);
+  const [reopenBuildingFloor, setReopenBuildingFloor] = useState(null);
 
   const [activeFilters, setActiveFilters] = useState({
     priceLevels: [],
@@ -345,16 +347,17 @@ export default function MapPage() {
     
     // ✅ CHỈ set focused location (hiện marker + popup)
     setFocusedLocation({
+      id: place.id || null,
       lat: Number(place.latitude),
       lng: Number(place.longitude),
       name: place.name,
       address: place.address,
       rating: place.rating || 0,
       isNewCustomPoint: false,
-      // ✅ THÊM: Building info
       place_type: place.place_type || null,
       building_name: place.building_name || null,
       floor_level: place.floor_level || null,
+      popupRefreshKey: Date.now(),
     });
     
     // ❌ KHÔNG mở Place Detail
@@ -451,6 +454,7 @@ export default function MapPage() {
             setSelectedPlace(place);
             setShowMyPlaces(false);
             setOpenedFromBuilding(fromBuildingAddress || null);
+            setOpenedFromBuildingFloor(place?.floor_level || null);
           }}
           onAddPlaceToBuilding={handleAddPlaceToBuilding}
           showRegisterForm={showRegisterForm}           
@@ -458,7 +462,11 @@ export default function MapPage() {
           onPinPointChange={handlePinPointChange}       
           activeFilters={activeFilters}
           reopenBuildingAddress={reopenBuildingAddress}
-          onReopenBuildingHandled={() => setReopenBuildingAddress(null)}
+          reopenBuildingFloor={reopenBuildingFloor}
+          onReopenBuildingHandled={() => {
+            setReopenBuildingAddress(null);
+            setReopenBuildingFloor(null);
+          }}
           onBuildingConverted={handleBuildingConverted}
         />
       </div>
@@ -489,6 +497,7 @@ export default function MapPage() {
           onClose={() => {
             setSelectedPlace(null);
             setOpenedFromBuilding(null);
+            setOpenedFromBuildingFloor(null);
             if (searchParams.get("view")) {
               window.history.replaceState({}, '', '/map');
             }
@@ -497,11 +506,11 @@ export default function MapPage() {
           apiKey={API_KEY}
           openedFromBuilding={openedFromBuilding}
           onBackToBuilding={() => {
-            // Đóng Place Detail
             setSelectedPlace(null);
-            // Re-open Building Panel bằng cách set lại address
             setReopenBuildingAddress(openedFromBuilding);
+            setReopenBuildingFloor(openedFromBuildingFloor);
             setOpenedFromBuilding(null);
+            setOpenedFromBuildingFloor(null);
           }}
         />
       )}

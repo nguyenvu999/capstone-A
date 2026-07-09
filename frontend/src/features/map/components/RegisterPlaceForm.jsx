@@ -441,6 +441,8 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           ? (buildingInfo.buildingAddress || formData.address)
           : buildingInfo.buildingAddress;
 
+        const normalizedFloorLevel = validateFloorLevel(floorLevel).normalized;
+
         // Lấy tất cả places trong building này
         const { data: buildingPlaces, error: fetchError } = await supabase
           .from("places")
@@ -448,10 +450,26 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           .eq("building_address", buildingAddr)
           .eq("place_type", "building");
 
-        if (!fetchError && buildingPlaces && buildingPlaces.length > 0) {
+        if (fetchError) throw fetchError;
+
+        const placesToCheck = [...(buildingPlaces || [])];
+
+        // ✅ CONVERTING MODE:
+        // duplicatePlace hiện vẫn đang là standalone trong DB,
+        // nhưng sau submit nó sẽ trở thành building ở floor 1
+        if (buildingMode === "converting" && duplicatePlace) {
+          placesToCheck.push({
+            ...duplicatePlace,
+            place_type: "building",
+            building_address: buildingAddr,
+            floor_level: "1",
+          });
+        }
+
+        if (placesToCheck.length > 0) {
           const buildingDup = checkBuildingDuplicate(
-            { name: formData.name, floor_level: floorLevel },
-            buildingPlaces
+            { name: formData.name, floor_level: normalizedFloorLevel },
+            placesToCheck
           );
 
           if (buildingDup) {
@@ -748,11 +766,16 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   // Xử lý khi user muốn xem place đã tồn tại
   const handleViewExistingPlace = (place) => {
     setFocusedLocation({
+      id: place.id || null,
       lat: Number(place.latitude),
       lng: Number(place.longitude),
       name: place.name,
       address: place.address,
       category: place.category,
+      place_type: place.place_type || null,
+      building_name: place.building_name || null,
+      floor_level: place.floor_level || null,
+      popupRefreshKey: Date.now(),
     });
     showToast("Navigated to existing place", "success");
     if (onClose) onClose();
