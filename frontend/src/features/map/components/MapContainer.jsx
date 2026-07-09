@@ -547,8 +547,8 @@ export default function MapContainer({
 
         // ✅ Create popup HTML
         const buildingPopupHTML = `
-          <div class="p-2">
-            <div class="font-bold text-sm mb-1">${firstPlace.building_name || "Building"}</div>
+          <div class="p-2 max-w-xs">
+            <div class="font-bold text-sm mb-1 break-words overflow-wrap-anywhere">${firstPlace.building_name || "Building"}</div>
             <div class="text-xs text-gray-600 mb-1">${places.length} place${places.length > 1 ? 's' : ''} inside</div>
             <div class="text-xs text-gray-600 mb-2">${buildingAddress}</div>
             <button 
@@ -761,8 +761,8 @@ if (focusMarkerRef.current) {
     const displayAddress = address || "";
 
     const popupHTML = `
-      <div class="p-2">
-        <div class="font-bold text-sm mb-1">${displayName}</div>
+      <div class="p-2 max-w-xs">
+        <div class="font-bold text-sm mb-1 break-words overflow-wrap-anywhere">${displayName}</div>
         ${rating ? `
           <div class="flex items-center gap-1 mb-1">
             <span class="text-yellow-500 text-sm">${renderStars(rating)}</span>

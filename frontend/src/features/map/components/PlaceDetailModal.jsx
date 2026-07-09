@@ -845,7 +845,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             
             {/* Place Name */}
             <div className="pb-4">
-              <h1 className="text-2xl md:text-xl font-bold text-gray-900">{place.name}</h1>
+              <h1 className="text-2xl md:text-xl font-bold text-gray-900 break-words overflow-wrap-anywhere">{place.name}</h1>
 
               {/* Images */}
               {placeImages.length > 0 ? (
