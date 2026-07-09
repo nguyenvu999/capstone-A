@@ -653,6 +653,8 @@ export default function MapContainer({
         markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "team_event") {
         markerConfig = { bgColor: "#10b981", iconHtml: `<span class="text-xl">👥</span>` };
+      } else if (category === "vegetarian") {
+        markerConfig = { bgColor: "#22c55e", iconHtml: `<span class="text-xl">🥗</span>` };
       }
 
       el.style.backgroundColor = markerConfig.bgColor;

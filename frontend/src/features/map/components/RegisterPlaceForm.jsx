@@ -13,7 +13,8 @@ const CATEGORIES = [
   { id: "beverage", name: "Beverage", emoji: "☕", bgColor: "#8b5cf6" },
   { id: "sight", name: "Sight", emoji: "👁️", bgColor: "#3b82f6" },
   { id: "entertainment", name: "Entertainment", icon: "/park_map_icon.png", bgColor: "#ec4899" },
-  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" }
+  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" },
+  { id: "vegetarian", name: "Vegetarian", emoji: "🥗", bgColor: "#22c55e" }
 ];
 
 // THÊM: prop currentUserCoords nhận từ MapPage truyền xuống

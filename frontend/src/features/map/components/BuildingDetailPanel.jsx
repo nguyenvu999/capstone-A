@@ -163,7 +163,8 @@ export default function BuildingDetailPanel({
   const getCategoryIcon = (categoryId) => {
     const icons = {
       restaurant: "🍽️", bar: "🍷", beverage: "☕",
-      sight: "👁️", entertainment: "🎬", team_event: "👥"
+      sight: "👁️", entertainment: "🎬", team_event: "👥",
+      vegetarian: "🥗"
     };
     return icons[categoryId?.toLowerCase()] || "📍";
   };

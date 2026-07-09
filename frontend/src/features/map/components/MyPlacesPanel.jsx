@@ -72,7 +72,9 @@ export default function MyPlacesPanel({ onClose, onPlaceClick, currentUserCoords
         return <img src="/park_map_icon.png" className="w-5 h-5 object-contain" alt="Entertainment" />;
     } else if (category === "team_event") {
         return <span className="text-base">👥</span>;
-    }
+    } else if (category === "vegetarian") {
+        return <span className="text-base">🥗</span>;
+    }    
     return <span className="text-base">📍</span>;
   };
   

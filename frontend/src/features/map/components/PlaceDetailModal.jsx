@@ -58,6 +58,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     price_level: place?.price_level || 1,
     business_status: place?.business_status || "open",
     floor_level: place?.floor_level ? String(place.floor_level) : "1",
+    category: place?.category || "restaurant",
   });
 
   const [floorLevelError, setFloorLevelError] = useState(null);
@@ -150,7 +151,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       beverage: { label: "Beverage", color: "#8b5cf6" },
       sight: { label: "Sight", color: "#3b82f6" },
       entertainment: { label: "Entertainment", color: "#ec4899" },
-      team_event: { label: "Team Event", color: "#10b981" }
+      team_event: { label: "Team Event", color: "#10b981" },
+      vegetarian: { label: "Vegetarian", color: "#22c55e" }
     };
     return categoryMap[categoryId?.toLowerCase()] || { label: categoryId, color: "#6b7280" };
   };
@@ -428,6 +430,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           longitude: Number(editData.longitude),
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
+          category: editData.category,
           ...(place.place_type === "building" && {
             floor_level: validateFloorLevel(editData.floor_level).normalized,
           }),
@@ -494,6 +497,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         ...(place.place_type === "building" && {
           floor_level: validateFloorLevel(editData.floor_level).normalized,
         }),
+        category: editData.category,
       };
       if (onStatusUpdated) onStatusUpdated(updatedPlace);
 
@@ -1333,6 +1337,48 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 onChange={(e) => setEditData(prev => ({ ...prev, name: e.target.value }))}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               />
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block font-medium text-gray-700 mb-1.5 text-sm">Category</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "restaurant", name: "Restaurant", icon: "/restaurant-icon.png", bgColor: "#fb923c" },
+                  { id: "bar", name: "Bar", emoji: "🍷", bgColor: "#a855f7" },
+                  { id: "beverage", name: "Beverage", emoji: "☕", bgColor: "#8b5cf6" },
+                  { id: "sight", name: "Sight", emoji: "👁️", bgColor: "#3b82f6" },
+                  { id: "entertainment", name: "Entertainment", icon: "/park_map_icon.png", bgColor: "#ec4899" },
+                  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" },
+                  { id: "vegetarian", name: "Vegetarian", emoji: "🥗", bgColor: "#22c55e" }
+                ].map((cat) => {
+                  const isSelected = editData.category === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setEditData(prev => ({ ...prev, category: cat.id }))}
+                      className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20 font-semibold"
+                          : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
+                      }`}
+                    >
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white"
+                        style={{ backgroundColor: cat.bgColor }}
+                      >
+                        {cat.icon ? (
+                          <img src={cat.icon} alt={cat.name} className="w-4 h-4 object-contain" />
+                        ) : (
+                          <span className="text-sm">{cat.emoji}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-700 truncate">{cat.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Address Search */}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Utensils, Wine, Coffee, Eye, Film, Users, Search, MapPin, X, Menu, DollarSign, Star, Filter as FilterIcon } from "lucide-react";
+import { Utensils, Leaf, Wine, Coffee, Eye, Film, Users, Search, MapPin, X, Menu, DollarSign, Star, Filter as FilterIcon } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 
 // 6 categories 
@@ -10,6 +10,7 @@ const CATEGORIES = [
   { id: "sight", label: "Sight", icon: Eye, bgColor: "bg-blue-50", iconColor: "text-blue-600" },
   { id: "entertainment", label: "Entertainment", icon: Film, bgColor: "bg-pink-50", iconColor: "text-pink-600" },
   { id: "team_event", label: "Team Event", icon: Users, bgColor: "bg-emerald-50", iconColor: "text-emerald-600" },
+  { id: "vegetarian", label: "Vegetarian", icon: Leaf , bgColor: "bg-green-50", iconColor: "text-green-600" },
 ];
 
 export default function MapSidebar({ 
