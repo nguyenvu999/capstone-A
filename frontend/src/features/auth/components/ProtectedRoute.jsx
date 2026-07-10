@@ -4,53 +4,59 @@ import { useState, useEffect } from "react";
 import { supabase } from "../api/supabaseClient";
 
 export default function ProtectedRoute({ children }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logoutUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(null);
-  const [checkingRole, setCheckingRole] = useState(true);
+  const [isVerifyingRole, setIsVerifyingRole] = useState(true);
 
   useEffect(() => {
-    async function verifyAdminRole() {
+    async function verifyAdministrativePrivileges() {
       if (!user) {
         setIsAdmin(false);
-        setCheckingRole(false);
+        setIsVerifyingRole(false);
         return;
       }
 
       try {
         // Fetch user permissions strictly from the central profiles registry
-        const { data, error } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
           .single();
 
-        if (!error && data?.role === "admin") {
+        // Check if the authenticated profile possesses explicit administrative clearance
+        if (!profileError && profile?.role === "admin") {
           setIsAdmin(true);
         } else {
+          console.error("Access denied: Account lacks administrative privileges.");
           setIsAdmin(false);
-          // Terminate the unauthorized session immediately
-          await supabase.auth.signOut();
-          // Force clear client state and reroute directly to login panel
-          navigate("/login", { replace: true });
+          
+          // Terminate the unauthorized session natively via centralized logout sequence
+          if (typeof logoutUser === "function") {
+            await logoutUser();
+          } else {
+            await supabase.auth.signOut();
+            navigate("/login", { replace: true });
+          }
         }
-      } catch (err) {
-        console.error("Administrative verification exception:", err);
+      } catch (exception) {
+        console.error("Administrative verification encountered an exception:", exception);
         setIsAdmin(false);
         navigate("/login", { replace: true });
       } finally {
-        setCheckingRole(false);
+        setIsVerifyingRole(false);
       }
     }
 
     if (!authLoading) {
-      verifyAdminRole();
+      verifyAdministrativePrivileges();
     }
-  }, [user, authLoading, navigate]);
+  }, [user, authLoading, navigate, logoutUser]);
 
-  // Display synchronous interface lock during authorization clearance cycles
-  if (authLoading || checkingRole) {
+  // Display continuous loading layout during asynchronous authorization cycles
+  if (authLoading || isVerifyingRole) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#94AB71]">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent" />
@@ -58,7 +64,7 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
-  // Deny core execution wrapper if privileges are completely unauthenticated
+  // Deny core rendering sequence if privileges are completely unauthenticated
   if (!user || !isAdmin) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }

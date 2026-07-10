@@ -1,70 +1,82 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { signInWithEmail, signUpWithEmail, signInWithMicrosoft } from "../api/authApi";
+import { signInWithEmail } from "../api/authApi";
+import { supabase } from "../api/supabaseClient";
 import Logo from "../../../shared/ui/Logo";
 
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isRegister, setIsRegister] = useState(false); 
-  const [isSubmiting, setIsSubmiting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showAccessDeniedModal, setShowAccessDeniedModal] = useState(false);
 
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Lấy trang đích dự định từ state, nếu không có thì mặc định điều hướng về "/map"
-  const fromPage = location.state?.from?.pathname || "/map";
+  const destinationRoute = location.state?.from?.pathname || "/map";
 
   useEffect(() => {
-    if (!loading && user) {
-      // Dùng replace: true để ghi đè trang "/login" trong lịch sử duyệt web
-      // Giúp khi bấm Back ở trình duyệt không bị quay ngược lại trang login
-      navigate(fromPage, { replace: true });
+    // Strictly prevent automatic routing redirection if the security block modal is active
+    if (!loading && user && !showAccessDeniedModal) {
+      navigate(destinationRoute, { replace: true });
     }
-  }, [user, loading, navigate, fromPage]);
+  }, [user, loading, navigate, destinationRoute, showAccessDeniedModal]);
 
-  // Xử lý submit form đăng nhập / đăng ký bằng email
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmiting(true);
-    setErrorMsg("");
+  const handleFormSubmission = async (event) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setErrorMessage("");
 
     try {
-      if (isRegister) {
-        const { error } = await signUpWithEmail(email, password);
-        if (error) throw error;
-        alert("Sign up successful! Please sign in.");
-        setIsRegister(false);
-      } else {
-        const { error } = await signInWithEmail(email, password);
-        if (error) throw error;
-      }
-    } catch (err) {
-      setErrorMsg(err.message || "An error occurred. Please try again.");
-    } finally {
-      setIsSubmiting(false);
-    }
-  };
-
-  // Xử lý đăng nhập qua Microsoft OAuth
-  const handleMicrosoftLogin = async () => {
-    setIsSubmiting(true);
-    setErrorMsg("");
-    try {
-      const { error } = await signInWithMicrosoft();
+      // 1. Authenticate credentials via Supabase Client API
+      const { data, error } = await signInWithEmail(email, password);
       if (error) throw error;
-      // Lưu ý: signInWithOAuth sẽ tự động redirect trình duyệt sang trang đăng nhập của Microsoft,
-      // sau khi thành công Microsoft sẽ redirect về callback URL của Supabase rồi trả về ứng dụng.
-    } catch (err) {
-      setErrorMsg(err.message || "Microsoft authentication failed.");
-      setIsSubmiting(false);
+
+      const authenticatedUser = data?.user;
+
+      if (authenticatedUser) {
+        // 2. Query privileges directly from the centralized database registry
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", authenticatedUser.id)
+          .single();
+
+        // 3. Evaluate administrative clearance requirements
+        if (!profileError && profile?.role === "admin") {
+          // Access Granted: The active useEffect will seamlessly route to the dashboard
+        } else {
+          // Access Denied: Trigger the visual popup notification lock FIRST
+          setShowAccessDeniedModal(true);
+          
+          // CRITICAL FIX: Do NOT call signOut instantly here, as it triggers auth context listeners 
+          // and wipes component states. Let the modal block the interface instead.
+        }
+      }
+    } catch (exception) {
+      setErrorMessage(exception.message || "Authentication rejected. Please verify your credentials.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Trả về trạng thái chờ kiểm tra session ban đầu, tránh chặn tiến trình render
+  // Centralized resolution sequence triggered once the user dismisses the warning modal
+  const handleModalClose = async () => {
+    setShowAccessDeniedModal(false);
+    setIsSubmitting(true);
+    try {
+      // Clear out the temporary invalid session data quietly after the warning has been acknowledged
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Failed to cleanly terminate session keys:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#94AB71] text-white font-medium">
@@ -76,39 +88,56 @@ function LoginPage() {
     );
   }
 
-  // Nếu đã xác thực thành công, useEffect sẽ điều hướng trang, tại đây ẩn form.
-  if (user) return null; 
-
   return (
-    <div className='min-h-screen flex items-center justify-center bg-[#94AB71] px-4'>
+    <div className="relative min-h-screen flex items-center justify-center bg-[#94AB71] px-4">
+      {/* Centralized Access Denied Popup Notification Overlay */}
+      {showAccessDeniedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-[400px] rounded-2xl bg-white p-6 shadow-2xl text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="mb-2 text-lg font-bold text-gray-900">Access Denied</h3>
+            <p className="text-sm font-medium text-gray-600 leading-relaxed">
+              Tài khoản không có quyền truy cập trang này.
+            </p>
+            <button
+              type="button"
+              onClick={handleModalClose}
+              className="mt-5 w-full rounded-lg bg-gray-950 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Login UI Form Core Wrapper */}
       <div className="w-full max-w-[420px] rounded-[22px] bg-white px-10 py-10 shadow-2xl">
         <div className="mb-6 flex justify-center">
           <Logo />
         </div>
         <div className="text-center">
-          <h1 className="mb-2 text-2xl font-bold">
-            {isRegister ? "Create an account" : "Sign in to NetSuggest Admin"}
-          </h1>
-          <p className="mb-6 text-sm text-[#5f6a60]">
-            {isRegister ? "Sign up with your email" : "Use your email and password"}
-          </p>
+          <h1 className="mb-2 text-2xl font-bold">Sign in to NetSuggest Admin</h1>
+          <p className="mb-6 text-sm text-[#5f6a60]">Use your internal email and password</p>
           
-          {errorMsg && (
+          {errorMessage && (
             <div className="mb-4 rounded-lg bg-red-50 p-2.5 text-left text-xs font-medium text-red-600">
-              ⚠️ {errorMsg}
+              ⚠️ {errorMessage}
             </div>
           )}
 
-          {/* Form Email/Password Authentication */}
-          <form onSubmit={handleSubmit} className="space-y-4 text-left">
+          <form onSubmit={handleFormSubmission} className="space-y-4 text-left">
             <div>
               <label className="text-xs font-semibold text-gray-600">Email Address</label>
               <input 
                 type="email" 
                 required 
                 value={email} 
-                onChange={e => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                onChange={event => setEmail(event.target.value)}
+                placeholder="username@internal.admin"
                 className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
               />
             </div>
@@ -118,7 +147,7 @@ function LoginPage() {
                 type="password" 
                 required 
                 value={password} 
-                onChange={e => setPassword(e.target.value)}
+                onChange={event => setPassword(event.target.value)}
                 placeholder="••••••••"
                 className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
               />
@@ -126,57 +155,22 @@ function LoginPage() {
             
             <button
               type="submit"
-              disabled={isSubmiting}
+              disabled={isSubmitting}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#355e1d] px-4 text-base font-medium text-white transition hover:bg-[#2d4f18] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmiting && !isRegister ? (
+              {isSubmitting ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   Processing...
                 </>
               ) : (
-                isRegister ? "Sign Up" : "Sign In"
+                "Sign In"
               )}
             </button>
           </form>
-          
-          {/* Đường phân cách lựa chọn OAuth */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-400">Or continue with</span>
-            </div>
-          </div>
 
-          {/* Nút bấm Đăng nhập qua Microsoft */}
-          <button
-            type="button"
-            onClick={handleMicrosoftLogin}
-            disabled={isSubmiting}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <svg className="h-4 w-4 mr-1 shrink-0" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg">
-              <path fill="#f35325" d="M0 0h11v11H0z"/>
-              <path fill="#81bc06" d="M12 0h11v11H12z"/>
-              <path fill="#05a6f0" d="M0 12h11v11H0z"/>
-              <path fill="#ffba08" d="M12 12h11v11H12z"/>
-            </svg>
-            Sign in with Microsoft
-          </button>
-
-          {/* Chuyển đổi trạng thái Đăng ký / Đăng nhập */}
-          <button 
-            type="button"
-            onClick={() => { setIsRegister(!isRegister); setErrorMsg(""); }}
-            className="mt-6 text-xs font-semibold text-[#355e1d] hover:underline transition"
-          >
-            {isRegister ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
-          </button>
-
-          <p className="mt-6 text-xs text-[#6b746c]">
-            Only authorized company users can access this platform.
+          <p className="mt-8 text-xs text-[#6b746c]">
+            Only authorized internal company administrators can access this secure environment.
           </p>
         </div>
       </div>
