@@ -29,16 +29,23 @@ export function AuthProvider({ children }) {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
-          // Verify user activation status directly from the global profiles directory
+          // Verify user activation status and role directly from the global profiles directory
           const { data: profile, error: profileError } = await supabase
             .from("profiles")
-            .select("is_active")
+            .select("role, is_active")
             .eq("id", session.user.id)
             .single();
 
-          // Security Restriction: Force exit immediately if account status is deactivated
+          // Security Restriction 1: Force exit immediately if account status is deactivated
           if (profile && profile.is_active === false) {
             console.error("This account has been deactivated by the administrator.");
+            await logoutUser();
+            return;
+          }
+
+          // Security Restriction 2: Strictly forbid administrators from accessing the main client application
+          if ((profile && profile.role === "admin") || (session.user.email && session.user.email.endsWith("@internal.admin"))) {
+            console.error("Administrative accounts are restricted from logging into the client application.");
             await logoutUser();
             return;
           }
@@ -77,13 +84,20 @@ export function AuthProvider({ children }) {
           // Re-evaluate user profile state in real-time on session updates
           const { data: profile } = await supabase
             .from("profiles")
-            .select("is_active")
+            .select("role, is_active")
             .eq("id", session.user.id)
             .single();
 
-          // Live Security Sweep: Boot user immediately if deactivated during an active session
+          // Live Security Sweep 1: Boot user immediately if deactivated during an active session
           if (profile && profile.is_active === false) {
             console.error("This account has been deactivated by the administrator.");
+            await logoutUser();
+            return;
+          }
+
+          // Live Security Sweep 2: Block and boot admin instantly if trying to access the user app context
+          if ((profile && profile.role === "admin") || (session.user.email && session.user.email.endsWith("@internal.admin"))) {
+            console.error("Administrative accounts are restricted from logging into the client application.");
             await logoutUser();
             return;
           }
