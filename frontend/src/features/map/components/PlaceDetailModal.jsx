@@ -7,6 +7,8 @@ import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewAp
 import { validateFloorLevel } from "../utils/floorLevelValidation";
 import { checkBuildingDuplicate } from "../utils/duplicateDetection";
 import AddToItineraryModal from "../../itinerary/components/AddToItineraryModal";
+import OpeningHoursEditor from "./OpeningHoursEditor";
+import { validateOpeningHours, getDefaultSchedule, formatOpeningHours, getOpeningStatusText, getOpeningStatusColor } from "../utils/openingHoursUtils";
 
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
   const { user } = useAuth();
@@ -60,6 +62,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     business_status: place?.business_status || "open",
     floor_level: place?.floor_level ? String(place.floor_level) : "1",
     category: place?.category || "restaurant",
+    opening_hours: place?.opening_hours || getDefaultSchedule(),
   });
 
   const [floorLevelError, setFloorLevelError] = useState(null);
@@ -421,6 +424,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       normalizedFloorLevel = floorValidation.normalized;
     }
 
+    // Validate opening hours
+    const hoursValidation = validateOpeningHours(editData.opening_hours);
+    if (!hoursValidation.isValid) {
+      const firstError = hoursValidation.errors[0];
+      showToast(`${firstError.day}: ${firstError.message}`, "warning");
+      return;
+    }
+
     setUpdating(true);
 
     try {
@@ -467,6 +478,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
           category: editData.category,
+          opening_hours: editData.opening_hours,
           ...(place.place_type === "building" && {
             floor_level: normalizedFloorLevel,
           }),
@@ -530,6 +542,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         longitude: Number(editData.longitude),
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
+        opening_hours: editData.opening_hours,
         ...(place.place_type === "building" && {
           floor_level: normalizedFloorLevel,
         }),
@@ -1010,6 +1023,33 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                       {place.created_by_email.substring(0, 2).toUpperCase()}
                     </div>
                     <span className="text-sm text-gray-700 font-medium">{place.created_by_email}</span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Opening Hours */}
+            {place.opening_hours && Array.isArray(place.opening_hours) && place.opening_hours.length > 0 && (
+              <>
+                <hr className="border-gray-200" />
+                <div className="py-4">
+                  <h2 className="text-lg font-bold text-gray-900 mb-3">Opening Hours</h2>
+                  
+                  <p className={`text-sm font-semibold mb-3 ${getOpeningStatusColor(place.opening_hours)}`}>
+                    {getOpeningStatusText(place.opening_hours)}
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {formatOpeningHours(place.opening_hours).map((day) => (
+                      <div key={day.day} className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700 w-24">
+                          {day.day.charAt(0) + day.day.slice(1).toLowerCase()}
+                        </span>
+                        <span className={day.display === "Closed" ? "text-gray-400" : "text-gray-600"}>
+                          {day.display}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </>
@@ -1625,6 +1665,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Write some notes or details about this place..."
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
+              />
+            </div>
+
+            {/* Opening Hours */}
+            <div className="pb-16">
+              <OpeningHoursEditor
+                value={editData.opening_hours}
+                onChange={(hours) => setEditData(prev => ({ ...prev, opening_hours: hours }))}
               />
             </div>
 

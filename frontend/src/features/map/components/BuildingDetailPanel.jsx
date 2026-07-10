@@ -3,6 +3,7 @@ import { X, MoreVertical } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { useAuth } from "../../auth/context/AuthContext";
 import { sortFloorLevels } from "../utils/floorLevelValidation";
+import { doesScheduleCoverInterval } from "../utils/openingHoursUtils";
 
 export default function BuildingDetailPanel({ 
   buildingAddress,
@@ -135,6 +136,26 @@ export default function BuildingDetailPanel({
             return r >= minRating && r < maxRating;
           });
         }
+      }
+    }
+
+    // Filter opening hours
+    if (activeFilters?.openingHours) {
+      const enabledDays = activeFilters.openingHours.filter(d => d.enabled && d.openTime && d.closeTime);
+      
+      if (enabledDays.length > 0) {
+        filtered = filtered.filter(place => {
+          if (!place.opening_hours || !Array.isArray(place.opening_hours)) return false;
+
+          return enabledDays.every(filterDay => {
+            const dayIndex = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].indexOf(filterDay.dayOfWeek);
+            const placeSchedule = place.opening_hours[dayIndex];
+            
+            if (!placeSchedule || !placeSchedule.isOpen) return false;
+            
+            return doesScheduleCoverInterval(placeSchedule, filterDay.openTime, filterDay.closeTime);
+          });
+        });
       }
     }
 

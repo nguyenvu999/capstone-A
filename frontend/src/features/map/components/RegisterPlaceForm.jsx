@@ -5,6 +5,8 @@ import { useToast } from "../../../shared/ui/Toast";
 import { checkDuplicatePlace, checkAddressForBuilding, checkBuildingDuplicate } from "../utils/duplicateDetection";
 import DuplicatePlaceModal from "./DuplicatePlaceModal";
 import { validateFloorLevel } from "../utils/floorLevelValidation";
+import OpeningHoursEditor from "./OpeningHoursEditor";
+import { validateOpeningHours, getDefaultSchedule } from "../utils/openingHoursUtils";
 
 // CẬP NHẬT: 6 categories đồng bộ với MapSidebar + MapContainer
 const CATEGORIES = [
@@ -54,6 +56,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
   });
   const [floorLevel, setFloorLevel] = useState("1");
   const [floorLevelError, setFloorLevelError] = useState(null);
+  const [openingHours, setOpeningHours] = useState(getDefaultSchedule());
   const MAX_IMAGE_SIZE_MB = 5;
   const MAX_IMAGE_SIZE_BYTES =
     MAX_IMAGE_SIZE_MB * 1024 * 1024;
@@ -373,6 +376,14 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
         return;
       }
 
+      // Validate opening hours
+      const hoursValidation = validateOpeningHours(openingHours);
+      if (!hoursValidation.isValid) {
+        const firstError = hoursValidation.errors[0];
+        showToast(`${firstError.day}: ${firstError.message}`, "warning");
+        return;
+      }
+
       // Validate building info
       if (buildingMode === "first" || buildingMode === "converting") {
         if (!buildingInfo.buildingName.trim()) {
@@ -425,6 +436,14 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
       if (formData.name.trim().length < 3) {
         showToast("Place name must be at least 3 characters", "warning");
+        return;
+      }
+
+      // Validate opening hours
+      const hoursValidation = validateOpeningHours(openingHours);
+      if (!hoursValidation.isValid) {
+        const firstError = hoursValidation.errors[0];
+        showToast(`${firstError.day}: ${firstError.message}`, "warning");
         return;
       }
     }
@@ -642,7 +661,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               building_name: finalBuildingName,
               building_address: finalBuildingAddress,
               floor_level: validateFloorLevel(floorLevel).normalized,
-
+              opening_hours: openingHours,
             },
           ])
           .select();
@@ -686,6 +705,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           place_type: "building",
           building_name: finalBuildingName,
           floor_level: validateFloorLevel(floorLevel).normalized,
+          opening_hours: openingHours,
           isConfirmed: true,
           created_by: user ? user.id : null,
           created_by_email: user ? user.email : null,
@@ -696,7 +716,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
 
       } else {
         // ===== STANDALONE MODE (GIỮ NGUYÊN LOGIC CŨ) =====
-        const { data: insertedData, error } = await supabase
+        const { data: insertedData, error} = await supabase
           .from("places")
           .insert([
             {
@@ -712,6 +732,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
               category: formData.category,
               created_by: user ? user.id : null,
               created_by_email: user ? user.email : null,
+              opening_hours: openingHours,
             },
           ])
           .select();
@@ -744,6 +765,7 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
           name: formData.name,
           address: formData.address,
           category: formData.category,
+          opening_hours: openingHours,
           isConfirmed: true,
           created_by: user ? user.id : null,
           created_by_email: user ? user.email : null,
@@ -1107,6 +1129,14 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                 />
               </div>
 
+              {/* Opening Hours */}
+              <div>
+                <OpeningHoursEditor
+                  value={openingHours}
+                  onChange={setOpeningHours}
+                />
+              </div>
+
               {/* Submit Button */}
               <button
                 type="submit"
@@ -1411,6 +1441,14 @@ export default function RegisterPlaceForm({ apiKey, focusedLocation, setFocusedL
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 md:p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white resize-none transition-all"
                       value={formData.description}
                       onChange={handleChange}
+                    />
+                  </div>
+
+                  {/* Opening Hours */}
+                  <div>
+                    <OpeningHoursEditor
+                      value={openingHours}
+                      onChange={setOpeningHours}
                     />
                   </div>
 

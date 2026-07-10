@@ -8,6 +8,7 @@ import { supabase } from "../../auth/api/supabaseClient";
 import PlaceDetailModal from "../components/PlaceDetailModal";
 import MyPlacesPanel from "../components/MyPlacesPanel";
 import { useSearchParams } from "react-router-dom";
+import { doesScheduleCoverInterval } from "../utils/openingHoursUtils";
 
 export default function MapPage() {
   const { user, logoutUser } = useAuth(); 
@@ -150,6 +151,7 @@ export default function MapPage() {
           created_by: item.created_by, 
           created_by_email: item.created_by_email, 
           description: item.description,
+          opening_hours: item.opening_hours || null,
           isSupabaseData: true,
           
           // ✅ THÊM: Building fields (với default values an toàn)
@@ -177,31 +179,40 @@ export default function MapPage() {
         let filtered = sorted;
         if (filters.ratings.length > 0) {
           if (filters.ratings.length === 1) {
-            // Chọn 1 option → hiện places >= giá trị đó
-            // Ví dụ: chọn 3 → hiện 3, 3.5, 4, 4.3, 5
-            // Ví dụ: chọn 5 → hiện 5 only
             const minRating = filters.ratings[0];
             filtered = sorted.filter(place => (place.rating || 0) >= minRating);
           } else {
-            // Chọn 2 options → range [MIN, MAX)
-            // Ngoại lệ: nếu MAX = 5 thì range [MIN, 5] (bao gồm 5)
             const minRating = Math.min(...filters.ratings);
             const maxRating = Math.max(...filters.ratings);
             
             if (maxRating === 5) {
-              // Chọn X + 5 → hiện places >= X VÀ <= 5
-              // Ví dụ: 3+5 → hiện 3, 3.5, 4, 4.3, 5
-              // Ví dụ: 4+5 → hiện 4, 4.3, 5
               filtered = sorted.filter(place => (place.rating || 0) >= minRating);
             } else {
-              // Chọn X + Y (Y < 5) → hiện places >= X VÀ < Y
-              // Ví dụ: 3+4 → hiện 3, 3.5 (KHÔNG hiện 4, 4.3, 5)
-              // Ví dụ: 1+3 → hiện 1, 1.5, 2, 2.5 (KHÔNG hiện 3, 4, 5)
               filtered = sorted.filter(place => {
                 const rating = place.rating || 0;
                 return rating >= minRating && rating < maxRating;
               });
             }
+          }
+        }
+
+        // Opening Hours filter
+        if (filters.openingHours) {
+          const enabledDays = filters.openingHours.filter(d => d.enabled && d.openTime && d.closeTime);
+          
+          if (enabledDays.length > 0) {
+            filtered = filtered.filter(place => {
+              if (!place.opening_hours || !Array.isArray(place.opening_hours)) return false;
+
+              return enabledDays.every(filterDay => {
+                const dayIndex = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].indexOf(filterDay.dayOfWeek);
+                const placeSchedule = place.opening_hours[dayIndex];
+                
+                if (!placeSchedule || !placeSchedule.isOpen) return false;
+                
+                return doesScheduleCoverInterval(placeSchedule, filterDay.openTime, filterDay.closeTime);
+              });
+            });
           }
         }
         
