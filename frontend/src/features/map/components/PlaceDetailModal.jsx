@@ -842,8 +842,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           </div>
           
           <div className="flex items-center gap-2 shrink-0">
-            {/* ===== 3 CHẤM DROPDOWN (chỉ hiện khi View mode + isOwner) ===== */}
-            {!showEditForm && isOwner && (
+            {/* ===== 3 CHẤM DROPDOWN (luôn hiện khi View mode) ===== */}
+            {!showEditForm && (
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
@@ -855,27 +855,80 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
                 {showOptionsDropdown && (
                   <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                    <button
-                      onClick={() => {
-                        setShowEditForm(true);
-                        setShowOptionsDropdown(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
-                    >
-                      <Edit3 size={16} className="text-gray-400" />
-                      <span>Edit Place</span>
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        setShowDeleteConfirm(true);
-                        setShowOptionsDropdown(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                      <span>Delete Place</span>
-                    </button>
+                    {isOwner ? (
+                      /* Owner menu */
+                      <>
+                        <button
+                          onClick={() => {
+                            setShowEditForm(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Edit3 size={16} className="text-gray-400" />
+                          <span>Edit Place</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            setShowDeleteConfirm(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                          <span>Delete Place</span>
+                        </button>
+
+                        <hr className="my-1 border-gray-100" />
+
+                        <button
+                          onClick={() => {
+                            if (!user) {
+                              showToast("Please log in to add places to an itinerary", "warning");
+                              setShowOptionsDropdown(false);
+                              return;
+                            }
+                            setShowAddToItinerary(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Bookmark size={16} className="text-gray-400" />
+                          <span>Add to Itinerary</span>
+                        </button>
+                      </>
+                    ) : (
+                      /* Non-owner menu */
+                      <>
+                        <button
+                          onClick={() => {
+                            if (!user) {
+                              showToast("Please log in to add places to an itinerary", "warning");
+                              setShowOptionsDropdown(false);
+                              return;
+                            }
+                            setShowAddToItinerary(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Bookmark size={16} className="text-gray-400" />
+                          <span>Add to Itinerary</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            showToast("Request Change feature coming soon", "info");
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Edit3 size={16} className="text-gray-400" />
+                          <span>Request Change</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -950,22 +1003,6 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                     <span className="text-sm">{place.distanceText}</span>
                   </div>
                 )}
-
-                {/* Bookmark Button - Add to Itinerary (moved next to distance) */}
-                <button
-                  onClick={() => {
-                    if (!user) {
-                      showToast("Please log in to add places to an itinerary", "warning");
-                      return;
-                    }
-                    setShowAddToItinerary(true);
-                  }}
-                  className="ml-auto p-2 rounded-full text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                  aria-label="Add to itinerary"
-                  title="Add to itinerary"
-                >
-                  <Bookmark size={20} />
-                </button>
               </div>
 
               {/* Status */}
