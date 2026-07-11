@@ -2,13 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { X, MoreVertical } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { sortFloorLevels } from "../utils/floorLevelValidation";
+import { doesScheduleCoverInterval } from "../utils/openingHoursUtils";
 
 export default function BuildingDetailPanel({ 
   buildingAddress,
   initialBuildingName,
-  onClose,
+  initialSelectedFloor = null,
+  onClose, 
   onPlaceClick,
   onBuildingConverted,
+  activeCategory = null,
   activeFilters = null
 }) {
   const [places, setPlaces] = useState([]);
@@ -23,17 +26,29 @@ export default function BuildingDetailPanel({
     loadPlaces();
   }, [buildingAddress]);
 
-  // ✅ Auto-select floor đầu tiên có place match filter
+  // ✅ Auto-select floor đầu tiên có place match category/filter
   useEffect(() => {
     if (filteredPlaces.length > 0) {
       const uniqueFloors = [...new Set(filteredPlaces.map(p => String(p.floor_level)))];
       const sortedFloors = sortFloorLevels(uniqueFloors);
-      
+
       if (sortedFloors.length > 0 && !sortedFloors.includes(String(selectedFloor))) {
         setSelectedFloor(sortedFloors[0]);
       }
     }
-  }, [activeFilters, places]);
+  }, [activeCategory, activeFilters, places]);
+
+  useEffect(() => {
+    if (!initialSelectedFloor || places.length === 0) return;
+
+    const availableFloors = sortFloorLevels(
+      [...new Set(places.map(p => String(p.floor_level)))]
+    );
+
+    if (availableFloors.includes(String(initialSelectedFloor))) {
+      setSelectedFloor(String(initialSelectedFloor));
+    }
+  }, [initialSelectedFloor, places]);
 
   // Close dropdown khi click ra ngoài
   useEffect(() => {
@@ -65,35 +80,51 @@ export default function BuildingDetailPanel({
       
       if (data && data.length > 0) {
         setBuildingName(data[0].building_name || initialBuildingName || "Building");
-        
-        // Auto-select floor có place đầu tiên
-        const firstFloor = data[0].floor_level;
-        if (firstFloor) setSelectedFloor(String(firstFloor));
+
+        const availableFloors = sortFloorLevels(
+          [...new Set(data.map(p => String(p.floor_level)))]
+        );
+
+        const preferredFloor = initialSelectedFloor ? String(initialSelectedFloor) : null;
+
+        if (preferredFloor && availableFloors.includes(preferredFloor)) {
+          setSelectedFloor(preferredFloor);
+        } else if (availableFloors.length > 0) {
+          setSelectedFloor(String(availableFloors[0]));
+        }
       }
     }
     
     setLoading(false);
   };
 
-  // ✅ Filter places theo activeFilters (nếu có)
+  // ✅ Filter places theo activeCategory + activeFilters
   const applyFilters = (placesList) => {
-    if (!activeFilters) return placesList;
-    
     let filtered = placesList;
-    
-    // Filter price level
-    if (activeFilters.priceLevels && activeFilters.priceLevels.length > 0) {
-      filtered = filtered.filter(p => activeFilters.priceLevels.includes(Number(p.price_level)));
+
+    // Filter category
+    if (activeCategory) {
+      filtered = filtered.filter(
+        p => p.category?.toLowerCase() === activeCategory.toLowerCase()
+      );
     }
-    
+
+    // Filter price level
+    if (activeFilters?.priceLevels && activeFilters.priceLevels.length > 0) {
+      filtered = filtered.filter(p =>
+        activeFilters.priceLevels.includes(Number(p.price_level))
+      );
+    }
+
     // Filter rating
-    if (activeFilters.ratings && activeFilters.ratings.length > 0) {
+    if (activeFilters?.ratings && activeFilters.ratings.length > 0) {
       if (activeFilters.ratings.length === 1) {
         const minRating = activeFilters.ratings[0];
         filtered = filtered.filter(p => (p.rating || 0) >= minRating);
       } else {
         const minRating = Math.min(...activeFilters.ratings);
         const maxRating = Math.max(...activeFilters.ratings);
+
         if (maxRating === 5) {
           filtered = filtered.filter(p => (p.rating || 0) >= minRating);
         } else {
@@ -104,15 +135,39 @@ export default function BuildingDetailPanel({
         }
       }
     }
-    
+
+    // Filter opening hours
+    if (activeFilters?.openingHours) {
+      const enabledDays = activeFilters.openingHours.filter(d => d.enabled && d.openTime && d.closeTime);
+      
+      if (enabledDays.length > 0) {
+        filtered = filtered.filter(place => {
+          if (!place.opening_hours || !Array.isArray(place.opening_hours)) return false;
+
+          return enabledDays.every(filterDay => {
+            const dayIndex = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].indexOf(filterDay.dayOfWeek);
+            const placeSchedule = place.opening_hours[dayIndex];
+            
+            if (!placeSchedule || !placeSchedule.isOpen) return false;
+            
+            return doesScheduleCoverInterval(placeSchedule, filterDay.openTime, filterDay.closeTime);
+          });
+        });
+      }
+    }
+
     return filtered;
   };
 
   const filteredPlaces = applyFilters(places);
 
   // ✅ Floors có places sau khi filter
-  const floorsWithPlaces = [...new Set(filteredPlaces.map(p => p.floor_level))].sort((a, b) => a - b);
-  const placesOnFloor = filteredPlaces.filter(p => String(p.floor_level) === String(selectedFloor));
+  const floorsWithPlaces = sortFloorLevels(
+    [...new Set(filteredPlaces.map(p => String(p.floor_level)))]
+  );
+  const placesOnFloor = filteredPlaces.filter(
+    p => String(p.floor_level) === String(selectedFloor)
+  );
 
   const canConvert = places.length === 1;
 
@@ -157,7 +212,8 @@ export default function BuildingDetailPanel({
   const getCategoryIcon = (categoryId) => {
     const icons = {
       restaurant: "🍽️", bar: "🍷", beverage: "☕",
-      sight: "👁️", entertainment: "🎬", team_event: "👥"
+      sight: "👁️", entertainment: "🎬", team_event: "👥",
+      vegetarian: "🥗"
     };
     return icons[categoryId?.toLowerCase()] || "📍";
   };
@@ -214,7 +270,7 @@ export default function BuildingDetailPanel({
           disabled={loading}
           className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 cursor-pointer transition-all disabled:opacity-70"
         >
-          {sortFloorLevels(floorsWithPlaces).map(floor => {
+          {floorsWithPlaces.map(floor => {
             const placeCount = filteredPlaces.filter(p => String(p.floor_level) === String(floor)).length;
             return (
               <option key={floor} value={floor}>
