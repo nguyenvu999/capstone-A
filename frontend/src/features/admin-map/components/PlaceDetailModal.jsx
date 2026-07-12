@@ -4,8 +4,6 @@ import { supabase } from "../../auth/api/supabaseClient";
 import { useToast } from "../../../shared/ui/Toast";
 import { fetchReviewsByPlace } from "../api/reviewApi";
 import { validateFloorLevel } from "../utils/floorLevelValidation";
-import OpeningHoursEditor from "./OpeningHoursEditor";
-import { validateOpeningHours, getDefaultSchedule, formatOpeningHours, getOpeningStatusText, getOpeningStatusColor } from "../utils/openingHoursUtils";
 import { checkDuplicatePlace, checkBuildingDuplicate, checkAddressForBuilding } from "../utils/duplicateDetection";
 import DuplicatePlaceModal from "./DuplicatePlaceModal";
 
@@ -27,6 +25,7 @@ export default function PlaceDetailModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Modal xác nhận xóa
   const [deleting, setDeleting] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
+  const [popupImages, setPopupImages] = useState([]);
   const [duplicatePlace, setDuplicatePlace] = useState(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
@@ -57,7 +56,6 @@ export default function PlaceDetailModal({
     business_status: place?.business_status || "open",
     floor_level: place?.floor_level ? String(place.floor_level) : "1",
     category: place?.category || "restaurant",
-    opening_hours: place?.opening_hours || getDefaultSchedule(),
   });
 
   const [floorLevelError, setFloorLevelError] = useState(null);
@@ -147,8 +145,7 @@ export default function PlaceDetailModal({
       beverage: { label: "Beverage", color: "#8b5cf6" },
       sight: { label: "Sight", color: "#3b82f6" },
       entertainment: { label: "Entertainment", color: "#ec4899" },
-      team_event: { label: "Team Event", color: "#10b981" },
-      vegetarian: { label: "Vegetarian", color: "#22c55e" }
+      team_event: { label: "Team Event", color: "#10b981" }
     };
     return categoryMap[categoryId?.toLowerCase()] || { label: categoryId, color: "#6b7280" };
   };
@@ -339,22 +336,12 @@ export default function PlaceDetailModal({
     }
 
     // Validate floor level if building
-    let normalizedFloorLevel = null;
     if (place.place_type === "building") {
       const floorValidation = validateFloorLevel(editData.floor_level);
       if (!floorValidation.isValid) {
         showToast(floorValidation.error, "warning");
         return;
       }
-      normalizedFloorLevel = floorValidation.normalized;
-    }
-
-    // Validate opening hours
-    const hoursValidation = validateOpeningHours(editData.opening_hours);
-    if (!hoursValidation.isValid) {
-      const firstError = hoursValidation.errors[0];
-      showToast(`${firstError.day}: ${firstError.message}`, "warning");
-      return;
     }
 
     setUpdating(true);
@@ -431,9 +418,8 @@ export default function PlaceDetailModal({
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
           category: editData.category,
-          opening_hours: editData.opening_hours,
           ...(place.place_type === "building" && {
-            floor_level: normalizedFloorLevel,
+            floor_level: validateFloorLevel(editData.floor_level).normalized,
           }),
         })
         .eq("id", place.id);
@@ -496,9 +482,8 @@ export default function PlaceDetailModal({
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
         category: editData.category,
-        opening_hours: editData.opening_hours,
         ...(place.place_type === "building" && {
-          floor_level: normalizedFloorLevel,
+          floor_level: validateFloorLevel(editData.floor_level).normalized,
         }),
       };
       if (onStatusUpdated) onStatusUpdated(updatedPlace);
@@ -714,7 +699,7 @@ export default function PlaceDetailModal({
             
             {/* Place Name */}
             <div className="pb-4">
-              <h1 className="text-2xl md:text-xl font-bold text-gray-900 break-words overflow-wrap-anywhere">{place.name}</h1>
+              <h1 className="text-2xl md:text-xl font-bold text-gray-900">{place.name}</h1>
 
               {/* Images */}
               {placeImages.length > 0 ? (
@@ -724,7 +709,10 @@ export default function PlaceDetailModal({
                       <img
                         src={image.url}
                         alt="Place"
-                        onClick={() => setSelectedImageIndex(index)}
+                         onClick={() => {
+                          setPopupImages(placeImages);
+                          setSelectedImageIndex(index);
+                        }}
                         className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
                       />
                     </div>
@@ -825,32 +813,6 @@ export default function PlaceDetailModal({
               </>
             )}
 
-            {/* Opening Hours */}
-            {place.opening_hours && Array.isArray(place.opening_hours) && place.opening_hours.length > 0 && (
-              <>
-                <hr className="border-gray-200" />
-                <div className="py-4">
-                  <h2 className="text-lg font-bold text-gray-900 mb-3">Opening Hours</h2>
-                  
-                  <p className={`text-sm font-semibold mb-3 ${getOpeningStatusColor(place.opening_hours)}`}>
-                    {getOpeningStatusText(place.opening_hours)}
-                  </p>
-
-                  <div className="space-y-1.5">
-                    {formatOpeningHours(place.opening_hours).map((day) => (
-                      <div key={day.day} className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-gray-700 w-24">
-                          {day.day.charAt(0) + day.day.slice(1).toLowerCase()}
-                        </span>
-                        <span className={day.display === "Closed" ? "text-gray-400" : "text-gray-600"}>
-                          {day.display}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
 
             {/* REVIEWS SECTION */}
             <hr className="border-gray-200" />
@@ -998,18 +960,21 @@ export default function PlaceDetailModal({
                             <p className="text-sm text-gray-700 leading-relaxed">{review.comment}</p>
                           )}
                           {/*Upload images*/}
-                          {review.review_images?.length > 0 && (
-                            <div className="grid grid-cols-3 gap-2 mt-3">
-                              {review.review_images.map((image) => (
-                                <img
-                                  key={image.id}
-                                  src={image.url}
-                                  alt="Review"
-                                  className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          )}
+                            {review.review_images.map((image, index) => (
+                              <img
+                                key={image.id || image.url}
+                                src={image.url}
+                                alt="Review"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setPopupImages(review.review_images);
+                                  setSelectedImageIndex(index);
+                                }}
+                                className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 hover:scale-105 transition"
+                              />
+                            ))}
+                        
                         </div>
                       );
                     })}
@@ -1057,8 +1022,7 @@ export default function PlaceDetailModal({
                   { id: "beverage", name: "Beverage", emoji: "☕", bgColor: "#8b5cf6" },
                   { id: "sight", name: "Sight", emoji: "👁️", bgColor: "#3b82f6" },
                   { id: "entertainment", name: "Entertainment", icon: "/park_map_icon.png", bgColor: "#ec4899" },
-                  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" },
-                  { id: "vegetarian", name: "Vegetarian", emoji: "🥗", bgColor: "#22c55e" }
+                  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" }
                 ].map((cat) => {
                   const isSelected = editData.category === cat.id;
                   return (
@@ -1300,16 +1264,6 @@ export default function PlaceDetailModal({
               />
             </div>
 
-            {/* Opening Hours */}
-            <div className="pb-16">
-              <OpeningHoursEditor
-                value={editData.opening_hours}
-                onChange={(hours) => setEditData(prev => ({ ...prev, opening_hours: hours }))}
-              />
-            </div>
-
-            {/* Footer Buttons */}
-
             {/* Footer Buttons (Fixed tại cuối form) */}
             <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex gap-3 -mx-6 -mb-6">
               <button
@@ -1375,7 +1329,7 @@ export default function PlaceDetailModal({
           onClick={(e) => {
             e.stopPropagation();
             setSelectedImageIndex((prev) =>
-              prev === 0 ? editImages.length - 1 : prev - 1
+             prev === 0 ? popupImages.length - 1 : prev - 1
             );
           }}
           className="absolute left-5 text-white text-8xl cursor-pointer"
@@ -1384,7 +1338,7 @@ export default function PlaceDetailModal({
         </button>
 
         <img
-          src={editImages[selectedImageIndex].url}
+           src={popupImages[selectedImageIndex]?.url}
           alt="Selected"
           className="max-w-[75vh] max-h-[70vh] rounded-xl object-contain shadow-2xl"
           onClick={(e) => e.stopPropagation()}
