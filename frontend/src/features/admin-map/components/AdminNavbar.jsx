@@ -74,7 +74,7 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <Menu size={18} />
               <span className="hidden md:inline">Menu</span>
@@ -93,7 +93,7 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
                         navigate(item.path);
                         setShowDropdown(false);
                       }}
-                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 ${
+                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 cursor-pointer ${
                         isActive ? "bg-blue-50" : ""
                       }`}
                     >
@@ -121,7 +121,7 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
                 {/* Sign Out */}
                 <button
                   onClick={handleSignOut}
-                  className="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors flex items-start gap-3"
+                  className="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors flex items-start gap-3 cursor-pointer"
                 >
                   <LogOut size={18} className="text-red-500" />
                   <div className="flex-1">
