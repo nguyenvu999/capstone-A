@@ -29,22 +29,6 @@ export function AuthProvider({ children }) {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
-          const userEmail = session.user.email;
-
-          // Security Restriction 1: Forbid administrative accounts from accessing the main client application
-          if ((userEmail && userEmail.endsWith("@internal.admin"))) {
-            console.error("Administrative accounts are restricted from logging into the client application.");
-            await logoutUser();
-            return;
-          }
-
-          // Security Restriction 2: Enforce strict whitelist policy matching the designated enterprise domain
-          if (!userEmail || !userEmail.endsWith("@netcompany.com")) {
-            console.error("Access denied: Client application restricted to authorized domains only.");
-            await logoutUser();
-            return;
-          }
-
           // Verify user activation status and role directly from the global profiles directory
           const { data: profile, error: profileError } = await supabase
             .from("profiles")
@@ -52,15 +36,15 @@ export function AuthProvider({ children }) {
             .eq("id", session.user.id)
             .single();
 
-          // Security Restriction 3: Force exit immediately if account status is deactivated
+          // Security Restriction 1: Force exit immediately if account status is deactivated
           if (profile && profile.is_active === false) {
             console.error("This account has been deactivated by the administrator.");
             await logoutUser();
             return;
           }
 
-          // Security Restriction 4: Cross-validate double layer for admin role checks
-          if (profile && profile.role === "admin") {
+          // Security Restriction 2: Strictly forbid administrators from accessing the main client application
+          if ((profile && profile.role === "admin") || (session.user.email && session.user.email.endsWith("@internal.admin"))) {
             console.error("Administrative accounts are restricted from logging into the client application.");
             await logoutUser();
             return;
@@ -97,22 +81,6 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         try {
-          const userEmail = session.user.email;
-
-          // Live Security Sweep 1: Block administrative accounts instantly in real-time context
-          if ((userEmail && userEmail.endsWith("@internal.admin"))) {
-            console.error("Administrative accounts are restricted from logging into the client application.");
-            await logoutUser();
-            return;
-          }
-
-          // Live Security Sweep 2: Whitelist inspection filter preventing foreign domain bindings
-          if (!userEmail || !userEmail.endsWith("@netcompany.com")) {
-            console.error("Access denied: Client application restricted to authorized domains only.");
-            await logoutUser();
-            return;
-          }
-
           // Re-evaluate user profile state in real-time on session updates
           const { data: profile } = await supabase
             .from("profiles")
@@ -120,15 +88,15 @@ export function AuthProvider({ children }) {
             .eq("id", session.user.id)
             .single();
 
-          // Live Security Sweep 3: Boot user immediately if deactivated during an active session
+          // Live Security Sweep 1: Boot user immediately if deactivated during an active session
           if (profile && profile.is_active === false) {
             console.error("This account has been deactivated by the administrator.");
             await logoutUser();
             return;
           }
 
-          // Live Security Sweep 4: Block and boot admin instantly if trying to access the user app context
-          if (profile && profile.role === "admin") {
+          // Live Security Sweep 2: Block and boot admin instantly if trying to access the user app context
+          if ((profile && profile.role === "admin") || (session.user.email && session.user.email.endsWith("@internal.admin"))) {
             console.error("Administrative accounts are restricted from logging into the client application.");
             await logoutUser();
             return;
