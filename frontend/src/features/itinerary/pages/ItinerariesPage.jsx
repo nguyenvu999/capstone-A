@@ -15,22 +15,47 @@ const CATEGORY_CONFIG = {
   team_event:    { label: "Team Event",    color: "#10B981" },
 };
 
-// Unsplash fallback images per category
-const CATEGORY_IMAGES = {
-  restaurant:    "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=400&h=300&fit=crop",
-  bar:           "https://images.unsplash.com/photo-1575444758702-4a6b9222336e?w=400&h=300&fit=crop",
-  beverage:      "https://images.unsplash.com/photo-1559925393-8be0ec4767c8?w=400&h=300&fit=crop",
-  sight:         "https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&h=300&fit=crop",
-  entertainment: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&h=300&fit=crop",
-  team_event:    "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=400&h=300&fit=crop",
-  default:       "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=400&h=300&fit=crop",
-};
+// Default placeholder shown when a place has no uploaded image: green background, white "netcompany" text
+const DEFAULT_PLACE_IMAGE =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">` +
+      `<rect width="256" height="256" fill="#2d5a1e"/>` +
+      `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700">netcompany</text>` +
+    `</svg>`
+  );
 
-function getPlaceImage(place) {
-  return CATEGORY_IMAGES[place?.category] || CATEGORY_IMAGES.default;
+function getPlaceImage(place, imagesById = {}) {
+  if (!place) return DEFAULT_PLACE_IMAGE;
+  return imagesById[String(place.id)] || DEFAULT_PLACE_IMAGE;
 }
 
-function ItineraryCard({ itinerary, onDelete }) {
+// Fetch the first (lowest sort_order) image for each place id from `place_images`.
+async function fetchFirstImagesByPlaceId(ids) {
+  const realIds = [...new Set(ids)].filter((pid) => pid != null).map((pid) => String(pid));
+  if (realIds.length === 0) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from("place_images")
+      .select("place_id, url, sort_order")
+      .in("place_id", realIds)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+
+    const map = {};
+    for (const row of data || []) {
+      const pid = String(row.place_id);
+      if (!(pid in map)) map[pid] = row.url; // first one wins (lowest sort_order)
+    }
+    return map;
+  } catch (err) {
+    console.error("Fetch place images error:", err);
+    return {};
+  }
+}
+
+function ItineraryCard({ itinerary, onDelete, placeImages }) {
   const categories = [...new Set(itinerary.places.map((p) => {
     return CATEGORY_CONFIG[p.category]?.label || p.category;
   }))];
@@ -38,8 +63,8 @@ function ItineraryCard({ itinerary, onDelete }) {
   const preview = itinerary.places.map((p) => p.name).join(" · ") || "No places yet";
 
   // Build a simple 3-image mosaic from the first 3 places
-  const images = itinerary.places.slice(0, 3).map(getPlaceImage);
-  while (images.length < 3) images.push(CATEGORY_IMAGES.default);
+  const images = itinerary.places.slice(0, 3).map((p) => getPlaceImage(p, placeImages));
+  while (images.length < 3) images.push(DEFAULT_PLACE_IMAGE);
 
   return (
     <Link to={`/itineraries/${itinerary.id}`} className="block group">
@@ -132,6 +157,7 @@ export default function ItinerariesPage() {
 
   const [itineraries, setItineraries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [placeImages, setPlaceImages] = useState({}); // place id -> first uploaded image url
   const [showNewModal, setShowNewModal] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -165,6 +191,10 @@ export default function ItinerariesPage() {
       }));
 
       setItineraries(normalized);
+
+      const allPlaceIds = normalized.flatMap((it) => it.places.map((p) => p.id));
+      const imagesMap = await fetchFirstImagesByPlaceId(allPlaceIds);
+      setPlaceImages(imagesMap);
     } catch (err) {
       console.error("Fetch itineraries error:", err);
       showToast("Failed to load itineraries", "error");
@@ -257,7 +287,7 @@ export default function ItinerariesPage() {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {itineraries.map((itinerary) => (
-              <ItineraryCard key={itinerary.id} itinerary={itinerary} onDelete={handleDelete} />
+              <ItineraryCard key={itinerary.id} itinerary={itinerary} onDelete={handleDelete} placeImages={placeImages} />
             ))}
           </div>
         )}
