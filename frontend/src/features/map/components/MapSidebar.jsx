@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Utensils, Wine, Coffee, Eye, Film, Users, Search, MapPin, X, Menu, DollarSign, Star, Filter as FilterIcon } from "lucide-react";
+import { Utensils, Leaf, Wine, Coffee, Eye, Film, Users, Search, MapPin, X, Menu, DollarSign, Star, Filter as FilterIcon } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
+import { DAYS_OF_WEEK, TIME_OPTIONS_30MIN, doesScheduleCoverInterval } from "../utils/openingHoursUtils";
 
 // 6 categories 
 const CATEGORIES = [
@@ -10,6 +11,7 @@ const CATEGORIES = [
   { id: "sight", label: "Sight", icon: Eye, bgColor: "bg-blue-50", iconColor: "text-blue-600" },
   { id: "entertainment", label: "Entertainment", icon: Film, bgColor: "bg-pink-50", iconColor: "text-pink-600" },
   { id: "team_event", label: "Team Event", icon: Users, bgColor: "bg-emerald-50", iconColor: "text-emerald-600" },
+  { id: "vegetarian", label: "Vegetarian", icon: Leaf , bgColor: "bg-green-50", iconColor: "text-green-600" },
 ];
 
 export default function MapSidebar({ 
@@ -37,6 +39,16 @@ export default function MapSidebar({
   const [selectedRatings, setSelectedRatings] = useState([]); 
   const [showFilters, setShowFilters] = useState(false); 
 
+  // Opening Hours filter state
+  const [openingHoursFilter, setOpeningHoursFilter] = useState(
+    DAYS_OF_WEEK.map(day => ({
+      dayOfWeek: day,
+      enabled: false,
+      openTime: "",
+      closeTime: ""
+    }))
+  );
+
   // Sync search query box khi chọn địa điểm từ bản đồ
   useEffect(() => {
     if (focusedLocation && focusedLocation.name) {
@@ -51,17 +63,25 @@ export default function MapSidebar({
       return;
     }
 
-    // Lọc trùng theo Tọa độ & Tên đối với dữ liệu danh mục trả về thực tế
+    // Lọc trùng:
+    // - Supabase places thật: dùng id để luôn giữ riêng từng place
+    // - TrackAsia/search places tạm: vẫn dedupe theo name + lat + lng
     const uniquePlacesMap = new Map();
-    categoryResults.forEach(place => {
-      const lat = Number(place.latitude).toFixed(4); // Làm tròn 4 chữ số để tránh lệch coordinate siêu nhỏ
-      const lng = Number(place.longitude).toFixed(4);
-      const cleanName = (place.name || "").toLowerCase().replace(/\s+/g, "");
-      const geoKey = `${cleanName}_${lat}_${lng}`;
 
-      // Nếu trùng tọa độ + tên, ưu tiên giữ lại dữ liệu không phải từ Track-Asia ngẫu nhiên
-      if (!uniquePlacesMap.has(geoKey) || place.category !== "TrackAsiaPlace") {
-        uniquePlacesMap.set(geoKey, place);
+    categoryResults.forEach(place => {
+      let uniqueKey;
+
+      if (place.id !== undefined && place.id !== null) {
+        uniqueKey = `supabase_${place.id}`;
+      } else {
+        const lat = Number(place.latitude).toFixed(4);
+        const lng = Number(place.longitude).toFixed(4);
+        const cleanName = (place.name || "").toLowerCase().replace(/\s+/g, "");
+        uniqueKey = `${cleanName}_${lat}_${lng}`;
+      }
+
+      if (!uniquePlacesMap.has(uniqueKey)) {
+        uniquePlacesMap.set(uniqueKey, place);
       }
     });
 
@@ -79,10 +99,11 @@ export default function MapSidebar({
     if (onFilterChange) {
       onFilterChange({
         priceLevels: selectedPriceLevels,
-        ratings: selectedRatings
+        ratings: selectedRatings,
+        openingHours: openingHoursFilter
       });
     }
-  }, [selectedPriceLevels, selectedRatings]);
+  }, [selectedPriceLevels, selectedRatings, openingHoursFilter]);
 
   // Autocomplete search processing logic
   useEffect(() => {
@@ -219,6 +240,7 @@ export default function MapSidebar({
         created_by: dbItem.created_by,
         created_by_email: dbItem.created_by_email,
         description: dbItem.description,
+        opening_hours: dbItem.opening_hours || null,
         isSupabaseData: true,
         distanceText: `${distance.toFixed(1)} km`,
 
@@ -229,6 +251,7 @@ export default function MapSidebar({
         building_address: dbItem.building_address || null,
       };
       setFocusedLocation({
+        id: normalizedPlace.id || null,
         lat: normalizedPlace.latitude,
         lng: normalizedPlace.longitude,
         name: normalizedPlace.name,
@@ -237,7 +260,8 @@ export default function MapSidebar({
         place_type: normalizedPlace.place_type,
         building_name: normalizedPlace.building_name,
         floor_level: normalizedPlace.floor_level,
-        rating: normalizedPlace.rating || 0
+        rating: normalizedPlace.rating || 0,
+        popupRefreshKey: Date.now(),
       });
       setCategoryResults(prev => {        
         const existingIds = prev.map(p => p.id);
@@ -327,9 +351,17 @@ export default function MapSidebar({
   const clearAllFilters = () => {
     setSelectedPriceLevels([]);
     setSelectedRatings([]);
+    setOpeningHoursFilter(
+      DAYS_OF_WEEK.map(day => ({
+        dayOfWeek: day,
+        enabled: false,
+        openTime: "",
+        closeTime: ""
+      }))
+    );
   };
 
-  const activeFiltersCount = selectedPriceLevels.length + selectedRatings.length;
+  const activeFiltersCount = selectedPriceLevels.length + selectedRatings.length + openingHoursFilter.filter(d => d.enabled).length;
 
   const getCategoryIcon = (categoryId) => {
     const category = CATEGORIES.find(cat => cat.id.toLowerCase() === categoryId?.toLowerCase());
@@ -463,9 +495,10 @@ export default function MapSidebar({
 
         {/* Bọc nội dung danh mục và kết quả */}
         <div className={`flex-1 flex flex-col overflow-hidden max-md:transition-opacity max-md:duration-200 ${!isMobileExpanded && "max-md:opacity-0 max-md:pointer-events-none"}`}>
-          {/* Categories Grid Area */}
-          <div className="p-4 border-b border-gray-100 bg-gray-50/50 shrink-0">
-            <div className="flex items-center justify-between mb-2">
+          
+          {/* ===== FIXED HEADER: Title + Filter button ===== */}
+          <div className="px-4 pt-4 pb-2 bg-gray-50/50 shrink-0 border-b border-gray-100">
+            <div className="flex items-center justify-between">
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Categories within 5km</h2>
               <button
                 onClick={() => setShowFilters(!showFilters)}
@@ -478,213 +511,288 @@ export default function MapSidebar({
                 )}
               </button>
             </div>
-            
-            <div className="flex overflow-x-auto gap-2 pb-1 scrollbar-none md:grid md:grid-cols-3">
-              {CATEGORIES.map((cat) => {
-                const isSelected = activeCategory?.toLowerCase() === cat.id.toLowerCase();
-                return (
-                  <button 
-                    key={cat.id} 
-                    onClick={() => handleCategoryClick(cat.id)} 
-                    className={`flex flex-col items-center gap-1 p-1.5 rounded-xl transition-all border shrink-0 max-md:w-[72px] ${
-                      isSelected ? "bg-white border-blue-500 shadow-md ring-1 ring-blue-500" : "border-transparent hover:bg-white hover:shadow-sm"
-                    }`}
-                  >
-                    <div className={`w-9 h-9 ${cat.bgColor} rounded-full flex items-center justify-center`}>
-                      <cat.icon className={cat.iconColor} size={15} />
-                    </div>
-                    <span className={`text-[9px] font-medium truncate w-full text-center ${isSelected ? "text-blue-600 font-bold" : "text-gray-600"}`}>{cat.label}</span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
-          {/* Filter Panel */}
-          {showFilters && (
-            <div className="p-4 border-b border-gray-100 bg-gray-50 shrink-0 space-y-3 max-h-[240px] overflow-y-auto">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <DollarSign size={12} className="text-gray-500" />
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Price Level</span>
-                  </div>
-                  {selectedPriceLevels.length > 0 && (
-                    <button onClick={() => setSelectedPriceLevels([])} className="text-[9px] text-blue-600 hover:underline">Clear</button>
-                  )}
+          {/* ===== SCROLLABLE ZONE: Categories + Filters (khi mở) ===== */}
+          {showFilters ? (
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {/* Categories Grid */}
+              <div className="p-4 bg-gray-50/50">
+                <div className="flex overflow-x-auto gap-2 pb-1 scrollbar-none md:grid md:grid-cols-3">
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = activeCategory?.toLowerCase() === cat.id.toLowerCase();
+                    return (
+                      <button 
+                        key={cat.id} 
+                        onClick={() => handleCategoryClick(cat.id)} 
+                        className={`flex flex-col items-center gap-1 p-1.5 rounded-xl transition-all border shrink-0 max-md:w-[72px] ${
+                          isSelected ? "bg-white border-blue-500 shadow-md ring-1 ring-blue-500" : "border-transparent hover:bg-white hover:shadow-sm"
+                        }`}
+                      >
+                        <div className={`w-9 h-9 ${cat.bgColor} rounded-full flex items-center justify-center`}>
+                          <cat.icon className={cat.iconColor} size={15} />
+                        </div>
+                        <span className={`text-[9px] font-medium truncate w-full text-center ${isSelected ? "text-blue-600 font-bold" : "text-gray-600"}`}>{cat.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex gap-2">
-                  {[
-                    { level: 1, label: "Budget" },
-                    { level: 2, label: "Moderate" },
-                    { level: 3, label: "Expensive" },
-                    { level: 4, label: "Ultra Luxe" }
-                  ].map(item => (
-                    <button
-                      key={item.level}
-                      onClick={() => togglePriceLevel(item.level)}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
-                        selectedPriceLevels.includes(item.level)
-                          ? "bg-blue-600 text-white shadow-sm"
-                          : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
+              </div>
+
+              {/* Filter Fields */}
+              <div className="p-4 bg-gray-50 space-y-3">
+                {/* Price Level */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <DollarSign size={12} className="text-gray-500" />
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Price Level</span>
+                    </div>
+                    {selectedPriceLevels.length > 0 && (
+                      <button onClick={() => setSelectedPriceLevels([])} className="text-[9px] text-blue-600 hover:underline">Clear</button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {[
+                      { level: 1, label: "Budget" },
+                      { level: 2, label: "Moderate" },
+                      { level: 3, label: "Expensive" },
+                      { level: 4, label: "Ultra Luxe" }
+                    ].map(item => (
+                      <button
+                        key={item.level}
+                        onClick={() => togglePriceLevel(item.level)}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                          selectedPriceLevels.includes(item.level)
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {"$".repeat(item.level)}
+                        <span className="block text-[8px] mt-0.5 opacity-80">{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rating Filter */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Star size={12} className="text-gray-500" />
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Rating Range</span>
+                    </div>
+                    {selectedRatings.length > 0 && (
+                      <button 
+                        onClick={() => setSelectedRatings([])} 
+                        className="text-[9px] text-blue-600 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedRatings.length > 0 ? Math.min(...selectedRatings) : ""}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (!value) { setSelectedRatings([]); return; }
+                        if (selectedRatings.length === 0) { setSelectedRatings([value]); }
+                        else if (selectedRatings.length === 1) { setSelectedRatings([value]); }
+                        else {
+                          const currentMax = Math.max(...selectedRatings);
+                          if (value >= currentMax) { setSelectedRatings([value]); }
+                          else { setSelectedRatings([value, currentMax]); }
+                        }
+                      }}
+                      className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
+                    >
+                      <option value="">Min</option>
+                      {[1, 2, 3, 4, 5].map(rating => (
+                        <option key={rating} value={rating}>{rating} ★</option>
+                      ))}
+                    </select>
+
+                    <span className="text-xs font-medium text-gray-500 shrink-0">To</span>
+
+                    <select
+                      value={selectedRatings.length === 2 ? Math.max(...selectedRatings) : ""}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (!value) {
+                          if (selectedRatings.length === 2) { setSelectedRatings([Math.min(...selectedRatings)]); }
+                          return;
+                        }
+                        if (selectedRatings.length === 0) { return; }
+                        else if (selectedRatings.length === 1) {
+                          const currentMin = selectedRatings[0];
+                          if (value > currentMin) { setSelectedRatings([currentMin, value]); }
+                        } else {
+                          const currentMin = Math.min(...selectedRatings);
+                          if (value > currentMin) { setSelectedRatings([currentMin, value]); }
+                        }
+                      }}
+                      disabled={selectedRatings.length === 0}
+                      className={`flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400 cursor-pointer ${
+                        selectedRatings.length === 0 
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                          : 'bg-white'
                       }`}
                     >
-                      {"$".repeat(item.level)}
-                      <span className="block text-[8px] mt-0.5 opacity-80">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Rating Filter */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Star size={12} className="text-gray-500" />
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Rating Range</span>
+                      <option value="">Max</option>
+                      {[1, 2, 3, 4, 5].map(rating => {
+                        const currentMin = selectedRatings.length > 0 ? Math.min(...selectedRatings) : 0;
+                        const isDisabled = rating <= currentMin;
+                        return (
+                          <option key={rating} value={rating} disabled={isDisabled} className={isDisabled ? 'text-gray-300' : ''}>
+                            {rating} ★
+                          </option>
+                        );
+                      })}
+                    </select>
                   </div>
-                  {selectedRatings.length > 0 && (
-                    <button 
-                      onClick={() => setSelectedRatings([])} 
-                      className="text-[9px] text-blue-600 hover:underline"
-                    >
-                      Clear
-                    </button>
+
+                  {selectedRatings.length === 1 && (
+                    <p className="text-[9px] text-gray-500 mt-1.5">
+                      Showing places with {selectedRatings[0]}+ stars
+                    </p>
+                  )}
+                  {selectedRatings.length === 2 && (
+                    <p className="text-[9px] text-gray-500 mt-1.5">
+                      {Math.max(...selectedRatings) === 5 
+                        ? `Showing places with ${Math.min(...selectedRatings)}+ stars`
+                        : `Showing places with ${Math.min(...selectedRatings)} to ${Math.max(...selectedRatings) - 0.1} stars`
+                      }
+                    </p>
                   )}
                 </div>
 
-                {/* 2 DROPDOWN LAYOUT */}
-                <div className="flex items-center gap-2">
-                  {/* Dropdown 1: Min Rating */}
-                  <select
-                    value={selectedRatings.length > 0 ? Math.min(...selectedRatings) : ""}
-                    onChange={(e) => {
-                      const value = Number(e.target.value);
-                      
-                      if (!value) {
-                        // User chọn "Min" (xóa filter)
-                        setSelectedRatings([]);
-                        return;
-                      }
+                {/* Opening Hours Filter */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-500 text-xs">🕒</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-600">Opening Hours</span>
+                    </div>
+                    {openingHoursFilter.some(d => d.enabled) && (
+                      <button
+                        onClick={() => setOpeningHoursFilter(
+                          DAYS_OF_WEEK.map(day => ({
+                            dayOfWeek: day,
+                            enabled: false,
+                            openTime: "",
+                            closeTime: ""
+                          }))
+                        )}
+                        className="text-[9px] text-blue-600 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
 
-                      if (selectedRatings.length === 0) {
-                        // Chưa có gì → set min
-                        setSelectedRatings([value]);
-                      } else if (selectedRatings.length === 1) {
-                        // Đã có min → đổi min (GIỮ NGUYÊN max nếu có)
-                        setSelectedRatings([value]);
-                      } else {
-                        // Đã có min + max → đổi min, GIỮ NGUYÊN max
-                        const currentMax = Math.max(...selectedRatings);
-                        
-                        // Nếu min mới >= max hiện tại → chỉ giữ min (xóa max)
-                        if (value >= currentMax) {
-                          setSelectedRatings([value]);
-                        } else {
-                          setSelectedRatings([value, currentMax]);
-                        }
-                      }
-                    }}
-                    className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400 cursor-pointer"
-                  >
-                    <option value="">Min</option>
-                    {[1, 2, 3, 4, 5].map(rating => (
-                      <option key={rating} value={rating}>
-                        {rating} ★
-                      </option>
+                  <div className="space-y-2">
+                    {openingHoursFilter.map((day, index) => (
+                      <div key={day.dayOfWeek} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={day.enabled}
+                          onChange={() => {
+                            const updated = [...openingHoursFilter];
+                            updated[index] = {
+                              ...updated[index],
+                              enabled: !updated[index].enabled,
+                              openTime: updated[index].enabled ? "" : updated[index].openTime,
+                              closeTime: updated[index].enabled ? "" : updated[index].closeTime
+                            };
+                            setOpeningHoursFilter(updated);
+                          }}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className={`text-[10px] font-medium w-14 ${day.enabled ? "text-gray-800" : "text-gray-400"}`}>
+                          {day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1, 3).toLowerCase()}
+                        </span>
+                        {day.enabled ? (
+                          <>
+                            <select
+                              value={day.openTime}
+                              onChange={(e) => {
+                                const updated = [...openingHoursFilter];
+                                updated[index] = { ...updated[index], openTime: e.target.value };
+                                setOpeningHoursFilter(updated);
+                              }}
+                              className="text-[10px] bg-white border border-gray-200 rounded px-1 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
+                            >
+                              <option value="">Open</option>
+                              {TIME_OPTIONS_30MIN.map(time => (
+                                <option key={time} value={time}>{time}</option>
+                              ))}
+                            </select>
+                            <span className="text-gray-400 text-[10px]">-</span>
+                            <select
+                              value={day.closeTime}
+                              onChange={(e) => {
+                                const updated = [...openingHoursFilter];
+                                updated[index] = { ...updated[index], closeTime: e.target.value };
+                                setOpeningHoursFilter(updated);
+                              }}
+                              className="text-[10px] bg-white border border-gray-200 rounded px-1 py-1 focus:outline-none focus:border-blue-500 cursor-pointer"
+                            >
+                              <option value="">Close</option>
+                              {TIME_OPTIONS_30MIN.map(time => (
+                                <option key={time} value={time}>{time}</option>
+                              ))}
+                            </select>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">Not filtered</span>
+                        )}
+                      </div>
                     ))}
-                  </select>
+                  </div>
 
-                  {/* Chữ "To" */}
-                  <span className="text-xs font-medium text-gray-500 shrink-0">To</span>
-
-                  {/* Dropdown 2: Max Rating */}
-                  <select
-                    value={selectedRatings.length === 2 ? Math.max(...selectedRatings) : ""}
-                    onChange={(e) => {
-                      const value = Number(e.target.value);
-                      
-                      if (!value) {
-                        // User chọn "Max" (xóa max, chỉ giữ min)
-                        if (selectedRatings.length === 2) {
-                          setSelectedRatings([Math.min(...selectedRatings)]);
-                        }
-                        return;
-                      }
-
-                      if (selectedRatings.length === 0) {
-                        // Chưa có min → KHÔNG CHO CHỌN MAX (disabled sẽ chặn, nhưng để logic safety)
-                        return;
-                      } else if (selectedRatings.length === 1) {
-                        // Đã có min → thêm max
-                        const currentMin = selectedRatings[0];
-                        
-                        // Chỉ cho phép max > min
-                        if (value > currentMin) {
-                          setSelectedRatings([currentMin, value]);
-                        }
-                      } else {
-                        // Đã có min + max → đổi max, GIỮ NGUYÊN min
-                        const currentMin = Math.min(...selectedRatings);
-                        
-                        // Chỉ cho phép max > min
-                        if (value > currentMin) {
-                          setSelectedRatings([currentMin, value]);
-                        }
-                      }
-                    }}
-                    disabled={selectedRatings.length === 0}
-                    className={`flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400 cursor-pointer ${
-                      selectedRatings.length === 0 
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                        : 'bg-white'
-                    }`}
-                  >
-                    <option value="">Max</option>
-                    {[1, 2, 3, 4, 5].map(rating => {
-                      const currentMin = selectedRatings.length > 0 ? Math.min(...selectedRatings) : 0;
-                      const isDisabled = rating <= currentMin;
-                      
-                      return (
-                        <option 
-                          key={rating} 
-                          value={rating}
-                          disabled={isDisabled}
-                          className={isDisabled ? 'text-gray-300' : ''}
-                        >
-                          {rating} ★
-                        </option>
-                      );
-                    })}
-                  </select>
+                  <p className="text-[9px] text-gray-400 mt-1.5">
+                    💡 Check days to filter by schedule. Supports overnight hours.
+                  </p>
                 </div>
 
-                {/* Helper text */}
-                {selectedRatings.length === 1 && (
-                  <p className="text-[9px] text-gray-500 mt-1.5">
-                    Showing places with {selectedRatings[0]}+ stars
-                  </p>
-                )}
-                {selectedRatings.length === 2 && (
-                  <p className="text-[9px] text-gray-500 mt-1.5">
-                    {Math.max(...selectedRatings) === 5 
-                      ? `Showing places with ${Math.min(...selectedRatings)}+ stars`
-                      : `Showing places with ${Math.min(...selectedRatings)} to ${Math.max(...selectedRatings) - 0.1} stars`
-                    }
-                  </p>
+                {/* Clear All */}
+                {activeFiltersCount > 0 && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="w-full py-2 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors"
+                  >
+                    Clear All Filters ({activeFiltersCount})
+                  </button>
                 )}
               </div>
-
-              {activeFiltersCount > 0 && (
-                <button
-                  onClick={clearAllFilters}
-                  className="w-full py-2 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 transition-colors"
-                >
-                  Clear All Filters ({activeFiltersCount})
-                </button>
-              )}
+            </div>
+          ) : (
+            /* ===== WHEN FILTERS HIDDEN: Categories only (non-scrollable) ===== */
+            <div className="p-4 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <div className="flex overflow-x-auto gap-2 pb-1 scrollbar-none md:grid md:grid-cols-3">
+                {CATEGORIES.map((cat) => {
+                  const isSelected = activeCategory?.toLowerCase() === cat.id.toLowerCase();
+                  return (
+                    <button 
+                      key={cat.id} 
+                      onClick={() => handleCategoryClick(cat.id)} 
+                      className={`flex flex-col items-center gap-1 p-1.5 rounded-xl transition-all border shrink-0 max-md:w-[72px] ${
+                        isSelected ? "bg-white border-blue-500 shadow-md ring-1 ring-blue-500" : "border-transparent hover:bg-white hover:shadow-sm"
+                      }`}
+                    >
+                      <div className={`w-9 h-9 ${cat.bgColor} rounded-full flex items-center justify-center`}>
+                        <cat.icon className={cat.iconColor} size={15} />
+                      </div>
+                      <span className={`text-[9px] font-medium truncate w-full text-center ${isSelected ? "text-blue-600 font-bold" : "text-gray-600"}`}>{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
+
 
           {/* Results Area */}
           <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -700,6 +808,7 @@ export default function MapSidebar({
                     onClick={() => {
                       if (lat && lng) {
                         setFocusedLocation({
+                          id: place.id || null,
                           lat,
                           lng,
                           name: place.name,
@@ -708,7 +817,8 @@ export default function MapSidebar({
                           building_name: place.building_name || null,
                           floor_level: place.floor_level || null,
                           rating: place.rating || 0,
-                          isNewCustomPoint: false
+                          isNewCustomPoint: false,
+                          popupRefreshKey: Date.now(),
                         });
 
                         if (onTriggerDirectionPanel) onTriggerDirectionPanel(place);

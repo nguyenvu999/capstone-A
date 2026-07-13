@@ -235,7 +235,7 @@ export default function ItinerariesPage() {
           </div>
           <button
             onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#2d5a1e] hover:bg-[#234617] text-white font-medium text-sm rounded-full shadow-sm transition-all active:scale-95"
+            className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-[#2d5a1e] hover:bg-[#234617] text-white font-medium text-sm rounded-full shadow-sm transition-all active:scale-95"
           >
             <Plus size={16} />
             New Itinerary

@@ -1,22 +1,31 @@
 import { useState, useEffect, useRef } from "react";
-import { X, MapPin, Edit3, Star, Copy, Image as ImageIcon, Search, MoreVertical, Trash2 } from "lucide-react";
+import { X, MapPin, Edit3, Star, Copy, Image as ImageIcon, Search, MoreVertical, Trash2, Bookmark } from "lucide-react";
 import { supabase } from "../../auth/api/supabaseClient";
 import { useToast } from "../../../shared/ui/Toast";
 import { useAuth } from "../../auth/context/AuthContext";
 import { fetchReviewsByPlace, upsertReview, deleteReview } from "../api/reviewApi"
 import { validateFloorLevel } from "../utils/floorLevelValidation";
+import { checkBuildingDuplicate } from "../utils/duplicateDetection";
+import AddToItineraryModal from "../../itinerary/components/AddToItineraryModal";
+import OpeningHoursEditor from "./OpeningHoursEditor";
+import { validateOpeningHours, getDefaultSchedule, formatOpeningHours, getOpeningStatusText, getOpeningStatusColor } from "../utils/openingHoursUtils";
 
 export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiKey, openedFromBuilding = null, onBackToBuilding = null }) {
   const { user } = useAuth();
   const { showToast, ToastComponent } = useToast();
-  
+
   const [showEditForm, setShowEditForm] = useState(false); // Toggle View ↔ Edit mode
   const [updating, setUpdating] = useState(false);
   const [editImages, setEditImages] = useState([]);
   const [showOptionsDropdown, setShowOptionsDropdown] = useState(false); // Dropdown 3 chấm
+  const [showAddToItinerary, setShowAddToItinerary] = useState(false); // Bookmark → Add to Itinerary popup
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Modal xác nhận xóa
   const [deleting, setDeleting] = useState(false);
-   const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
+  const [selectedImageIndex, setSelectedImageIndex] = useState(null); //Images popup
+  const [selectedReviewImage, setSelectedReviewImage] = useState(null); //Images popup in review
+  const [popupImages, setPopupImages] = useState([]);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [reason, setReason] = useState("");
 
   // REVIEW STATE
   const [reviews, setReviews] = useState([]);
@@ -44,7 +53,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const MAX_REVIEW_IMAGE_COUNT = 3;
   const MAX_REVIEW_IMAGE_SIZE_MB = 5;
   const MAX_REVIEW_IMAGE_SIZE_BYTES = MAX_REVIEW_IMAGE_SIZE_MB * 1024 * 1024;
-  
+
   const [editData, setEditData] = useState({
     name: place?.name || "",
     description: place?.description || "",
@@ -54,6 +63,19 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     price_level: place?.price_level || 1,
     business_status: place?.business_status || "open",
     floor_level: place?.floor_level ? String(place.floor_level) : "1",
+    category: place?.category || "restaurant",
+    opening_hours: place?.opening_hours || getDefaultSchedule(),
+  });
+
+  // Form state used by the "Request Change" modal (non-owner flow).
+  // Synced from `place` right before the modal opens (see the Request Change button below).
+  const [formData, setFormData] = useState({
+    name: place?.name || "",
+    address: place?.address || "",
+    category: place?.category || "",
+    price_level: place?.price_level || 1,
+    business_status: place?.business_status || "open",
+    description: place?.description || "",
   });
 
   const [floorLevelError, setFloorLevelError] = useState(null);
@@ -92,15 +114,15 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   // LOAD REVIEWS WHEN MODAL OPENS 
   useEffect(() => {
     let mounted = true;
-    
+
     const loadReviews = async () => {
       if (!place?.id) return;
-      
+
       setReviewsLoading(true);
       const { data, error } = await fetchReviewsByPlace(place.id);
-      
+
       if (!mounted) return;
-      
+
       if (error) {
         console.error("Failed to load reviews:", error);
         showToast("Unable to load reviews", "error");
@@ -108,12 +130,12 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         setReviews(data || []);
         // ✅ KHÔNG TỰ ĐỘNG ĐIỀN FORM - Chỉ load reviews
       }
-      
+
       setReviewsLoading(false);
     };
-    
+
     loadReviews();
-    
+
     return () => { mounted = false; };
   }, [place?.id, user?.id]);
 
@@ -135,7 +157,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   }, []);
 
   const isOwner = user && place.created_by && (
-    user.id === place.created_by || 
+    user.id === place.created_by ||
     String(user.id) === String(place.created_by)
   );
 
@@ -146,7 +168,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       beverage: { label: "Beverage", color: "#8b5cf6" },
       sight: { label: "Sight", color: "#3b82f6" },
       entertainment: { label: "Entertainment", color: "#ec4899" },
-      team_event: { label: "Team Event", color: "#10b981" }
+      team_event: { label: "Team Event", color: "#10b981" },
+      vegetarian: { label: "Vegetarian", color: "#22c55e" }
     };
     return categoryMap[categoryId?.toLowerCase()] || { label: categoryId, color: "#6b7280" };
   };
@@ -178,10 +201,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     showToast("Address copied to clipboard!", "success");
   };
 
-  
+
   const handleFloorLevelChange = (e) => {
     const value = e.target.value.toUpperCase();
-    
+
     if (value === "") {
       setEditData(prev => ({ ...prev, floor_level: "" }));
       setFloorLevelError(null);
@@ -377,7 +400,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     setReviewImagePreviews((prev) =>
       prev.filter((_, i) => i !== index)
     );
-    };  
+    };
     //Remove existing images in review when edit
     const handleRemoveExistingReviewImage = (image) => {
       setReviewImages((prev) =>
@@ -386,6 +409,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
       setDeletedReviewImages((prev) => [...prev, image]);
     };
+
   const handleUpdatePlace = async () => {
     if (!isOwner) {
       showToast("You don't have permission to edit this place", "error");
@@ -403,17 +427,59 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     }
 
     // Validate floor level if building
+    let normalizedFloorLevel = null;
     if (place.place_type === "building") {
       const floorValidation = validateFloorLevel(editData.floor_level);
       if (!floorValidation.isValid) {
         showToast(floorValidation.error, "warning");
         return;
       }
+      normalizedFloorLevel = floorValidation.normalized;
+    }
+
+    // Validate opening hours
+    const hoursValidation = validateOpeningHours(editData.opening_hours);
+    if (!hoursValidation.isValid) {
+      const firstError = hoursValidation.errors[0];
+      showToast(`${firstError.day}: ${firstError.message}`, "warning");
+      return;
     }
 
     setUpdating(true);
 
     try {
+      // ✅ Building place edit cũng phải obey duplicate prevention
+      if (place.place_type === "building") {
+        const { data: buildingPlaces, error: buildingPlacesError } = await supabase
+          .from("places")
+          .select("*")
+          .eq("building_address", place.building_address)
+          .eq("place_type", "building")
+          .neq("id", place.id);
+
+        if (buildingPlacesError) throw buildingPlacesError;
+
+        const buildingDup = checkBuildingDuplicate(
+          { name: editData.name, floor_level: normalizedFloorLevel },
+          buildingPlaces || []
+        );
+
+        if (buildingDup) {
+          if (buildingDup.reason === "SAME_FLOOR_DUPLICATE") {
+            showToast(
+              `"${buildingDup.name}" already exists on Floor ${buildingDup.floor_level}. Please use a different name or floor.`,
+              "warning"
+            );
+          } else {
+            showToast(
+              `A place with nearly identical name "${buildingDup.name}" already exists in this building (Floor ${buildingDup.floor_level}).`,
+              "warning"
+            );
+          }
+          return;
+        }
+      }
+
       const { error } = await supabase
         .from("places")
         .update({
@@ -424,8 +490,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           longitude: Number(editData.longitude),
           price_level: Number(editData.price_level),
           business_status: editData.business_status,
+          category: editData.category,
+          opening_hours: editData.opening_hours,
           ...(place.place_type === "building" && {
-            floor_level: validateFloorLevel(editData.floor_level).normalized,
+            floor_level: normalizedFloorLevel,
           }),
         })
         .eq("id", place.id);
@@ -476,7 +544,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       }
 
       showToast("Place updated successfully!", "success");
-      
+
       // Pass updated place data back so the modal reflects changes immediately
       const updatedPlace = {
         ...place,
@@ -487,9 +555,11 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         longitude: Number(editData.longitude),
         price_level: Number(editData.price_level),
         business_status: editData.business_status,
+        opening_hours: editData.opening_hours,
         ...(place.place_type === "building" && {
-          floor_level: validateFloorLevel(editData.floor_level).normalized,
+          floor_level: normalizedFloorLevel,
         }),
+        category: editData.category,
       };
       if (onStatusUpdated) onStatusUpdated(updatedPlace);
 
@@ -540,9 +610,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       if (placeDeleteError) throw placeDeleteError;
 
       showToast("Place deleted successfully!", "success");
-      
+
       if (onStatusUpdated) onStatusUpdated(); // Refresh map
-      
+
       setTimeout(() => {
         onClose(); // Đóng modal
       }, 1000);
@@ -586,11 +656,11 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
   const getSortedReviews = () => {
     let sorted = [...reviews];
-    
+
     if (sortBy === "time") {
       sorted.sort((a, b) => {
-        const dateA = parseReviewTimestamp(a.created_at); 
-        const dateB = parseReviewTimestamp(b.created_at); 
+        const dateA = parseReviewTimestamp(a.created_at);
+        const dateB = parseReviewTimestamp(b.created_at);
         return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
       });
     } else if (sortBy === "rating") {
@@ -598,7 +668,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         return sortOrder === "desc" ? b.rating - a.rating : a.rating - b.rating;
       });
     }
-    
+
     return sorted.slice(0, displayedReviews);
   };
 
@@ -695,7 +765,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
       setReviewImageFiles([]);
       setReviewImagePreviews([]);
 
-      if (onStatusUpdated) onStatusUpdated();
+      if (onStatusUpdated) {
+        onStatusUpdated(place);
+      }
     } catch (error) {
       console.error("Submit review error:", error);
       showToast(`Failed to submit review: ${error.message}`, "error");
@@ -730,21 +802,21 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
   const handleDeleteReview = async (reviewId) => {
     if (!confirm("Are you sure you want to delete your review?")) return;
-    
+
     const { error } = await deleteReview(reviewId, place.id);
-    
+
     if (error) {
       showToast("Failed to delete review", "error");
     } else {
       showToast("Review deleted", "success");
-      
+
       const { data: updatedReviews } = await fetchReviewsByPlace(place.id);
       setReviews(updatedReviews || []);
-      
+
       setSelectedRating(0);
       setReviewComment("");
       setEditingReviewId(null);
-      
+
       if (onStatusUpdated) onStatusUpdated();
     }
   };
@@ -758,13 +830,47 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     }
   };
 
+  // ===== TASK 2: SUBMIT A "REQUEST CHANGE" (non-owner proposes an edit for admin review) =====
+  const handleSubmitChangeRequest = () => {
+    if (!reason.trim()) return alert("Please fill in the reason!");
+
+    // Cấu trúc dữ liệu để đẩy lên DB hoặc state quản lý của Admin
+    const newRequest = {
+      id: "REQ_" + Date.now(),
+      place_id: place?.id,
+      place_name: place?.name,
+      requested_by_email: user?.email || "user@example.com",
+      created_at: new Date().toISOString(),
+      status: "pending",
+      reason: reason,
+      original_data: {
+        name: place?.name || "",
+        address: place?.address || "",
+        category: place?.category || "",
+        price_level: place?.price_level || 1,
+        business_status: place?.business_status || "open",
+        description: place?.description || "",
+      },
+      proposed_data: formData,
+    };
+
+    // Thực hiện API POST gửi dữ liệu lên server tại đây
+    // await axios.post('/api/requests', newRequest)
+    console.log("Đã gửi request tới Admin thành công:", newRequest);
+
+    showToast("Your change request has been submitted to Admin", "success");
+
+    setShowRequestModal(false);
+    setReason("");
+  };
+
   return (
     <>
       {ToastComponent}
 
       {/* Main Container - Giống Register Form */}
       <div className="fixed top-0 md:top-20 right-0 md:right-6 left-0 md:left-auto bottom-0 md:bottom-auto z-[999] w-full md:w-[400px] h-full md:h-auto max-h-full md:max-h-[calc(100vh-120px)] bg-white rounded-none md:rounded-2xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden transition-all duration-300 ease-out animate-in slide-in-from-bottom-10 md:slide-in-from-right-10">
-        
+
         {/* Header Bar - Fixed */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
           <div className="flex-1 min-w-0">
@@ -777,14 +883,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 ← Back to Building
               </button>
             )}
-            <h2 className="text-base font-bold text-gray-800">
+            <h2 className="text-base font-bold text-gray-800 truncate">
               {showEditForm ? "Edit Place" : "Place Details"}
             </h2>
           </div>
-          
-          <div className="flex items-center gap-2">
-            {/* ===== 3 CHẤM DROPDOWN (chỉ hiện khi View mode + isOwner) ===== */}
-            {!showEditForm && isOwner && (
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* ===== 3 CHẤM DROPDOWN (luôn hiện khi View mode) ===== */}
+            {!showEditForm && (
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
@@ -796,31 +902,95 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
                 {showOptionsDropdown && (
                   <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                    <button
-                      onClick={() => {
-                        setShowEditForm(true);
-                        setShowOptionsDropdown(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
-                    >
-                      <Edit3 size={16} className="text-gray-400" />
-                      <span>Edit Place</span>
-                    </button>
-                    
-                    <button
-                      onClick={() => {
-                        setShowDeleteConfirm(true);
-                        setShowOptionsDropdown(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                      <span>Delete Place</span>
-                    </button>
+                    {isOwner ? (
+                      /* Owner menu */
+                      <>
+                        <button
+                          onClick={() => {
+                            setShowEditForm(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Edit3 size={16} className="text-gray-400" />
+                          <span>Edit Place</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowDeleteConfirm(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                          <span>Delete Place</span>
+                        </button>
+
+                        <hr className="my-1 border-gray-100" />
+
+                        <button
+                          onClick={() => {
+                            if (!user) {
+                              showToast("Please log in to add places to an itinerary", "warning");
+                              setShowOptionsDropdown(false);
+                              return;
+                            }
+                            setShowAddToItinerary(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Bookmark size={16} className="text-gray-400" />
+                          <span>Add to Itinerary</span>
+                        </button>
+                      </>
+                    ) : (
+                      /* Non-owner menu */
+                      <>
+                        <button
+                          onClick={() => {
+                            if (!user) {
+                              showToast("Please log in to add places to an itinerary", "warning");
+                              setShowOptionsDropdown(false);
+                              return;
+                            }
+                            setShowAddToItinerary(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Bookmark size={16} className="text-gray-400" />
+                          <span>Add to Itinerary</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            // Tự động đồng bộ data của địa điểm hiện tại vào Form trước khi hiển thị
+                            setFormData({
+                              name: place?.name || "",
+                              address: place?.address || "",
+                              category: place?.category || "",
+                              price_level: place?.price_level || 1,
+                              business_status: place?.business_status || "open",
+                              description: place?.description || "",
+                            });
+                            setReason(""); // Reset lý do cũ
+                            setShowRequestModal(true);
+                            setShowOptionsDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                        >
+                          <Edit3 size={16} className="text-gray-400" />
+                          <span>Request Change</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
             )}
+
 
             {/* Close Button X */}
             <button
@@ -836,10 +1006,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         {/* ===== VIEW MODE: Place Detail Info ===== */}
         {!showEditForm && (
           <div className="p-5 md:p-6 overflow-y-auto space-y-4 text-sm text-gray-700 h-full custom-scrollbar pb-12 md:pb-6">
-            
+
             {/* Place Name */}
             <div className="pb-4">
-              <h1 className="text-2xl md:text-xl font-bold text-gray-900">{place.name}</h1>
+              <h1 className="text-2xl md:text-xl font-bold text-gray-900 break-words overflow-wrap-anywhere">{place.name}</h1>
 
               {/* Images */}
               {placeImages.length > 0 ? (
@@ -849,7 +1019,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                       <img
                         src={image.url}
                         alt="Place"
-                        onClick={() => setSelectedImageIndex(index)}
+                        onClick={() => {
+                          setPopupImages(placeImages);
+                          setSelectedImageIndex(index);
+                        }}
                         className="w-full h-24 object-cover rounded-lg border border-gray-200 cursor-pointer"
                       />
                     </div>
@@ -865,14 +1038,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               )}
 
               <hr className="border-gray-200 mt-4" />
-              
+
               {/* Badges */}
               <div className="flex flex-wrap items-center gap-3 mt-4">
                 <span
                   className="text-sm px-3 py-1 rounded-full font-medium"
-                  style={{ 
-                    backgroundColor: `${categoryConfig.color}20`, 
-                    color: categoryConfig.color 
+                  style={{
+                    backgroundColor: `${categoryConfig.color}20`,
+                    color: categoryConfig.color
                   }}
                 >
                   {categoryConfig.label}
@@ -912,7 +1085,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             {/* Location */}
             <div className="py-4">
               <h2 className="text-lg font-bold text-gray-900 mb-3">Location</h2>
-              
+
               {/* ✅ Hiển thị building info nếu có */}
               {place.place_type === "building" && place.building_name ? (
                 <>
@@ -924,8 +1097,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               ) : (
                 <p className="text-gray-600 mb-3">{place.address}</p>
               )}
-              
-              <button 
+
+              <button
                 onClick={handleCopyAddress}
                 className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1.5"
               >
@@ -945,6 +1118,33 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                       {place.created_by_email.substring(0, 2).toUpperCase()}
                     </div>
                     <span className="text-sm text-gray-700 font-medium">{place.created_by_email}</span>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Opening Hours */}
+            {place.opening_hours && Array.isArray(place.opening_hours) && place.opening_hours.length > 0 && (
+              <>
+                <hr className="border-gray-200" />
+                <div className="py-4">
+                  <h2 className="text-lg font-bold text-gray-900 mb-3">Opening Hours</h2>
+
+                  <p className={`text-sm font-semibold mb-3 ${getOpeningStatusColor(place.opening_hours)}`}>
+                    {getOpeningStatusText(place.opening_hours)}
+                  </p>
+
+                  <div className="space-y-1.5">
+                    {formatOpeningHours(place.opening_hours).map((day) => (
+                      <div key={day.day} className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700 w-24">
+                          {day.day.charAt(0) + day.day.slice(1).toLowerCase()}
+                        </span>
+                        <span className={day.display === "Closed" ? "text-gray-400" : "text-gray-600"}>
+                          {day.display}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </>
@@ -1054,7 +1254,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                   <>
                     {getSortedReviews().map((review) => {
                       const isOwnReview = user && String(review.user_id) === String(user.id);
-                      
+
                       return (
                         <div key={review.id} className="bg-white rounded-lg p-4 mb-3 last:mb-0 border border-gray-100">
                           {/* User info + 3-dot menu */}
@@ -1122,15 +1322,21 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                           {/*Upload images*/}
                           {review.review_images?.length > 0 && (
                             <div className="grid grid-cols-3 gap-2 mt-3">
-                              {review.review_images.map((image) => (
-                                <img
-                                  key={image.id}
-                                  src={image.url}
-                                  alt="Review"
-                                  className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer"
-                                />
-                              ))}
-                            </div>
+                            {review.review_images.map((image, index) => (
+                              <img
+                                key={image.id || image.url}
+                                src={image.url}
+                                alt="Review"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setPopupImages(review.review_images);
+                                  setSelectedImageIndex(index);
+                                }}
+                                className="w-full h-20 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 hover:scale-105 transition"
+                              />
+                            ))}
+                          </div>
                           )}
                         </div>
                       );
@@ -1153,9 +1359,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               {(() => {
                 const userHasReview = reviews.some(r => String(r.user_id) === String(user?.id));
                 const shouldShowForm = !userHasReview || editingReviewId !== null;
-                
+
                 if (!shouldShowForm) return null;
-                
+
                 return (
                   <div id="write-review-section" className="bg-white border border-gray-200 rounded-xl p-4">
                     <h3 className="text-sm font-bold text-gray-900 mb-3">
@@ -1290,7 +1496,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         {/* ===== EDIT MODE: Edit Place Form ===== */}
         {showEditForm && (
           <div className="p-5 md:p-6 overflow-y-auto space-y-4 text-sm text-gray-700 h-full custom-scrollbar pb-12 md:pb-6">
-            
+
             {/* Name */}
             <div>
               <label className="block font-medium text-gray-700 mb-1.5 text-sm">
@@ -1302,6 +1508,48 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 onChange={(e) => setEditData(prev => ({ ...prev, name: e.target.value }))}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
               />
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block font-medium text-gray-700 mb-1.5 text-sm">Category</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "restaurant", name: "Restaurant", icon: "/restaurant-icon.png", bgColor: "#fb923c" },
+                  { id: "bar", name: "Bar", emoji: "🍷", bgColor: "#a855f7" },
+                  { id: "beverage", name: "Beverage", emoji: "☕", bgColor: "#8b5cf6" },
+                  { id: "sight", name: "Sight", emoji: "👁️", bgColor: "#3b82f6" },
+                  { id: "entertainment", name: "Entertainment", icon: "/park_map_icon.png", bgColor: "#ec4899" },
+                  { id: "team_event", name: "Team Event", emoji: "👥", bgColor: "#10b981" },
+                  { id: "vegetarian", name: "Vegetarian", emoji: "🥗", bgColor: "#22c55e" }
+                ].map((cat) => {
+                  const isSelected = editData.category === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setEditData(prev => ({ ...prev, category: cat.id }))}
+                      className={`flex items-center gap-2 p-2 rounded-xl border text-left transition-all ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20 font-semibold"
+                          : "border-gray-200 bg-gray-50/50 hover:bg-gray-50 hover:border-gray-300"
+                      }`}
+                    >
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white"
+                        style={{ backgroundColor: cat.bgColor }}
+                      >
+                        {cat.icon ? (
+                          <img src={cat.icon} alt={cat.name} className="w-4 h-4 object-contain" />
+                        ) : (
+                          <span className="text-sm">{cat.emoji}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-700 truncate">{cat.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Address Search */}
@@ -1515,6 +1763,14 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
               />
             </div>
 
+            {/* Opening Hours */}
+            <div className="pb-16">
+              <OpeningHoursEditor
+                value={editData.opening_hours}
+                onChange={(hours) => setEditData(prev => ({ ...prev, opening_hours: hours }))}
+              />
+            </div>
+
             {/* Footer Buttons (Fixed tại cuối form) */}
             <div className="sticky bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex gap-3 -mx-6 -mb-6">
               <button
@@ -1561,6 +1817,201 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           </div>
         </div>
       )}
+
+      {/* ===== REQUEST CHANGE MODAL (non-owner proposes an edit for admin review) ===== */}
+      {showRequestModal && (
+        <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Request Change for {place?.name}</h3>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-left">
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Place Name</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                />
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none transition-colors"
+                />
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none bg-white transition-colors"
+                >
+                  <option value="restaurant">Restaurant</option>
+                  <option value="bar">Bar</option>
+                  <option value="beverage">Beverage</option>
+                  <option value="sight">Sight</option>
+                  <option value="entertainment">Entertainment</option>
+                  <option value="team_event">Team Event</option>
+                  <option value="vegetarian">Vegetarian</option>
+                </select>
+              </div>
+
+              {/* Price Level */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Price Level</label>
+                <select
+                  value={formData.price_level}
+                  onChange={(e) => setFormData({ ...formData, price_level: Number(e.target.value) })}
+                  className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none bg-white transition-colors"
+                >
+                  <option value={1}>Budget ($)</option>
+                  <option value={2}>Moderate ($$)</option>
+                  <option value={3}>Expensive ($$$)</option>
+                  <option value={4}>Ultra Luxe ($$$$)</option>
+                </select>
+              </div>
+
+              {/* Business Status */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Business Status</label>
+                <select
+                  value={formData.business_status}
+                  onChange={(e) => setFormData({ ...formData, business_status: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none bg-white transition-colors"
+                >
+                  <option value="open">Open</option>
+                  <option value="temporarily_closed">Temporarily Closed</option>
+                  <option value="closed">Permanently Closed</option>
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={3}
+                  className="w-full border border-gray-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none resize-none transition-colors"
+                />
+              </div>
+
+              {/* Reason for change */}
+              <div className="pt-2 border-t border-gray-100">
+                <label className="block text-xs font-bold text-blue-800 mb-1">Reason for this update *</label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  required
+                  rows={2}
+                  placeholder="Tell admin why these changes are necessary..."
+                  className="w-full bg-blue-50/50 border border-blue-200 rounded-lg p-2 text-sm focus:border-blue-500 outline-none resize-none transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3 mt-4 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => setShowRequestModal(false)}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => { // Thêm async ở đây để chạy await
+                  if (!reason.trim()) return alert("Please fill in the reason!");
+                  
+                  try {
+                    // 1. Cấu trúc đúng dữ liệu để insert vào bảng trên Supabase
+                    const newRequest = {
+                      id: "REQ_" + Date.now(),
+                      place_id: place?.id, // Đã sửa thành place
+                      place_name: place?.name || "", // Đã sửa thành place
+                      requested_by_email: user?.email || "guest@example.com",
+                      status: "pending",
+                      reason: reason.trim(),
+                      original_data: {
+                        name: place?.name || "",
+                        address: place?.address || "",
+                        category: place?.category || "",
+                        price_level: place?.price_level || 1,
+                        business_status: place?.business_status || "open",
+                        description: place?.description || "",
+                      },
+                      proposed_data: formData // Lấy dữ liệu từ state formData mà user vừa gõ trên các ô input
+                    };
+
+                    // 2. Gọi Supabase Client để chèn (Insert) dòng mới vào DB
+                    const { error } = await supabase
+                      .from("place_update_requests")
+                      .insert([newRequest]);
+
+                    if (error) throw error;
+
+                    // 3. Thông báo thành công và đóng Modal
+                    if (typeof showToast === 'function') {
+                      showToast("Your change request has been submitted to Admin", "success");
+                    } else {
+                      alert("Your change request has been submitted to Admin!");
+                    }
+
+                    setShowRequestModal(false);
+                    setReason("");
+
+                  } catch (err) {
+                    console.error("Error submitting request to Supabase:", err.message);
+                    alert("Failed to submit request: " + err.message);
+                  }
+                }}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 text-sm transition-colors"
+              >
+                Submit Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+       {/* Review Image Popup */}
+      {selectedReviewImage && (
+        <div
+          className="fixed inset-0 z-[10002] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setSelectedReviewImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedReviewImage(null)}
+            className="absolute top-5 right-5 text-white bg-black/50 rounded p-2 cursor-pointer hover:bg-black"
+          >
+            <X size={22} />
+          </button>
+
+          <img
+            src={selectedReviewImage}
+            alt="Selected review"
+            className="max-w-[75vw] max-h-[75vh] object-contain rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+      {/* Add to Itinerary Popup */}
+      {showAddToItinerary && (
+        <AddToItineraryModal
+          place={place}
+          onClose={() => setShowAddToItinerary(false)}
+          showToast={showToast}
+        />
+      )}
        {/* Add pop-up images */}
       {selectedImageIndex !== null && (
       <div
@@ -1580,7 +2031,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
           onClick={(e) => {
             e.stopPropagation();
             setSelectedImageIndex((prev) =>
-              prev === 0 ? editImages.length - 1 : prev - 1
+             prev === 0 ? popupImages.length - 1 : prev - 1
             );
           }}
           className="absolute left-5 text-white text-8xl cursor-pointer"
@@ -1589,7 +2040,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
         </button>
 
         <img
-          src={editImages[selectedImageIndex].url}
+          src={popupImages[selectedImageIndex]?.url}
           alt="Selected"
           className="max-w-[75vh] max-h-[70vh] rounded-xl object-contain shadow-2xl"
           onClick={(e) => e.stopPropagation()}
