@@ -1,11 +1,334 @@
 @import "tailwindcss";
 @import "trackasia-gl/dist/trackasia-gl.css";
 
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght=400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&display=swap');
 
 /* Cấu hình Font và biến hệ thống theo chuẩn Tailwind v4 */
 @theme {
   --font-sans: "Nunito Sans", sans-serif;
+}
+
+header {
+  z-index: 50 !important;
+}
+
+/* ==========================================================================
+   ACCESSIBILITY MODE — CSS Variables Approach
+   All color decisions live here. Components just reference these variables.
+   ========================================================================== */
+
+:root {
+  /* Backgrounds */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --bg-hover: #f9fafb;
+  --bg-muted: #f3f4f6;
+  --bg-danger-hover: #fef2f2;
+  --bg-accent: #2563eb;
+  --bg-accent-hover: #1d4ed8;
+
+  /* Text */
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-accent: #2563eb;
+  --text-danger: #ef4444;
+  --text-white: #ffffff;
+
+  /* Borders */
+  --border: #e5e7eb;
+  --border-accent: #3b82f6;
+
+  /* Navbar */
+  --nav-bg: rgba(255, 255, 255, 0.8);
+  --nav-border: #e5e7eb;
+  --nav-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+
+  /* Sidebar */
+  --sidebar-bg: #ffffff;
+  --sidebar-section: #f9fafb;
+
+  /* Dropdown */
+  --dropdown-bg: #ffffff;
+  --dropdown-border: #e5e7eb;
+  --dropdown-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+
+  /* Avatar */
+  --avatar-bg: #e2f0d9;
+  --avatar-text: #4a7c35;
+
+  /* Accent buttons (Register Place, etc.) */
+  --accent: #2d5a1e;
+  --accent-hover: #234617;
+  --accent-text: #ffffff;
+
+  /* Category button backgrounds */
+  --cat-bg-restaurant: #fff7ed;
+  --cat-bg-bar: #faf5ff;
+  --cat-bg-beverage: #eef2ff;
+  --cat-bg-sight: #eff6ff;
+  --cat-bg-entertainment: #fdf2f8;
+  --cat-bg-team: #ecfdf5;
+
+  /* Category icon colors */
+  --cat-icon-restaurant: #ea580c;
+  --cat-icon-bar: #9333ea;
+  --cat-icon-beverage: #6366f1;
+  --cat-icon-sight: #2563eb;
+  --cat-icon-entertainment: #db2777;
+  --cat-icon-team: #059669;
+
+  /* Map toolbar */
+  --toolbar-bg: #ffffff;
+  --toolbar-border: #e5e7eb;
+  --toolbar-btn-bg: #f9fafb;
+  --toolbar-btn-hover: #f3f4f6;
+  --toolbar-btn-text: #374151;
+  --toolbar-btn-active-bg: #ef4444;
+  --toolbar-btn-active-text: #ffffff;
+
+  /* Modal / Panel */
+  --panel-bg: #ffffff;
+  --panel-border: #e5e7eb;
+  --panel-text: #1f2937;
+
+  /* Skeleton loading */
+  --skeleton-bg: #e5e7eb;
+}
+
+html.accessibility-mode {
+  /* Backgrounds */
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --bg-tertiary: #1e293b;
+  --bg-hover: #1f2937;
+  --bg-muted: #1e293b;
+  --bg-danger-hover: #451a1b;
+  --bg-accent: #1e3a8a;
+  --bg-accent-hover: #1d4ed8;
+
+  /* Text */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-accent: #f59e0b;
+  --text-danger: #fda4af;
+  --text-white: #f8fafc;
+
+  /* Borders */
+  --border: #475569;
+  --border-accent: #f59e0b;
+
+  /* Navbar */
+  --nav-bg: #0f172a;
+  --nav-border: #f59e0b;
+  --nav-shadow: 0 8px 30px rgba(15,23,42,0.35);
+
+  /* Sidebar */
+  --sidebar-bg: #111827;
+  --sidebar-section: #0f172a;
+
+  /* Dropdown */
+  --dropdown-bg: #111827;
+  --dropdown-border: #475569;
+  --dropdown-shadow: 0 16px 40px rgba(2,6,23,0.45);
+
+  /* Avatar */
+  --avatar-bg: #1e293b;
+  --avatar-text: #f8fafc;
+
+  /* Accent buttons */
+  --accent: #f59e0b;
+  --accent-hover: #d97706;
+  --accent-text: #0f172a;
+
+  /* Category button backgrounds */
+  --cat-bg-restaurant: #1e3a8a;
+  --cat-bg-bar: #1e3a8a;
+  --cat-bg-beverage: #1e3a8a;
+  --cat-bg-sight: #1e3a8a;
+  --cat-bg-entertainment: #1e3a8a;
+  --cat-bg-team: #1e3a8a;
+
+  /* Category icon colors */
+  --cat-icon-restaurant: #f8fafc;
+  --cat-icon-bar: #f8fafc;
+  --cat-icon-beverage: #f8fafc;
+  --cat-icon-sight: #f8fafc;
+  --cat-icon-entertainment: #f8fafc;
+  --cat-icon-team: #f8fafc;
+
+  /* Map toolbar */
+  --toolbar-bg: #1f2937;
+  --toolbar-border: #475569;
+  --toolbar-btn-bg: #1e293b;
+  --toolbar-btn-hover: #334155;
+  --toolbar-btn-text: #f8fafc;
+  --toolbar-btn-active-bg: #ef4444;
+  --toolbar-btn-active-text: #ffffff;
+
+  /* Modal / Panel */
+  --panel-bg: #111827;
+  --panel-border: #475569;
+  --panel-text: #f8fafc;
+
+  /* Skeleton loading */
+  --skeleton-bg: #334155;
+}
+
+html.accessibility-mode .hover\:bg-gray-50:hover,
+html.accessibility-mode .hover\:bg-gray-100:hover,
+html.accessibility-mode .hover\:bg-white:hover,
+html.accessibility-mode .hover\:bg-blue-50:hover,
+html.accessibility-mode .hover\:bg-blue-100:hover {
+  background-color: #1f2937 !important;
+  color: #f8fafc !important;
+}
+
+html.accessibility-mode .active\:bg-gray-100:active {
+  background-color: #1f2937 !important;
+}
+
+/* ===== PlaceDetailModal overrides ===== */
+
+/* Review sort dropdown containers */
+html.accessibility-mode .bg-white.border-gray-100.rounded-xl.shadow-xl {
+  background-color: #111827 !important;
+  border-color: #475569 !important;
+}
+
+/* Review sort inactive buttons */
+html.accessibility-mode .bg-gray-100.text-gray-600 {
+  background-color: #1f2937 !important;
+  color: #cbd5e1 !important;
+}
+
+/* Review sort dropdown items (only inside white dropdown containers) */
+html.accessibility-mode .bg-white.border-gray-100.rounded-xl.shadow-xl .text-gray-700 {
+  color: #f8fafc !important;
+}
+html.accessibility-mode .bg-white.border-gray-100.rounded-xl.shadow-xl .hover\:bg-gray-50:hover {
+  background-color: #1f2937 !important;
+}
+
+/* "No images" placeholder box */
+html.accessibility-mode .bg-gray-100.rounded-lg.border-2.border-dashed.border-gray-300 {
+  background-color: #1f2937 !important;
+  border-color: #475569 !important;
+}
+html.accessibility-mode .mx-auto.text-gray-400 {
+  color: #94a3b8 !important;
+}
+html.accessibility-mode .text-gray-500.font-medium {
+  color: #cbd5e1 !important;
+}
+
+/* Submit review button — disabled state */
+html.accessibility-mode button:disabled.bg-gray-300 {
+  background-color: #334155 !important;
+  color: #94a3b8 !important;
+}
+
+/* Submit review button — enabled state (only inside write-review-section) */
+html.accessibility-mode #write-review-section .bg-blue-600 {
+  background-color: #f59e0b !important;
+}
+html.accessibility-mode #write-review-section .hover\:bg-blue-700:hover {
+  background-color: #d97706 !important;
+}
+html.accessibility-mode #write-review-section .bg-blue-600.text-white {
+  color: #0f172a !important;
+}
+
+/* Review sort active buttons (Time/Rating dropdowns when selected) */
+html.accessibility-mode .bg-blue-600.text-white {
+  background-color: #f59e0b !important;
+  color: #0f172a !important;
+}
+
+/* ===== Comprehensive overrides for components still using hardcoded classes =====
+   These components (MapSidebar, MapContainer, MyPlacesPanel, PlaceDetailModal,
+   BuildingDetailPanel) were NOT refactored to use CSS variables on this branch,
+   so we override their hardcoded Tailwind classes directly. */
+html.accessibility-mode .bg-white {
+  background-color: #111827 !important;
+}
+html.accessibility-mode .bg-gray-50 {
+  background-color: #1f2937 !important;
+}
+html.accessibility-mode .bg-gray-50\/50 {
+  background-color: #1f2937 !important;
+}
+html.accessibility-mode .bg-gray-100 {
+  background-color: #1f2937 !important;
+}
+html.accessibility-mode .bg-blue-50 {
+  background-color: #1f2937 !important;
+}
+html.accessibility-mode .border-gray-100,
+html.accessibility-mode .border-gray-200,
+html.accessibility-mode .border-gray-300 {
+  border-color: #475569 !important;
+}
+html.accessibility-mode .text-gray-800,
+html.accessibility-mode .text-gray-900 {
+  color: #f8fafc !important;
+}
+html.accessibility-mode .text-gray-700 {
+  color: #f8fafc !important;
+}
+html.accessibility-mode .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+html.accessibility-mode .text-gray-500 {
+  color: #94a3b8 !important;
+}
+html.accessibility-mode .text-gray-400 {
+  color: #94a3b8 !important;
+}
+html.accessibility-mode .text-blue-600 {
+  color: #f59e0b !important;
+}
+html.accessibility-mode .bg-blue-600 {
+  background-color: #f59e0b !important;
+  color: #0f172a !important;
+}
+html.accessibility-mode .hover\:bg-blue-50:hover {
+  background-color: #1f2937 !important;
+}
+
+/* ===== Itinerary feature: arbitrary hex values (green buttons) ===== */
+html.accessibility-mode .bg-\[\#2d5a1e\] {
+  background-color: #f59e0b !important;
+}
+html.accessibility-mode .hover\:bg-\[\#234617\]:hover {
+  background-color: #d97706 !important;
+}
+html.accessibility-mode .text-\[\#2d5a1e\] {
+  color: #f59e0b !important;
+}
+html.accessibility-mode .border-\[\#2d5a1e\] {
+  border-color: #f59e0b !important;
+}
+html.accessibility-mode .hover\:bg-\[\#2d5a1e\]\/5:hover {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+}
+/* Ensure text on green buttons is dark for contrast in accessibility mode */
+html.accessibility-mode .bg-\[\#2d5a1e\].text-white {
+  color: #0f172a !important;
+}
+
+/* ===== Input fields & placeholders in accessibility mode ===== */
+html.accessibility-mode input,
+html.accessibility-mode textarea,
+html.accessibility-mode select {
+  color: #f8fafc !important;
+}
+html.accessibility-mode input::placeholder,
+html.accessibility-mode textarea::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
 }
 
 header {
@@ -40,6 +363,7 @@ body,
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+
 /* Làm sạch CSS cho khung Popup theo chuẩn Google Maps */
 .custom-google-popup .mapboxgl-popup-content,
 .custom-google-popup .trackasiagl-popup-content {

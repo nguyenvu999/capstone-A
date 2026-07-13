@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./features/auth/context/AuthContext";
 import LoginPage from "./features/auth/pages/LoginPage";
 import MapPage from "./features/map/pages/MapPage";
+import { AccessibilityProvider } from "./shared/context/AccessibilityContext";
 import ItinerariesPage from "./features/itinerary/pages/ItinerariesPage";
 import ItineraryDetailPage from "./features/itinerary/pages/ItineraryDetailPage";
 import ProtectedRoute from "./features/auth/components/ProtectedRoute";
@@ -26,6 +27,7 @@ function RootHandler() {
 export default function App() {
   return (
     <AuthProvider>
+      <AccessibilityProvider>
       <BrowserRouter>
         <Routes>
           {/* Định tuyến mặc định thông minh - Fix lỗi nuốt mã băm hash token */}
@@ -65,6 +67,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
       </BrowserRouter>
+      </AccessibilityProvider>
     </AuthProvider>
   );
 }
