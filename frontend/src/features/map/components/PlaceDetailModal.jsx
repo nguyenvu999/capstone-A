@@ -76,6 +76,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     price_level: place?.price_level || 1,
     business_status: place?.business_status || "open",
     description: place?.description || "",
+    opening_hours: place?.opening_hours || getDefaultSchedule(),
   });
 
   const [floorLevelError, setFloorLevelError] = useState(null);
@@ -974,6 +975,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                               price_level: place?.price_level || 1,
                               business_status: place?.business_status || "open",
                               description: place?.description || "",
+                              opening_hours: place?.opening_hours || getDefaultSchedule(),
                             });
                             setReason(""); // Reset lý do cũ
                             setShowRequestModal(true);
@@ -1892,6 +1894,18 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                   <option value="temporarily_closed">Temporarily Closed</option>
                   <option value="closed">Permanently Closed</option>
                 </select>
+              </div>
+              {/* Opening Hours Section */}
+              <div className="pt-4 border-t border-gray-100">
+                <OpeningHoursEditor
+                  value={formData.opening_hours}
+                  onChange={(updatedSchedule) => {
+                    setFormData({
+                      ...formData,
+                      opening_hours: updatedSchedule
+                    });
+                  }}
+                />
               </div>
 
               {/* Description */}
