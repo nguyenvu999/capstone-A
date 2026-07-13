@@ -77,7 +77,7 @@ export default function UpdateRequestsPage() {
     if (!targetRequest) return;
 
     try {
-      // Step 1: Cập nhật thông tin mới đè lên bảng places thực tế
+      // Step 1: Cập nhật thông tin mới đè lên bảng places thực tế (Đã thêm opening_hours)
       const { error: placeError } = await supabase
         .from("places")
         .update({
@@ -87,6 +87,7 @@ export default function UpdateRequestsPage() {
           price_level: targetRequest.proposed_data.price_level,
           business_status: targetRequest.proposed_data.business_status,
           description: targetRequest.proposed_data.description,
+          opening_hours: targetRequest.proposed_data.opening_hours, // 🚀 CẬP NHẬT LỊCH TRÌNH VÀO DB
           updated_at: new Date().toISOString()
         })
         .eq("id", targetRequest.place_id);
@@ -159,10 +160,24 @@ export default function UpdateRequestsPage() {
     return fields;
   };
 
+  // BIẾN ĐỔI DỮ LIỆU ĐỂ HIỂN THỊ LÊN FORM SO SÁNH
   const formatFieldValue = (key, value) => {
     if (key === "price_level") return getPriceLabel(value);
     if (key === "business_status") return getStatusLabel(value);
     if (key === "category") return getCategoryLabel(value);
+    
+    // 🚀 ĐỊNH DẠNG TEXT CHO MẢNG LỊCH TRÌNH ĐỂ KHÔNG BỊ LỖI [object Object]
+    if (key === "opening_hours" && Array.isArray(value)) {
+      if (value.length === 0) return "No schedule set";
+      return value
+        .map((day) => {
+          const dayName = day.dayOfWeek ? (day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()) : "Day";
+          if (!day.isOpen) return `${dayName}: Closed`;
+          return `${dayName}: ${day.openTime || "N/A"} - ${day.closeTime || "N/A"}`;
+        })
+        .join(" | ");
+    }
+    
     return value || "N/A";
   };
 
@@ -174,6 +189,7 @@ export default function UpdateRequestsPage() {
       price_level: "Price Level",
       business_status: "Business Status",
       description: "Description",
+      opening_hours: "Opening Hours", // 🚀 THÊM LABEL HIỂN THỊ
     };
     return labels[key] || key;
   };
@@ -297,10 +313,10 @@ export default function UpdateRequestsPage() {
                               <div key={field.key} className={`rounded-lg p-3 bg-white border ${field.changed ? "border-amber-300 shadow-sm" : "border-gray-200 opacity-75"}`}>
                                 <p className="text-xs font-medium text-gray-500 mb-1.5">{formatFieldLabel(field.key)}</p>
                                 {field.changed ? (
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                  <div className="grid grid-cols-1 gap-2">
                                     <div className="p-2 bg-red-50/70 rounded border border-red-100 flex items-start gap-1.5">
                                       <span className="text-xs text-red-600 font-bold shrink-0 mt-0.5">Old:</span>
-                                      <span className="text-xs text-red-700 line-through break-words overflow-hidden">{formatFieldValue(field.key, field.oldVal)}</span>
+                                      <span className="text-xs text-red-700 break-words overflow-hidden">{formatFieldValue(field.key, field.oldVal)}</span>
                                     </div>
                                     <div className="p-2 bg-green-50/70 rounded border border-green-100 flex items-start gap-1.5">
                                       <span className="text-xs text-green-600 font-bold shrink-0 mt-0.5">New:</span>
