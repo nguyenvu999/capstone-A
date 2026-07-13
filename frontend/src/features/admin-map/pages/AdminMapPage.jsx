@@ -22,11 +22,14 @@ export default function AdminMapPage() {
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [currentKeyIndex, setCurrentKeyIndex] = useState(0);
   const [openedFromBuilding, setOpenedFromBuilding] = useState(null);
+  const [openedFromBuildingFloor, setOpenedFromBuildingFloor] = useState(null);
   const [reopenBuildingAddress, setReopenBuildingAddress] = useState(null);
+  const [reopenBuildingFloor, setReopenBuildingFloor] = useState(null);
 
   const [activeFilters, setActiveFilters] = useState({
     priceLevels: [],
     ratings: [],
+    openingHours: [],
   });
 
   const API_KEY = API_KEYS[currentKeyIndex];
@@ -75,6 +78,7 @@ export default function AdminMapPage() {
           updated_by_email: item.updated_by_email || null,
           updated_at: item.updated_at || null,
           created_at: item.created_at || null,
+          opening_hours: item.opening_hours || null,
         }));
 
         // Rating filter (client-side — same logic as User Web MapPage)
@@ -94,6 +98,32 @@ export default function AdminMapPage() {
                 return rating >= minRating && rating < maxRating;
               });
             }
+          }
+        }
+
+        // Opening Hours filter
+        if (filters.openingHours) {
+          const enabledDays = filters.openingHours.filter(d => d.enabled && d.openTime && d.closeTime);
+          if (enabledDays.length > 0) {
+            filtered = filtered.filter(place => {
+              if (!place.opening_hours || !Array.isArray(place.opening_hours)) return false;
+              return enabledDays.every(filterDay => {
+                const dayIndex = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].indexOf(filterDay.dayOfWeek);
+                const placeSchedule = place.opening_hours[dayIndex];
+                if (!placeSchedule || !placeSchedule.isOpen) return false;
+                const timeToMinutes = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+                const placeOpen = timeToMinutes(placeSchedule.openTime);
+                const placeClose = timeToMinutes(placeSchedule.closeTime);
+                const reqOpen = timeToMinutes(filterDay.openTime);
+                const reqClose = timeToMinutes(filterDay.closeTime);
+                const placeIsOvernight = placeClose < placeOpen;
+                const reqIsOvernight = reqClose < reqOpen;
+                if (!placeIsOvernight && !reqIsOvernight) return placeOpen <= reqOpen && placeClose >= reqClose;
+                if (placeIsOvernight && reqIsOvernight) return placeOpen <= reqOpen && placeClose >= reqClose;
+                if (placeIsOvernight && !reqIsOvernight) return reqOpen >= placeOpen || reqClose <= placeClose;
+                return false;
+              });
+            });
           }
         }
 
@@ -127,8 +157,10 @@ export default function AdminMapPage() {
   const handlePlaceClick = (place, fromBuildingAddress) => {
     setSelectedPlace(place);
     setOpenedFromBuilding(fromBuildingAddress || null);
-    
+    setOpenedFromBuildingFloor(place?.floor_level || null);
+
     setFocusedLocation({
+      id: place.id || null,
       lat: Number(place.latitude),
       lng: Number(place.longitude),
       name: place.name,
@@ -138,6 +170,7 @@ export default function AdminMapPage() {
       place_type: place.place_type,
       building_name: place.building_name,
       floor_level: place.floor_level,
+      popupRefreshKey: Date.now(),
     });
   };
 
@@ -153,6 +186,7 @@ export default function AdminMapPage() {
         ) {
           return {
             ...prev,
+            id: updatedPlace.id || prev.id,
             name: updatedPlace.name,
             address: updatedPlace.address,
             rating: updatedPlace.rating || 0,
@@ -199,16 +233,22 @@ export default function AdminMapPage() {
 
         <MapContainer
           apiKey={API_KEY}
+          activeCategory={activeCategory}
           focusedLocation={focusedLocation}
           categoryResults={categoryResults.filter((place) => place.isSupabaseData === true)}
           setFocusedLocation={setFocusedLocation}
           onPlaceClick={(place, fromBuildingAddress) => {
             setSelectedPlace(place);
             setOpenedFromBuilding(fromBuildingAddress || null);
+            setOpenedFromBuildingFloor(place?.floor_level || null);
           }}
           selectedPlace={selectedPlace}
           reopenBuildingAddress={reopenBuildingAddress}
-          onReopenBuildingHandled={() => setReopenBuildingAddress(null)}
+          reopenBuildingFloor={reopenBuildingFloor}
+          onReopenBuildingHandled={() => {
+            setReopenBuildingAddress(null);
+            setReopenBuildingFloor(null);
+          }}
           activeFilters={activeFilters}
           onBuildingConverted={handleBuildingConverted}
         />
@@ -221,6 +261,7 @@ export default function AdminMapPage() {
           onClose={() => {
             setSelectedPlace(null);
             setOpenedFromBuilding(null);
+            setOpenedFromBuildingFloor(null);
           }}
           onStatusUpdated={handlePlaceUpdated}
           apiKey={API_KEY}
@@ -228,11 +269,14 @@ export default function AdminMapPage() {
           onBackToBuilding={() => {
             setSelectedPlace(null);
             setReopenBuildingAddress(openedFromBuilding);
+            setReopenBuildingFloor(openedFromBuildingFloor);
             setOpenedFromBuilding(null);
+            setOpenedFromBuildingFloor(null);
           }}
           onDuplicateViewPlace={(duplicatePlace) => {
             setSelectedPlace(duplicatePlace);
             setFocusedLocation({
+              id: duplicatePlace.id || null,
               lat: Number(duplicatePlace.latitude),
               lng: Number(duplicatePlace.longitude),
               name: duplicatePlace.name,
@@ -242,10 +286,16 @@ export default function AdminMapPage() {
               place_type: duplicatePlace.place_type,
               building_name: duplicatePlace.building_name,
               floor_level: duplicatePlace.floor_level,
+              popupRefreshKey: Date.now(),
             });
             setOpenedFromBuilding(
               duplicatePlace.place_type === "building"
                 ? duplicatePlace.building_address
+                : null
+            );
+            setOpenedFromBuildingFloor(
+              duplicatePlace.place_type === "building"
+                ? duplicatePlace.floor_level
                 : null
             );
           }}

@@ -6,12 +6,14 @@ import BuildingDetailPanel from "./BuildingDetailPanel";
 
 export default function MapContainer({ 
   apiKey,
+  activeCategory,
   focusedLocation,
   categoryResults,
   setFocusedLocation,
   onPlaceClick,
   selectedPlace,
   reopenBuildingAddress,
+  reopenBuildingFloor,
   onReopenBuildingHandled,
   activeFilters,
   onBuildingConverted,
@@ -28,15 +30,20 @@ export default function MapContainer({
   // BUILDING DETAIL STATE 
   const [showBuildingDetail, setShowBuildingDetail] = useState(false);
   const [selectedBuildingAddress, setSelectedBuildingAddress] = useState(null);
+  const [selectedBuildingInitialFloor, setSelectedBuildingInitialFloor] = useState(null);
+  
   
   // ✅ Reopen Building Panel khi user click "Back to Building"
   useEffect(() => {
     if (reopenBuildingAddress) {
       setSelectedBuildingAddress(reopenBuildingAddress);
+      setSelectedBuildingInitialFloor(
+        reopenBuildingFloor ? String(reopenBuildingFloor) : null
+      );
       setShowBuildingDetail(true);
       if (onReopenBuildingHandled) onReopenBuildingHandled();
     }
-  }, [reopenBuildingAddress]);
+  }, [reopenBuildingAddress, reopenBuildingFloor]);
 
   const handleRecenter = () => {
     if (!mapRef.current) return;
@@ -166,8 +173,8 @@ export default function MapContainer({
 
         // ✅ Create popup HTML
         const buildingPopupHTML = `
-          <div class="p-2">
-            <div class="font-bold text-sm mb-1">${firstPlace.building_name || "Building"}</div>
+          <div class="p-2 max-w-xs">
+            <div class="font-bold text-sm mb-1 break-words overflow-wrap-anywhere">${firstPlace.building_name || "Building"}</div>
             <div class="text-xs text-gray-600 mb-1">${places.length} place${places.length > 1 ? 's' : ''} inside</div>
             <div class="text-xs text-gray-600 mb-2">${buildingAddress}</div>
             <button 
@@ -213,6 +220,7 @@ export default function MapContainer({
 
               // ✅ KHÔNG remove marker + popup (giữ nguyên like normal place)
               // Chỉ mở Building Detail Panel
+              setSelectedBuildingInitialFloor(null);
               setSelectedBuildingAddress(buildingAddress);
               setShowBuildingDetail(true);
             });
@@ -254,6 +262,8 @@ export default function MapContainer({
         markerConfig = { bgColor: "#ec4899", iconHtml: `<img src="/park_map_icon.png" class="w-6 h-6 object-contain transition-transform duration-200 group-hover:scale-110" />` };
       } else if (category === "team_event") {
         markerConfig = { bgColor: "#10b981", iconHtml: `<span class="text-xl">👥</span>` };
+      } else if (category === "vegetarian") {
+        markerConfig = { bgColor: "#22c55e", iconHtml: `<span class="text-xl">🥗</span>` };
       }
 
       el.style.backgroundColor = markerConfig.bgColor;
@@ -274,16 +284,17 @@ export default function MapContainer({
         e.stopPropagation();
         hoverPopup.remove();
         setFocusedLocation({
+          id: place.id || null,
           lat: lat,
           lng: lng,
           name: place.name,
           address: place.address || place.formatted_address || place.vicinity,
           rating: place.rating || 0,
           isNewCustomPoint: false,
-          // ✅ THÊM: Building info
           place_type: place.place_type,
           building_name: place.building_name,
           floor_level: place.floor_level,
+          popupRefreshKey: Date.now(),
         });
       });
 
@@ -349,8 +360,8 @@ if (focusMarkerRef.current) {
     const displayAddress = address || "";
 
     const popupHTML = `
-      <div class="p-2">
-        <div class="font-bold text-sm mb-1">${displayName}</div>
+      <div class="p-2 max-w-xs">
+        <div class="font-bold text-sm mb-1 break-words overflow-wrap-anywhere">${displayName}</div>
         ${rating ? `
           <div class="flex items-center gap-1 mb-1">
             <span class="text-yellow-500 text-sm">${renderStars(rating)}</span>
@@ -399,11 +410,20 @@ if (focusMarkerRef.current) {
         seeDetailsBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           
-          // ✅ Tìm place bằng tọa độ (tolerance 0.0001 cho floating point)
-          const clickedPlace = categoryResults.find(p => 
-            Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
-            Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
-          );
+          let clickedPlace = null;
+
+          if (focusedLocation?.id !== undefined && focusedLocation?.id !== null) {
+            clickedPlace = categoryResults.find(
+              p => String(p.id) === String(focusedLocation.id)
+            );
+          }
+
+          if (!clickedPlace) {
+            clickedPlace = categoryResults.find(p => 
+              Math.abs(Number(p.latitude) - Number(lat)) < 0.0001 && 
+              Math.abs(Number(p.longitude) - Number(lng)) < 0.0001
+            );
+          }
           
           if (clickedPlace && clickedPlace.id) {
             onPlaceClick(clickedPlace);
@@ -418,7 +438,7 @@ if (focusMarkerRef.current) {
   // - đổi tọa độ
   // - hoặc có popupRefreshKey (commit update sau khi edit/register)
   // Không phụ thuộc trực tiếp vào name/address để tránh bug mất focus khi đang gõ form.
-  }, [focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.popupRefreshKey, onPlaceClick]);
+  }, [focusedLocation?.id, focusedLocation?.lat, focusedLocation?.lng, focusedLocation?.popupRefreshKey, onPlaceClick]);
 
   return (
     <div className="relative h-full w-full flex-1 z-0">
@@ -461,24 +481,48 @@ if (focusMarkerRef.current) {
           initialBuildingName={
             categoryResults.find(p => p.building_address === selectedBuildingAddress)?.building_name || "Building"
           }
+          initialSelectedFloor={selectedBuildingInitialFloor}
+          activeCategory={activeCategory}
           activeFilters={activeFilters}
           onClose={() => {
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
+            setSelectedBuildingInitialFloor(null);
+          }}
+          onAddPlace={() => {
+            const buildingPlaces = categoryResults.filter(
+              p => p.place_type === "building" && p.building_address === selectedBuildingAddress
+            );
+            const firstPlace = buildingPlaces[0];
+            setShowBuildingDetail(false);
+            setSelectedBuildingInitialFloor(null);
+            if (onAddPlaceToBuilding) {
+              onAddPlaceToBuilding({
+                buildingName: firstPlace?.building_name || "",
+                buildingAddress: selectedBuildingAddress,
+                buildingCity: firstPlace?.city || "",
+                buildingLatitude: firstPlace?.latitude || "",
+                buildingLongitude: firstPlace?.longitude || "",
+              });
+            }
           }}
           onPlaceClick={(place) => {
             setShowBuildingDetail(false);
+            setSelectedBuildingInitialFloor(null);
             if (onPlaceClick) onPlaceClick(place, selectedBuildingAddress);
           }}
           onBuildingConverted={() => {
+            // ✅ Xóa focused marker + popup cũ (building popup)
             if (focusMarkerRef.current) {
               focusMarkerRef.current.remove();
               focusMarkerRef.current = null;
             }
-
+            
             setShowBuildingDetail(false);
             setSelectedBuildingAddress(null);
-
+            setSelectedBuildingInitialFloor(null);
+            
+            // ✅ Gọi callback từ MapPage để refresh data
             if (onBuildingConverted) {
               onBuildingConverted();
             }
