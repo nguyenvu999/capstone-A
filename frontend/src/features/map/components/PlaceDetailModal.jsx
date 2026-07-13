@@ -1928,7 +1928,51 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 Cancel
               </button>
               <button
-                onClick={handleSubmitChangeRequest}
+                onClick={async () => { // Thêm async ở đây để chạy await
+                  if (!reason.trim()) return alert("Please fill in the reason!");
+                  
+                  try {
+                    // 1. Cấu trúc đúng dữ liệu để insert vào bảng trên Supabase
+                    const newRequest = {
+                      id: "REQ_" + Date.now(),
+                      place_id: place?.id, // Đã sửa thành place
+                      place_name: place?.name || "", // Đã sửa thành place
+                      requested_by_email: user?.email || "guest@example.com",
+                      status: "pending",
+                      reason: reason.trim(),
+                      original_data: {
+                        name: place?.name || "",
+                        address: place?.address || "",
+                        category: place?.category || "",
+                        price_level: place?.price_level || 1,
+                        business_status: place?.business_status || "open",
+                        description: place?.description || "",
+                      },
+                      proposed_data: formData // Lấy dữ liệu từ state formData mà user vừa gõ trên các ô input
+                    };
+
+                    // 2. Gọi Supabase Client để chèn (Insert) dòng mới vào DB
+                    const { error } = await supabase
+                      .from("place_update_requests")
+                      .insert([newRequest]);
+
+                    if (error) throw error;
+
+                    // 3. Thông báo thành công và đóng Modal
+                    if (typeof showToast === 'function') {
+                      showToast("Your change request has been submitted to Admin", "success");
+                    } else {
+                      alert("Your change request has been submitted to Admin!");
+                    }
+
+                    setShowRequestModal(false);
+                    setReason("");
+
+                  } catch (err) {
+                    console.error("Error submitting request to Supabase:", err.message);
+                    alert("Failed to submit request: " + err.message);
+                  }
+                }}
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 text-sm transition-colors"
               >
                 Submit Request
