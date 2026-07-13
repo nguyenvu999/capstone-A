@@ -33,9 +33,15 @@ export const getDefaultSchedule = () => {
 export const validateOpeningHours = (schedule) => {
   const errors = [];
 
+  const timeToMinutes = (t) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+
   schedule.forEach((day, index) => {
     if (!day.isOpen) return; // Closed day không cần validate
 
+    // Rule 2: Open day requires both times
     if (!day.openTime || !day.closeTime) {
       errors.push({
         day: day.dayOfWeek,
@@ -44,11 +50,35 @@ export const validateOpeningHours = (schedule) => {
       return;
     }
 
+    // Rule 3: Same time not allowed
     if (day.openTime === day.closeTime) {
       errors.push({
         day: day.dayOfWeek,
         message: "Opening time and closing time cannot be identical"
       });
+      return;
+    }
+
+    // Rule: No overlapping with previous day's overnight schedule
+    const prevIndex = (index - 1 + 7) % 7;
+    const prevDay = schedule[prevIndex];
+
+    if (prevDay && prevDay.isOpen && prevDay.openTime && prevDay.closeTime) {
+      const prevOpen = timeToMinutes(prevDay.openTime);
+      const prevClose = timeToMinutes(prevDay.closeTime);
+      const isOvernightPrev = prevClose < prevOpen;
+
+      if (isOvernightPrev) {
+        const currentOpen = timeToMinutes(day.openTime);
+
+        // Conflict nếu ngày hiện tại mở trước khi ngày trước đóng
+        if (currentOpen < prevClose) {
+          errors.push({
+            day: day.dayOfWeek,
+            message: `Opening time overlaps with ${prevDay.dayOfWeek.charAt(0) + prevDay.dayOfWeek.slice(1).toLowerCase()}'s overnight schedule (closes at ${prevDay.closeTime})`
+          });
+        }
+      }
     }
   });
 
