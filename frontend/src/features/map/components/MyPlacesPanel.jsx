@@ -164,13 +164,6 @@ export default function MyPlacesPanel({ onClose, onPlaceClick, currentUserCoords
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0 relative">
         <h2 className="text-base font-bold text-gray-800">My Places</h2>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          aria-label="Close"
-        >
-          <X size={20} />
-        </button>
         <div className="flex items-center gap-2">
           {/* Sort Dropdown */}
           <div className="relative" ref={sortDropdownRef}>
