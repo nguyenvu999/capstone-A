@@ -1,16 +1,41 @@
-import { useState } from "react";
-import { ArrowLeft, Check, X, FileText } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Check, X, FileText, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../../auth/api/supabaseClient"; // Đảm bảo đúng đường dẫn tới file supabaseClient của bạn
 import AdminNavbar from "../../admin-map/components/AdminNavbar";
 
 export default function UpdateRequestsPage() {
   const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("pending");
   const [showApproveModal, setShowApproveModal] = useState(null);
   const [showRejectModal, setShowRejectModal] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [expandedRequestId, setExpandedRequestId] = useState(null);
+
+  // FETCH REQUESTS FROM SUPABASE
+  const fetchRequests = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("place_update_requests") // Tên bảng lưu trữ request thay đổi
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setRequests(data || []);
+    } catch (error) {
+      console.error("Error fetching requests:", error.message);
+      alert("Failed to load update requests.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+  }, []);
 
   const filteredRequests = requests.filter(r => r.status === activeTab);
   const pendingCount = requests.filter(r => r.status === "pending").length;
@@ -32,12 +57,13 @@ export default function UpdateRequestsPage() {
   const getCategoryLabel = (cat) => {
     const catMap = {
       restaurant: "Restaurant", bar: "Bar", beverage: "Beverage",
-      sight: "Sight", entertainment: "Entertainment", team_event: "Team Event"
+      sight: "Sight", entertainment: "Entertainment", team_event: "Team Event", vegetarian: "Vegetarian"
     };
     return catMap[cat] || cat;
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
@@ -45,21 +71,74 @@ export default function UpdateRequestsPage() {
     });
   };
 
-  const handleApprove = (requestId) => {
-    setRequests(prev => prev.map(r =>
-      r.id === requestId ? { ...r, status: "approved" } : r
-    ));
-    setShowApproveModal(null);
-    alert("Request approved! Changes have been applied to the place.");
+  // ===== HANDLE APPROVE (Cập nhật trực tiếp vào bảng places) =====
+  const handleApprove = async (requestId) => {
+    const targetRequest = requests.find(r => r.id === requestId);
+    if (!targetRequest) return;
+
+    try {
+      // Step 1: Cập nhật thông tin mới đè lên bảng places thực tế
+      const { error: placeError } = await supabase
+        .from("places")
+        .update({
+          name: targetRequest.proposed_data.name,
+          address: targetRequest.proposed_data.address,
+          category: targetRequest.proposed_data.category,
+          price_level: targetRequest.proposed_data.price_level,
+          business_status: targetRequest.proposed_data.business_status,
+          description: targetRequest.proposed_data.description,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", targetRequest.place_id);
+
+      if (placeError) throw placeError;
+
+      // Step 2: Cập nhật trạng thái request thành 'approved'
+      const { error: requestError } = await supabase
+        .from("place_update_requests")
+        .update({ status: "approved", updated_at: new Date().toISOString() })
+        .eq("id", requestId);
+
+      if (requestError) throw requestError;
+
+      // Cập nhật lại UI tại chỗ
+      setRequests(prev => prev.map(r =>
+        r.id === requestId ? { ...r, status: "approved" } : r
+      ));
+      
+      setShowApproveModal(null);
+      alert("Request approved! Changes have been successfully applied to the place.");
+    } catch (error) {
+      console.error("Approve error:", error.message);
+      alert(`Failed to approve request: ${error.message}`);
+    }
   };
 
-  const handleReject = (requestId) => {
-    setRequests(prev => prev.map(r =>
-      r.id === requestId ? { ...r, status: "rejected" } : r
-    ));
-    setShowRejectModal(null);
-    setRejectReason("");
-    alert("Request rejected.");
+  // ===== HANDLE REJECT (Không thay đổi bảng places) =====
+  const handleReject = async (requestId) => {
+    try {
+      const { error } = await supabase
+        .from("place_update_requests")
+        .update({ 
+          status: "rejected", 
+          reject_reason: rejectReason.trim() || null,
+          updated_at: new Date().toISOString() 
+        })
+        .eq("id", requestId);
+
+      if (error) throw error;
+
+      setRequests(prev => prev.map(r =>
+        r.id === requestId ? { ...r, status: "rejected", reject_reason: rejectReason.trim() } : r
+      ));
+
+      setShowRejectModal(null);
+      setRejectReason("");
+      alert("Request rejected.");
+    } catch (error) {
+      console.error("Reject error:", error.message);
+      alert(`Failed to reject request: ${error.message}`);
+    }
   };
 
   const getChangedFields = (original, proposed) => {
@@ -113,7 +192,7 @@ export default function UpdateRequestsPage() {
           <div className="mb-6">
             <button
               onClick={() => navigate("/admin")}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-3"
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors"
             >
               <ArrowLeft size={16} />
               Back to Map
@@ -148,22 +227,27 @@ export default function UpdateRequestsPage() {
             ))}
           </div>
 
-          {/* Request Cards */}
-          {filteredRequests.length > 0 ? (
+          {/* Request Cards Grid / List */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+              <Loader2 className="w-8 h-8 animate-spin text-gray-400 mb-2" />
+              <p className="text-sm text-gray-500">Loading requests...</p>
+            </div>
+          ) : filteredRequests.length > 0 ? (
             <div className="space-y-4">
               {filteredRequests.map(request => {
                 const changedFields = getChangedFields(request.original_data, request.proposed_data);
                 const isExpanded = expandedRequestId === request.id;
                 
                 return (
-                  <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in-50 duration-200">
                     {/* Compact Card Header */}
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 font-mono">#{request.id}</span>
+                          <span className="text-xs text-gray-400 font-mono">#{request.id}</span>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wider ${
                           request.status === "pending" ? "bg-amber-100 text-amber-700"
                           : request.status === "approved" ? "bg-green-100 text-green-700"
                           : "bg-red-100 text-red-700"
@@ -173,8 +257,8 @@ export default function UpdateRequestsPage() {
                       </div>
                       <h3 className="text-base font-bold text-gray-900 mb-2">📍 {request.place_name}</h3>
                       <div className="space-y-1 text-xs text-gray-500">
-                        <p>👤 {request.requested_by_email}</p>
-                        <p>📅 {formatDate(request.created_at)}</p>
+                        <p>👤 Requester: {request.requested_by_email}</p>
+                        <p>📅 Created at: {formatDate(request.created_at)}</p>
                       </div>
                       
                       {/* Reason */}
@@ -182,6 +266,14 @@ export default function UpdateRequestsPage() {
                         <p className="text-xs font-medium text-blue-800 mb-1">📝 Reason for update:</p>
                         <p className="text-sm text-blue-700 leading-relaxed">{request.reason}</p>
                       </div>
+
+                      {/* Reject Reason Display if applicable */}
+                      {request.status === "rejected" && request.reject_reason && (
+                        <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-100">
+                          <p className="text-xs font-medium text-red-800 mb-1">❌ Rejection Reason:</p>
+                          <p className="text-sm text-red-700 leading-relaxed">{request.reject_reason}</p>
+                        </div>
+                      )}
 
                       {/* See Detail Button */}
                       <div className="flex justify-end mt-3">
@@ -197,26 +289,26 @@ export default function UpdateRequestsPage() {
                     {/* Expanded Detail Section */}
                     {isExpanded && (
                       <>
-                        {/* Proposed Changes */}
-                        <div className="px-5 pb-5 border-t border-gray-100 pt-4">
-                          <h4 className="text-sm font-bold text-gray-900 mb-3">Proposed Changes</h4>
+                        {/* Proposed Changes Comparison */}
+                        <div className="px-5 pb-5 border-t border-gray-100 pt-4 bg-gray-50/50">
+                          <h4 className="text-sm font-bold text-gray-900 mb-3">Proposed Changes Comparison</h4>
                           <div className="space-y-3">
                             {changedFields.map(field => (
-                              <div key={field.key} className={`rounded-lg p-3 ${field.changed ? "bg-amber-50 border border-amber-200" : "bg-gray-50 border border-gray-200"}`}>
-                                <p className="text-xs font-medium text-gray-600 mb-1.5">{formatFieldLabel(field.key)}</p>
+                              <div key={field.key} className={`rounded-lg p-3 bg-white border ${field.changed ? "border-amber-300 shadow-sm" : "border-gray-200 opacity-75"}`}>
+                                <p className="text-xs font-medium text-gray-500 mb-1.5">{formatFieldLabel(field.key)}</p>
                                 {field.changed ? (
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-red-600 font-medium">❌ Old:</span>
-                                      <span className="text-sm text-red-700 line-through">{formatFieldValue(field.key, field.oldVal)}</span>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="p-2 bg-red-50/70 rounded border border-red-100 flex items-start gap-1.5">
+                                      <span className="text-xs text-red-600 font-bold shrink-0 mt-0.5">Old:</span>
+                                      <span className="text-xs text-red-700 line-through break-words overflow-hidden">{formatFieldValue(field.key, field.oldVal)}</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-green-600 font-medium">✅ New:</span>
-                                      <span className="text-sm text-green-700 font-semibold">{formatFieldValue(field.key, field.newVal)}</span>
+                                    <div className="p-2 bg-green-50/70 rounded border border-green-100 flex items-start gap-1.5">
+                                      <span className="text-xs text-green-600 font-bold shrink-0 mt-0.5">New:</span>
+                                      <span className="text-xs text-green-700 font-semibold break-words overflow-hidden">{formatFieldValue(field.key, field.newVal)}</span>
                                     </div>
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-gray-600">✓ No change ({formatFieldValue(field.key, field.oldVal)})</p>
+                                  <p className="text-xs text-gray-600 italic">✓ No change ({formatFieldValue(field.key, field.oldVal)})</p>
                                 )}
                               </div>
                             ))}
@@ -251,19 +343,19 @@ export default function UpdateRequestsPage() {
           ) : (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
               <FileText size={48} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-sm text-gray-500">No {activeTab} requests</p>
+              <p className="text-sm text-gray-500">No {activeTab} requests found</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Approve Modal */}
+      {/* Approve Modal Popup */}
       {showApproveModal && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Approve Request</h3>
             <p className="text-sm text-gray-600 mb-6">
-              Apply the proposed changes to "<strong>{showApproveModal.place_name}</strong>"? This will update the place immediately.
+              Apply the proposed changes to "<strong>{showApproveModal.place_name}</strong>"? This will update the map data immediately.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setShowApproveModal(null)}
@@ -275,16 +367,16 @@ export default function UpdateRequestsPage() {
         </div>
       )}
 
-      {/* Reject Modal */}
+      {/* Reject Modal Popup */}
       {showRejectModal && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Reject Request</h3>
             <p className="text-sm text-gray-600 mb-4">
               Reject the update request for "<strong>{showRejectModal.place_name}</strong>"?
             </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="mb-4 text-left">
+              <label className="block text-xs font-medium text-gray-700 mb-2">
                 Reason for rejection <span className="text-gray-400">(optional)</span>
               </label>
               <textarea
