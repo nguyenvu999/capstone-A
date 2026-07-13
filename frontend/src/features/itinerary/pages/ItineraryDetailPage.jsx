@@ -21,15 +21,15 @@ const CATEGORY_CONFIG = {
   team_event:    { label: "Team Event",    color: "#10B981" },
 };
 
-const CATEGORY_IMAGES = {
-  restaurant:    "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=128&h=128&fit=crop",
-  bar:           "https://images.unsplash.com/photo-1575444758702-4a6b9222336e?w=128&h=128&fit=crop",
-  beverage:      "https://images.unsplash.com/photo-1559925393-8be0ec4767c8?w=128&h=128&fit=crop",
-  sight:         "https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=128&h=128&fit=crop",
-  entertainment: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=128&h=128&fit=crop",
-  team_event:    "https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=128&h=128&fit=crop",
-  default:       "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?w=128&h=128&fit=crop",
-};
+// Default placeholder shown when a place has no uploaded image: green background, white "netcompany" text
+const DEFAULT_PLACE_IMAGE =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">` +
+      `<rect width="256" height="256" fill="#2d5a1e"/>` +
+      `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700">netcompany</text>` +
+    `</svg>`
+  );
 
 const PRICE_LABEL = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
 const MARKER_COLORS = ["#F97316", "#8B5CF6", "#3B82F6", "#10B981", "#EC4899", "#6366F1"];
@@ -56,8 +56,37 @@ function getCatConfig(cat) {
   return CATEGORY_CONFIG[cat?.toLowerCase()] || { label: cat, color: "#6B7280" };
 }
 
-function getPlaceImage(place) {
-  return CATEGORY_IMAGES[place?.category] || CATEGORY_IMAGES.default;
+function getPlaceImage(place, imagesById = {}) {
+  if (!place) return DEFAULT_PLACE_IMAGE;
+  return imagesById[String(place.id)] || DEFAULT_PLACE_IMAGE;
+}
+
+// Fetch the first (lowest sort_order) image for each place id from `place_images`.
+// Ignores non-persisted ids (e.g. "trackasia_..." results that haven't been saved yet).
+async function fetchFirstImagesByPlaceId(ids) {
+  const realIds = [...new Set(ids)]
+    .filter((pid) => pid != null && !String(pid).startsWith("trackasia_"))
+    .map((pid) => String(pid));
+  if (realIds.length === 0) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from("place_images")
+      .select("place_id, url, sort_order")
+      .in("place_id", realIds)
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+
+    const map = {};
+    for (const row of data || []) {
+      const pid = String(row.place_id);
+      if (!(pid in map)) map[pid] = row.url; // first one wins (lowest sort_order)
+    }
+    return map;
+  } catch (err) {
+    console.error("Fetch place images error:", err);
+    return {};
+  }
 }
 
 export default function ItineraryDetailPage() {
@@ -68,6 +97,7 @@ export default function ItineraryDetailPage() {
   const [itinerary, setItinerary] = useState(null);
   const [places, setPlaces] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [placeImages, setPlaceImages] = useState({}); // place id -> first uploaded image url
 
   // UI state
   const [editingTitle, setEditingTitle] = useState(false);
@@ -180,6 +210,9 @@ export default function ItineraryDetailPage() {
         .sort((a, b) => a.position - b.position)
         .map((ip) => ({ ...ip.places, note: ip.note, itinerary_place_id: ip.id, position: ip.position }));
       setPlaces(sorted);
+
+      const imagesMap = await fetchFirstImagesByPlaceId(sorted.map((p) => p.id));
+      setPlaceImages((prev) => ({ ...prev, ...imagesMap }));
     } catch (err) {
       console.error("Fetch itinerary error:", err);
       showToast("Failed to load itinerary", "error");
@@ -256,6 +289,9 @@ export default function ItineraryDetailPage() {
         const filteredTrackAsia = trackAsiaResults.filter((p) => !savedNames.has(p.name.toLowerCase().trim()));
 
         setSearchResults(savedResults);
+
+        const imagesMap = await fetchFirstImagesByPlaceId(savedResults.map((p) => p.id));
+        setPlaceImages((prev) => ({ ...prev, ...imagesMap }));
       } finally {
         setSearching(false);
       }
@@ -329,6 +365,9 @@ export default function ItineraryDetailPage() {
         setNearbyPlaces(
   savedNearby.sort((a, b) => a.distanceKm - b.distanceKm)
 );
+
+        const imagesMap = await fetchFirstImagesByPlaceId(savedNearby.map((p) => p.id));
+        setPlaceImages((prev) => ({ ...prev, ...imagesMap }));
       } finally {
         setNearbyLoading(false);
       }
@@ -787,7 +826,7 @@ export default function ItineraryDetailPage() {
 
                 {/* Thumbnail */}
                 <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                  <img src={getPlaceImage(place)} alt={place.name} className="w-full h-full object-cover" />
+                  <img src={getPlaceImage(place, placeImages)} alt={place.name} className="w-full h-full object-cover" />
                 </div>
 
                 {/* Info */}
@@ -971,7 +1010,7 @@ export default function ItineraryDetailPage() {
                         className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
                       >
                         <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
-                          <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
+                          <img src={getPlaceImage(place, placeImages)} alt="" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -1023,7 +1062,7 @@ export default function ItineraryDetailPage() {
                         className="w-full flex items-center gap-3 p-2.5 hover:bg-gray-50 rounded-xl text-left transition-colors disabled:opacity-60"
                       >
                         <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
-                          <img src={getPlaceImage(place)} alt="" className="w-full h-full object-cover" />
+                          <img src={getPlaceImage(place, placeImages)} alt="" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
