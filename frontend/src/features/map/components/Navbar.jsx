@@ -1,13 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Map, Plus, BookMarked, Eye, EyeOff } from "lucide-react";
+import { LogOut, Map, Plus, BookMarked, Eye, EyeOff, Bell, Clock } from "lucide-react";
 import { useAccessibility } from "../../../shared/context/AccessibilityContext";
 
 export default function Navbar({ user, onSignOut, onRegisterClick }) {
   const navigate = useNavigate();
   const { isAccessibilityMode, toggleAccessibilityMode } = useAccessibility();
+  
+  // State quản lý Dropdown Profile
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  // State quản lý Notification
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]); // Chờ bạn đổ dữ liệu từ Supabase vào đây
+  const notifRef = useRef(null);
 
   // Lấy 2 chữ cái đầu của tên hoặc email để làm Avatar
   const getAvatarLetters = () => {
@@ -20,11 +27,29 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
     return namePart.substring(0, 2).toUpperCase();
   };
 
-  // Tự động đóng dropdown khi nhấn click ra ngoài vùng menu
+  // Helper tính thời gian
+  const timeAgo = (dateString) => {
+    const now = new Date();
+    const past = new Date(dateString);
+    const diffMs = now - past;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  // Đóng cả 2 dropdown khi nhấn ra ngoài
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotifications(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -37,7 +62,8 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
 
   return (
     <nav className={`absolute top-0 left-0 right-0 z-[100] h-16 backdrop-blur-md border-b px-4 md:px-6 flex items-center justify-between select-none transition-colors duration-200 bg-[var(--nav-bg)] ${navClasses}`}>
-      {/* Cột trái: Tên ứng dụng & Logo */}
+      
+      {/* Cột trái: Logo */}
       <div
         onClick={() => navigate("/map")}
         className="group flex items-center gap-2 cursor-pointer hover:bg-emerald-50 px-3 py-2 rounded-full transition-colors"
@@ -48,9 +74,47 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
         </span>
       </div>
 
-      {/* Cột phải: Nút hành động & Menu Profile cá nhân */}
+      {/* Cột phải: Notification, Register Place & Avatar */}
       <div className="flex items-center gap-2 md:gap-4">
-        {/* Nút Đăng ký địa điểm - Responsive text layout */}
+        
+        {/* 1. Notification Bell */}
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="p-2 rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] transition-colors relative"
+          >
+            <Bell size={20} />
+            {notifications.length > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            )}
+          </button>
+
+          {/* Dropdown Notification */}
+          {showNotifications && (
+            <div className={`absolute right-0 mt-2 w-72 md:w-80 border rounded-2xl z-50 animate-in fade-in slide-in-from-top-3 duration-150 bg-[var(--dropdown-bg)] border-[var(--dropdown-border)] shadow-[var(--dropdown-shadow)]`}>
+              <div className="px-4 py-3 border-b border-[var(--border)] font-bold text-sm text-[var(--text-primary)]">
+                Notifications
+              </div>
+              <div className="max-h-[300px] overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <p className="p-4 text-xs text-center text-[var(--text-secondary)]">No new notifications</p>
+                ) : (
+                  notifications.map((notif) => (
+                    <div key={notif.id} className="px-4 py-3 hover:bg-[var(--bg-hover)] cursor-pointer flex gap-3 items-start border-b border-[var(--border)] last:border-0">
+                      <Clock size={16} className="text-amber-500 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-[var(--text-primary)]">{notif.message}</p>
+                        <span className="text-[10px] text-[var(--text-secondary)]">{timeAgo(notif.created_at)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 2. Register Place Button */}
         <button
           onClick={onRegisterClick}
           className={`flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 font-medium text-xs md:text-sm rounded-full shadow-sm transition-all active:scale-95 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-text)]`}
@@ -60,19 +124,17 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
           <span className="inline sm:hidden">Register</span>
         </button>
 
-        {/* Nút bấm tròn hiển thị chữ cái đại diện của Avatar */}
+        {/* 3. User Profile Dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-           className={`w-9 h-9 md:w-10 md:h-10 rounded-full border font-semibold text-xs md:text-sm flex items-center justify-center shadow-inner transition-all focus:outline-none bg-[var(--avatar-bg)] text-[var(--avatar-text)] border-[var(--border)] hover:brightness-95`}
+            className={`w-9 h-9 md:w-10 md:h-10 rounded-full border font-semibold text-xs md:text-sm flex items-center justify-center shadow-inner transition-all focus:outline-none bg-[var(--avatar-bg)] text-[var(--avatar-text)] border-[var(--border)] hover:brightness-95`}
           >
             {getAvatarLetters()}
           </button>
 
-          {/* Hộp thoại Dropdown Menu hiển thị thông tin chi tiết */}
           {isDropdownOpen && (
             <div className={`absolute right-0 mt-2 w-64 md:w-72 border rounded-2xl py-2 z-50 animate-in fade-in slide-in-from-top-3 duration-150 origin-top-right bg-[var(--dropdown-bg)] border-[var(--dropdown-border)] shadow-[var(--dropdown-shadow)]`}>
-              {/* Khu vực hiển thị Email */}
               <div className={`px-4 py-3 border-b border-[var(--border)]`}>
                 <p className={`font-bold text-sm truncate text-[var(--text-primary)]`}>
                   {user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Người dùng"}
@@ -97,45 +159,22 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
                     {isAccessibilityMode ? "On" : "Off"}
                   </span>
                 </button>
-                <p className={`mt-2 text-xs text-[var(--text-secondary)]`}>
-                  High contrast visuals for easier reading and clearer focus.
-                </p>
               </div>
 
-              {/* Danh sách các link chuyển hướng */}
               <div className="py-1">
-                <button 
-                  onClick={() => { setIsDropdownOpen(false); navigate("/map"); }}
-                  className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors text-[var(--text-primary)] hover:bg-[var(--bg-hover)]`}
-                >
-                  <Map size={16} className="text-[var(--text-muted)]" />
-                  <span>Map</span>
+                <button onClick={() => { setIsDropdownOpen(false); navigate("/map"); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors text-[var(--text-primary)] hover:bg-[var(--bg-hover)]`}>
+                  <Map size={16} className="text-[var(--text-muted)]" /> <span>Map</span>
                 </button>
-                
-                <button
-                  onClick={() => { setIsDropdownOpen(false); navigate("/itineraries"); }}
-                  className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors text-[var(--text-primary)] hover:bg-[var(--bg-hover)]`}
-                >
-                  <BookMarked size={16} className="text-[var(--text-muted)]" />
-                  <span>Itineraries</span>
+                <button onClick={() => { setIsDropdownOpen(false); navigate("/itineraries"); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors text-[var(--text-primary)] hover:bg-[var(--bg-hover)]`}>
+                  <BookMarked size={16} className="text-[var(--text-muted)]" /> <span>Itineraries</span>
                 </button>
-                
-                <button
-                  onClick={() => { 
-                    setIsDropdownOpen(false); 
-                    // Force navigate với timestamp để trigger re-render
-                    navigate(`/map?view=myplaces&t=${Date.now()}`); 
-                  }}
-                  className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors text-[var(--text-primary)] hover:bg-[var(--bg-hover)]`}
-                >
-                  <Plus size={16} className="text-[var(--text-muted)]" />
-                  <span>My Places</span>
+                <button onClick={() => { setIsDropdownOpen(false); navigate(`/map?view=myplaces&t=${Date.now()}`); }} className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors text-[var(--text-primary)] hover:bg-[var(--bg-hover)]`}>
+                  <Plus size={16} className="text-[var(--text-muted)]" /> <span>My Places</span>
                 </button>
               </div>
 
               <div className={`border-t my-1 border-[var(--border)]`}></div>
 
-              {/* Nút Đăng xuất */}
               <div className="px-1">
                 <button
                   onClick={() => {
