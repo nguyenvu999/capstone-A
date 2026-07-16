@@ -2,32 +2,68 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { LogOut, Map, Plus, BookMarked, Eye, EyeOff, Bell, Clock } from "lucide-react";
 import { useAccessibility } from "../../../shared/context/AccessibilityContext";
-
+// CHÚ Ý: Sửa đường dẫn dưới đây cho đúng với vị trí thực tế của file supabaseClient.js trong máy bạn
+import { supabase } from "../../auth/api/supabaseClient";
 export default function Navbar({ user, onSignOut, onRegisterClick }) {
   const navigate = useNavigate();
   const { isAccessibilityMode, toggleAccessibilityMode } = useAccessibility();
   
-  // State quản lý Dropdown Profile
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // State quản lý Notification
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState([]); // Chờ bạn đổ dữ liệu từ Supabase vào đây
+  const [notifications, setNotifications] = useState([]);
   const notifRef = useRef(null);
 
-  // Lấy 2 chữ cái đầu của tên hoặc email để làm Avatar
+  // --- LOGIC SUPABASE ---
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Fetch dữ liệu thông báo ban đầu
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id) // Lọc theo user của bạn
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (data) setNotifications(data);
+    };
+
+    fetchNotifications();
+
+    // 2. Lắng nghe Real-time
+    const channel = supabase
+      .channel("notifications_channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          setNotifications((prev) => [payload.new, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  // --- CÁC HÀM CŨ ---
   const getAvatarLetters = () => {
     if (!user || !user.email) return "U";
     const namePart = user.user_metadata?.full_name || user.email.split("@")[0];
     const words = namePart.trim().split(/\s+/);
-    if (words.length >= 2) {
-      return (words[0][0] + words[1][0]).toUpperCase();
-    }
+    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
     return namePart.substring(0, 2).toUpperCase();
   };
 
-  // Helper tính thời gian
   const timeAgo = (dateString) => {
     const now = new Date();
     const past = new Date(dateString);
@@ -42,15 +78,10 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
     return `${diffDays}d ago`;
   };
 
-  // Đóng cả 2 dropdown khi nhấn ra ngoài
   useEffect(() => {
     function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-      if (notifRef.current && !notifRef.current.contains(event.target)) {
-        setShowNotifications(false);
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsDropdownOpen(false);
+      if (notifRef.current && !notifRef.current.contains(event.target)) setShowNotifications(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -74,7 +105,6 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
         </span>
       </div>
 
-      {/* Cột phải: Notification, Register Place & Avatar */}
       <div className="flex items-center gap-2 md:gap-4">
         
         {/* 1. Notification Bell */}
@@ -85,11 +115,10 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
           >
             <Bell size={20} />
             {notifications.length > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
             )}
           </button>
 
-          {/* Dropdown Notification */}
           {showNotifications && (
             <div className={`absolute right-0 mt-2 w-72 md:w-80 border rounded-2xl z-50 animate-in fade-in slide-in-from-top-3 duration-150 bg-[var(--dropdown-bg)] border-[var(--dropdown-border)] shadow-[var(--dropdown-shadow)]`}>
               <div className="px-4 py-3 border-b border-[var(--border)] font-bold text-sm text-[var(--text-primary)]">
@@ -121,7 +150,6 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
         >
           <Plus size={16} />
           <span className="hidden sm:inline">Register Place</span>
-          <span className="inline sm:hidden">Register</span>
         </button>
 
         {/* 3. User Profile Dropdown */}
