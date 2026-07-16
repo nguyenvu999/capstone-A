@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import './IntroScreen.css';
 // Import logo của bạn ở đây, ví dụ dùng icon sẵn có
-import logo from '/bank_icon.png'; 
+import logo from '/iconapp.png'; 
 
 const IntroScreen = ({ onFinish }) => {
   const [isExiting, setIsExiting] = useState(false);
