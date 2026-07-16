@@ -13,13 +13,13 @@ export default function UpdateRequestsPage() {
   const [showRejectModal, setShowRejectModal] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [expandedRequestId, setExpandedRequestId] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null); // State phục vụ phóng to ảnh
+  const [previewImage, setPreviewImage] = useState(null); // State phục vụ xem phóng to ảnh toàn màn hình
 
-  // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA
+  // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA WITH GRACEFUL FALLBACK
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // Thực hiện lấy dữ liệu request đồng thời lấy thông tin thực tế hiện tại của địa điểm từ bảng places
+      // Thử liên kết bảng places để lấy dữ liệu Live thực tế thời gian thực
       const { data, error } = await supabase
         .from("place_update_requests")
         .select(`
@@ -37,11 +37,24 @@ export default function UpdateRequestsPage() {
         `)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setRequests(data || []);
+      if (error) {
+        // Fallback: Nếu Supabase báo lỗi do thiếu ràng buộc khóa ngoại (Foreign Key Relation),
+        // hệ thống tự động tải dữ liệu đơn lẻ bảng requests và đối chiếu thông qua original_data snapshot
+        console.warn("Supabase relation join failed. Attempting fallback query without relation join:", error.message);
+        
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("place_update_requests")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (fallbackError) throw fallbackError;
+        setRequests(fallbackData || []);
+      } else {
+        setRequests(data || []);
+      }
     } catch (error) {
       console.error("Error fetching requests:", error.message);
-      alert("Failed to load update requests.");
+      alert("Failed to load update requests: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -102,7 +115,7 @@ export default function UpdateRequestsPage() {
           business_status: targetRequest.proposed_data.business_status,
           description: targetRequest.proposed_data.description,
           opening_hours: targetRequest.proposed_data.opening_hours, 
-          images: targetRequest.proposed_data.images, // 🚀 CẬP NHẬT TRƯỜNG ẢNH MỚI VÀO BẢNG PLACES
+          images: targetRequest.proposed_data.images, // Đồng bộ lưu mảng URL ảnh đề xuất mới vào database
           updated_at: new Date().toISOString()
         })
         .eq("id", targetRequest.place_id);
@@ -122,7 +135,7 @@ export default function UpdateRequestsPage() {
       ));
       
       setShowApproveModal(null);
-      alert("Request approved! Changes have been successfully applied to the place.");
+      alert("Request approved! Changes and new images have been successfully applied.");
     } catch (error) {
       console.error("Approve error:", error.message);
       alert(`Failed to approve request: ${error.message}`);
@@ -159,13 +172,27 @@ export default function UpdateRequestsPage() {
   // SO SÁNH GIỮA DATA LIVE THỰC TẾ VÀ DATA ĐỀ XUẤT MỚI
   const getChangedFields = (liveData, originalSnapshot, proposed) => {
     const fields = [];
+    // Ưu tiên dùng dữ liệu live thực tế từ bảng places, nếu trống mới dùng fallback snapshot cũ từ original_data
     const baseData = liveData || originalSnapshot || {};
     
-    const allKeys = [...new Set([...Object.keys(baseData), ...Object.keys(proposed || {})])];
-    
-    allKeys.forEach(key => {
+    // Thiết lập danh sách hiển thị nghiêm ngặt: Bỏ remove_images, đưa opening_hours xuống kế cuối, ngay phía trên images
+    const displayOrder = [
+      "name",
+      "address",
+      "category",
+      "price_level",
+      "business_status",
+      "description",
+      "opening_hours", // Hiển thị kế cuối, ngay phía trên images
+      "images"         // Đẩy xuống cuối cùng danh sách so sánh
+    ];
+
+    displayOrder.forEach(key => {
       const oldVal = baseData[key];
       const newVal = proposed?.[key];
+      
+      // Bỏ qua nếu cả hai giá trị đều không tồn tại để giao diện sạch sẽ
+      if (oldVal === undefined && newVal === undefined) return;
       
       if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
         fields.push({ key, oldVal, newVal, changed: true });
@@ -177,7 +204,7 @@ export default function UpdateRequestsPage() {
     return fields;
   };
 
-  // ĐỊNH DẠNG TEXT CHO CÁC TRƯỜNG THÔNG TIN THƯỜNG
+  // ĐỊNH DẠNG TEXT CHO CÁC TRƯỜNG THÔNG TIN THƯỜNG (DẠNG CHỮ)
   const formatFieldValue = (key, value) => {
     if (key === "price_level") return getPriceLabel(value);
     if (key === "business_status") return getStatusLabel(value);
@@ -252,7 +279,7 @@ export default function UpdateRequestsPage() {
           ) : (
             <div className="grid grid-cols-3 gap-2">
               {oldList.map((url, idx) => (
-                <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-150 border border-gray-200">
+                <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
                   <img src={url} alt="Old location" className="w-full h-full object-cover" />
                   <button 
                     onClick={() => setPreviewImage(url)}
@@ -400,7 +427,7 @@ export default function UpdateRequestsPage() {
                                 <p className="text-xs font-medium text-gray-500 mb-1.5">{formatFieldLabel(field.key)}</p>
                                 
                                 {field.key === "images" ? (
-                                  // 🚀 RENDER KHU VỰC SO SÁNH HÌNH ẢNH NẾU KEY LÀ IMAGES
+                                  // RENDER KHU VỰC SO SÁNH HÌNH ẢNH NẾU KEY LÀ IMAGES
                                   renderImageComparison(field.oldVal, field.newVal)
                                 ) : field.changed ? (
                                   <div className="grid grid-cols-1 gap-2">
@@ -502,7 +529,7 @@ export default function UpdateRequestsPage() {
         </div>
       )}
 
-      {/* 🚀 IMAGE FULL-SCREEN PREVIEW MODAL */}
+      {/* IMAGE FULL-SCREEN PREVIEW MODAL */}
       {previewImage && (
         <div 
           className="fixed inset-0 z-[20000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-150"
