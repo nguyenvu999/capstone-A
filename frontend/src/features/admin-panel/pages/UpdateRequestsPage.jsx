@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { ArrowLeft, Check, X, FileText, Loader2, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +14,28 @@ export default function UpdateRequestsPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [expandedRequestId, setExpandedRequestId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
+
+  // --- HÀM GỬI THÔNG BÁO ---
+  const sendNotification = async (email, title, message) => {
+    try {
+      const { data: userData } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .single();
+
+      if (userData) {
+        await supabase.from("notifications").insert({
+          user_id: userData.id,
+          title: title,
+          message: message,
+          is_read: false,
+        });
+      }
+    } catch (err) {
+      console.error("Notification failed:", err);
+    }
+  };
 
   // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA
   const fetchRequests = async () => {
@@ -95,13 +116,12 @@ export default function UpdateRequestsPage() {
     });
   };
 
-  // ===== HANDLE APPROVE (FIXED LOGIC) =====
+  // ===== HANDLE APPROVE =====
   const handleApprove = async (requestId) => {
     const targetRequest = requests.find(r => r.id === requestId);
     if (!targetRequest) return;
 
     try {
-      // Step 1: Cập nhật thông tin bảng places (Loại bỏ cột 'images' vì không tồn tại trong bảng này)
       const { error: placeError } = await supabase
         .from("places")
         .update({
@@ -118,9 +138,7 @@ export default function UpdateRequestsPage() {
 
       if (placeError) throw placeError;
 
-      // Step 2: Xử lý cập nhật hình ảnh sang bảng 'place_images'
       if (targetRequest.proposed_data.images) {
-        // 2a. Xóa ảnh cũ
         const { error: deleteImgError } = await supabase
           .from("place_images")
           .delete()
@@ -128,7 +146,6 @@ export default function UpdateRequestsPage() {
         
         if (deleteImgError) throw deleteImgError;
 
-        // 2b. Thêm ảnh mới
         const newImages = Array.isArray(targetRequest.proposed_data.images) 
           ? targetRequest.proposed_data.images 
           : JSON.parse(targetRequest.proposed_data.images || "[]");
@@ -148,13 +165,19 @@ export default function UpdateRequestsPage() {
         }
       }
 
-      // Step 3: Cập nhật trạng thái request
       const { error: requestError } = await supabase
         .from("place_update_requests")
         .update({ status: "approved", updated_at: new Date().toISOString() })
         .eq("id", requestId);
 
       if (requestError) throw requestError;
+
+      // Gửi thông báo
+      await sendNotification(
+        targetRequest.requested_by_email,
+        "Update Approved",
+        `Your update request for "${targetRequest.place_name}" has been approved.`
+      );
 
       setRequests(prev => prev.map(r =>
         r.id === requestId ? { ...r, status: "approved" } : r
@@ -170,6 +193,7 @@ export default function UpdateRequestsPage() {
 
   // ===== HANDLE REJECT =====
   const handleReject = async (requestId) => {
+    const targetRequest = requests.find(r => r.id === requestId);
     try {
       const { error } = await supabase
         .from("place_update_requests")
@@ -181,6 +205,13 @@ export default function UpdateRequestsPage() {
         .eq("id", requestId);
 
       if (error) throw error;
+
+      // Gửi thông báo
+      await sendNotification(
+        targetRequest.requested_by_email,
+        "Update Rejected",
+        `Your update request for "${targetRequest.place_name}" was rejected. ${rejectReason ? `Reason: ${rejectReason}` : ""}`
+      );
 
       setRequests(prev => prev.map(r =>
         r.id === requestId ? { ...r, status: "rejected", reject_reason: rejectReason.trim() } : r
@@ -490,4 +521,3 @@ export default function UpdateRequestsPage() {
     </div>
   );
 }
-
