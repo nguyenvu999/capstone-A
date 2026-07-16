@@ -161,7 +161,7 @@ export default function UpdateRequestsPage() {
       ));
       
       setShowApproveModal(null);
-      alert("Request approved! Changes and new images have been successfully applied.");
+      alert("Request approved! Changes have been successfully applied.");
     } catch (error) {
       console.error("Approve error:", error.message);
       alert(`Failed to approve request: ${error.message}`);
