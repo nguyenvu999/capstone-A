@@ -107,9 +107,9 @@ export function AuthProvider({ children }) {
             const expiresAt = Math.floor(Date.now() / 1000) + 21600;
             localStorage.setItem("session_expires_at", expiresAt.toString());
             
-            // Clean route address context and direct the administrator into control view
+            // FIXED: Clean route address context and direct the administrator straight into User Management view
             if (window.location.pathname === "/login" || window.location.pathname === "/") {
-              window.location.replace("/admin");
+              window.location.replace("/admin/users");
             }
           }
         } catch (err) {

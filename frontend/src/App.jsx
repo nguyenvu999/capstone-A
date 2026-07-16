@@ -24,8 +24,8 @@ function RootHandler() {
     );
   }
 
-  // Redirects directly to admin console if authenticated, otherwise forces back to authorization login
-  return user ? <Navigate to="/admin" replace /> : <Navigate to="/login" replace />;
+  // FIXED: Redirects directly to admin users management instead of generic admin route
+  return user ? <Navigate to="/admin/users" replace /> : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -65,8 +65,8 @@ export default function App() {
             } 
           />
           
-          {/* Global Fallback Route - Redirects any unregistered endpoints back to control panel roots */}
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          {/* Global Fallback Route - Redirects any unregistered endpoints back to user management */}
+          <Route path="*" element={<Navigate to="/admin/users" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

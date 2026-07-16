@@ -1,4 +1,4 @@
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useState, useEffect } from "react";
 import { supabase } from "../api/supabaseClient";
@@ -6,7 +6,6 @@ import { supabase } from "../api/supabaseClient";
 export default function ProtectedRoute({ children }) {
   const { user, loading: authLoading, logoutUser } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(null);
   const [isVerifyingRole, setIsVerifyingRole] = useState(true);
 
@@ -19,32 +18,28 @@ export default function ProtectedRoute({ children }) {
       }
 
       try {
-        // Fetch user permissions strictly from the central profiles registry
+        // Fetch privileges directly from profiles registry
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
           .single();
 
-        // Check if the authenticated profile possesses explicit administrative clearance
         if (!profileError && profile?.role === "admin") {
           setIsAdmin(true);
         } else {
           console.error("Access denied: Account lacks administrative privileges.");
           setIsAdmin(false);
           
-          // Terminate the unauthorized session natively via centralized logout sequence
           if (typeof logoutUser === "function") {
             await logoutUser();
           } else {
             await supabase.auth.signOut();
-            navigate("/login", { replace: true });
           }
         }
       } catch (exception) {
         console.error("Administrative verification encountered an exception:", exception);
         setIsAdmin(false);
-        navigate("/login", { replace: true });
       } finally {
         setIsVerifyingRole(false);
       }
@@ -53,9 +48,9 @@ export default function ProtectedRoute({ children }) {
     if (!authLoading) {
       verifyAdministrativePrivileges();
     }
-  }, [user, authLoading, navigate, logoutUser]);
+  }, [user, authLoading, logoutUser]);
 
-  // Display continuous loading layout during asynchronous authorization cycles
+  // Wait until auth state and role verification are completely done
   if (authLoading || isVerifyingRole) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#94AB71]">
@@ -64,7 +59,7 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
-  // Deny core rendering sequence if privileges are completely unauthenticated
+  // If no user session exists or profile role is not admin, forcefully redirect to login
   if (!user || !isAdmin) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }

@@ -1,20 +1,68 @@
 import { useState, useEffect, useRef } from "react";
-import { Menu, LogOut, Map, Users, FileText } from "lucide-react";
+import { Bell, Clock, Map, Users, FileText, LogOut } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useAuth } from "../../auth/context/AuthContext"; // Adjusted relative path based on your auth folder scheme
+import { useAuth } from "../../auth/context/AuthContext";
+import { supabase } from "../../auth/api/supabaseClient";
 import Logo from "../../../shared/ui/Logo";
 
-export default function AdminNavbar({ pendingRequestsCount = 0 }) {
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
+export default function AdminNavbar() {
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const notifRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { logoutUser } = useAuth(); // Destructured the unified context session cleanup method
+  const { logoutUser } = useAuth();
+
+  // 1. Fetch ONLY pending requests from the database
+  const fetchNotifications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("place_update_requests")
+        .select("id, place_name, status, created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      setNotifications(data || []);
+      setUnreadCount(data?.length || 0);
+    } catch (err) {
+      console.error("Error fetching notifications:", err.message);
+    }
+  };
 
   useEffect(() => {
+    fetchNotifications();
+
+    // 2. Realtime listener: Refreshes list automatically when a request changes
+    const channel = supabase
+      .channel("admin_navbar_realtime_notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "place_update_requests",
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Close notifications dropdown on outside click
+  useEffect(() => {
     function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowDropdown(false);
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotifications(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -22,10 +70,8 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
   }, []);
 
   const handleSignOut = async () => {
-    setShowDropdown(false);
     if (confirm("Are you sure you want to sign out?")) {
       try {
-        // Triggers the context logout sequence which clears local states and forces route redirection
         await logoutUser();
       } catch (err) {
         console.error("Administrative signout execution exception:", err.message);
@@ -33,105 +79,181 @@ export default function AdminNavbar({ pendingRequestsCount = 0 }) {
     }
   };
 
-  const menuItems = [
-    { 
-      path: "/admin", 
-      label: "Map View", 
-      icon: Map,
-      description: "View all places on map"
-    },
-    { 
-      path: "/admin/users", 
-      label: "User Management", 
-      icon: Users,
-      description: "Manage user accounts"
-    },
-    { 
-      path: "/admin/requests", 
-      label: "Update Requests", 
-      icon: FileText,
-      description: "Review place update requests",
-      badge: pendingRequestsCount
-    },
+  const timeAgo = (dateString) => {
+    const now = new Date();
+    const past = new Date(dateString);
+    const diffMs = now - past;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  // Main navigation links visible directly on the navbar
+  const navItems = [
+    { path: "/admin", label: "Map View", icon: Map },
+    { path: "/admin/users", label: "User Management", icon: Users },
+    { path: "/admin/requests", label: "Update Requests", icon: FileText, hasBadge: true },
   ];
 
   return (
     <nav className="w-full bg-white border-b border-gray-200 shadow-sm z-50 relative">
       <div className="mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
         
-        {/* Logo */}
-        <Logo />
+        {/* Left Side: Clickable Logo area that navigates to Map View */}
+        <div 
+          onClick={() => navigate("/admin")} 
+          className="cursor-pointer flex items-center gap-2 hover:opacity-90 transition-opacity"
+          title="Go to Map View"
+        >
+          <Logo />
+          <div className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[10px] font-bold tracking-wide uppercase">
+            Admin
+          </div>
+        </div>
 
-        {/* Right side */}
-        <div className="flex items-center gap-2">
+        {/* Center/Right: Flat Navigation Links visible inline */}
+        <div className="hidden lg:flex items-center gap-1 flex-1 justify-center max-w-2xl px-4">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all cursor-pointer whitespace-nowrap ${
+                  isActive 
+                    ? "bg-blue-50 text-blue-600 font-semibold" 
+                    : "text-gray-600 hover:text-blue-600 hover:bg-gray-50"
+                }`}
+              >
+                <Icon size={16} />
+                <span>{item.label}</span>
+                
+                {/* Inline Badge inside the Update Requests button tab for quick visibility */}
+                {item.hasBadge && unreadCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Side Actions: Notification Bell & Logout */}
+        <div className="flex items-center gap-4">
           
-          {/* Admin Badge */}
-          <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
-            ADMIN
+          {/* Mobile responsive navigation indicators fallback (visible below lg breakpoint) */}
+          <div className="flex lg:hidden items-center gap-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`p-2 rounded-lg relative cursor-pointer ${
+                    isActive ? "text-blue-600 bg-blue-50" : "text-gray-400 hover:text-blue-600"
+                  }`}
+                  title={item.label}
+                >
+                  <Icon size={18} />
+                  {item.hasBadge && unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Menu Dropdown */}
-          <div className="relative" ref={dropdownRef}>
+          <div className="h-6 w-[1px] bg-gray-200 hidden sm:block"></div>
+
+          {/* REALTIME PENDING NOTIFICATION BELL (FACEBOOK STYLE) */}
+          <div className="relative" ref={notifRef}>
             <button
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className={`relative p-2 rounded-full transition-all cursor-pointer focus:outline-none ${
+                showNotifications ? "bg-blue-50 text-blue-600" : "text-gray-500 hover:text-blue-600 hover:bg-gray-100"
+              }`}
+              title="Notifications"
             >
-              <Menu size={18} />
-              <span className="hidden md:inline">Menu</span>
+              <Bell size={20} className={unreadCount > 0 ? "animate-swing" : ""} />
+              
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
+                  {unreadCount}
+                </span>
+              )}
             </button>
 
-            {showDropdown && (
-              <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-100 rounded-xl shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                {menuItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
-                  
-                  return (
-                    <button
-                      key={item.path}
-                      onClick={() => {
-                        navigate(item.path);
-                        setShowDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 cursor-pointer ${
-                        isActive ? "bg-blue-50" : ""
-                      }`}
-                    >
-                      <Icon size={18} className={isActive ? "text-blue-600" : "text-gray-400"} />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium ${isActive ? "text-blue-600" : "text-gray-700"}`}>
-                            {item.label}
-                          </span>
-                          {item.badge > 0 && (
-                            <span className="px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
-                              {item.badge}
-                            </span>
-                          )}
+            {/* FACEBOOK STYLE DROPDOWN FEED */}
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-gray-200 rounded-xl shadow-xl z-50 flex flex-col max-h-[480px]">
+                {/* Header */}
+                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                  <span className="font-bold text-gray-900 text-base">Notifications</span>
+                  <button 
+                    onClick={() => { navigate("/admin/requests"); setShowNotifications(false); }}
+                    className="text-xs font-medium text-blue-600 hover:underline cursor-pointer"
+                  >
+                    See all
+                  </button>
+                </div>
+
+                {/* Notifications List */}
+                <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-gray-500">
+                      No pending requests available.
+                    </div>
+                  ) : (
+                    notifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        onClick={() => {
+                          navigate("/admin/requests");
+                          setShowNotifications(false);
+                        }}
+                        className="p-3 hover:bg-gray-50 bg-blue-50/60 flex gap-3 items-start transition-colors cursor-pointer"
+                      >
+                        <div className="mt-0.5">
+                          <Clock size={18} className="text-amber-500" />
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-800 leading-tight">
+                            New edit request submitted for <span className="font-semibold">{notif.place_name}</span> requires your verification.
+                          </p>
+                          <span className="text-[11px] text-gray-400 mt-1 block">
+                            {timeAgo(notif.created_at)}
+                          </span>
+                        </div>
+
+                        <span className="w-2 h-2 rounded-full bg-blue-600 mt-2 self-center flex-shrink-0"></span>
                       </div>
-                    </button>
-                  );
-                })}
-
-                {/* Divider */}
-                <div className="border-t border-gray-100 my-1"></div>
-
-                {/* Sign Out */}
-                <button
-                  onClick={handleSignOut}
-                  className="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors flex items-start gap-3 cursor-pointer"
-                >
-                  <LogOut size={18} className="text-red-500" />
-                  <div className="flex-1">
-                    <span className="text-sm font-medium text-red-600">Sign Out</span>
-                    <p className="text-xs text-red-400 mt-0.5">Log out of admin panel</p>
-                  </div>
-                </button>
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
+
+          {/* Explicit Logout Button */}
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-500 border border-red-200 hover:border-red-500 rounded-lg transition-all cursor-pointer"
+            title="Sign Out"
+          >
+            <LogOut size={14} />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
+
         </div>
       </div>
     </nav>
