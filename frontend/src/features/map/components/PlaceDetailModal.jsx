@@ -27,6 +27,13 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [reason, setReason] = useState("");
 
+  // Images proposed in the "Request Change" form (starts as a copy of the place's
+  // current images; new uploads get isNew: true, removed existing ones are tracked
+  // separately so we never mutate the real place_images table from a request).
+  const [requestImages, setRequestImages] = useState([]);
+  const [removedRequestImages, setRemovedRequestImages] = useState([]);
+  const [submittingRequest, setSubmittingRequest] = useState(false); // guards against double/rapid submits
+
   // REVIEW STATE
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
@@ -84,6 +91,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionRef = useRef(null);
+  const submittingRequestRef = useRef(false); // synchronous lock — blocks rapid double-clicks before React re-renders
   const dropdownRef = useRef(null);
   const timeDropdownRef = useRef(null);
   const ratingDropdownRef = useRef(null);
@@ -410,6 +418,54 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
 
       setDeletedReviewImages((prev) => [...prev, image]);
     };
+
+  // ===== Images inside the "Request Change" form =====
+  const handleRequestImageChange = (e) => {
+    const files = Array.from(e.target.files);
+
+    if (!files.length) return;
+    if (requestImages.length + files.length > MAX_IMAGE_COUNT) {
+      showToast(`Maximum ${MAX_IMAGE_COUNT} images allowed`, "warning");
+      e.target.value = "";
+      return;
+    }
+
+    const validImages = [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        showToast("Only image files are allowed", "warning");
+        continue;
+      }
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        showToast(`Each image must be under ${MAX_IMAGE_SIZE_MB}MB`, "warning");
+        continue;
+      }
+
+      validImages.push({
+        id: `new-${crypto.randomUUID()}`,
+        url: URL.createObjectURL(file),
+        file,
+        isNew: true,
+      });
+    }
+
+    setRequestImages((prev) => [...prev, ...validImages]);
+    e.target.value = "";
+  };
+
+  const handleRemoveRequestImage = (image) => {
+    setRequestImages((prev) => prev.filter((img) => img.url !== image.url));
+
+    if (image.isNew) {
+      URL.revokeObjectURL(image.url);
+      return;
+    }
+
+    // Existing place image — just mark it as "proposed for removal",
+    // the actual place_images row is untouched until an admin approves it.
+    setRemovedRequestImages((prev) => [...prev, image]);
+  };
 
   const handleUpdatePlace = async () => {
     if (!isOwner) {
@@ -832,37 +888,86 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   };
 
   // ===== TASK 2: SUBMIT A "REQUEST CHANGE" (non-owner proposes an edit for admin review) =====
-  const handleSubmitChangeRequest = () => {
+  const handleSubmitChangeRequest = async () => {
     if (!reason.trim()) return alert("Please fill in the reason!");
+    if (submittingRequestRef.current) return; // already submitting — ignore extra clicks, checked synchronously
 
-    // Cấu trúc dữ liệu để đẩy lên DB hoặc state quản lý của Admin
-    const newRequest = {
-      id: "REQ_" + Date.now(),
-      place_id: place?.id,
-      place_name: place?.name,
-      requested_by_email: user?.email || "user@example.com",
-      created_at: new Date().toISOString(),
-      status: "pending",
-      reason: reason,
-      original_data: {
-        name: place?.name || "",
-        address: place?.address || "",
-        category: place?.category || "",
-        price_level: place?.price_level || 1,
-        business_status: place?.business_status || "open",
-        description: place?.description || "",
-      },
-      proposed_data: formData,
-    };
+    submittingRequestRef.current = true;
+    setSubmittingRequest(true);
+    try {
+      // Upload any newly-added images to storage first (existing, non-removed
+      // images just carry their current URL through — nothing is touched in
+      // place_images until an admin approves the request).
+      const newImages = requestImages.filter((img) => img.isNew);
+      const uploadedUrls = [];
 
-    // Thực hiện API POST gửi dữ liệu lên server tại đây
-    // await axios.post('/api/requests', newRequest)
-    console.log("Đã gửi request tới Admin thành công:", newRequest);
+      for (const image of newImages) {
+        const file = image.file;
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+        const filePath = `requests/${fileName}`;
 
-    showToast("Your change request has been submitted to Admin", "success");
+        const { error: uploadError } = await supabase.storage
+          .from("place-images")
+          .upload(filePath, file);
 
-    setShowRequestModal(false);
-    setReason("");
+        if (uploadError) throw uploadError;
+
+        const { data: publicData } = supabase.storage
+          .from("place-images")
+          .getPublicUrl(filePath);
+
+        uploadedUrls.push(publicData.publicUrl);
+      }
+
+      const keptExistingUrls = requestImages
+        .filter((img) => !img.isNew)
+        .map((img) => img.url);
+
+      // Cấu trúc dữ liệu để đẩy lên DB
+      const newRequest = {
+        id: "REQ_" + Date.now(),
+        place_id: place?.id,
+        place_name: place?.name || "",
+        requested_by_email: user?.email || "guest@example.com",
+        status: "pending",
+        reason: reason.trim(),
+        original_data: {
+          name: place?.name || "",
+          address: place?.address || "",
+          category: place?.category || "",
+          price_level: place?.price_level || 1,
+          business_status: place?.business_status || "open",
+          description: place?.description || "",
+          opening_hours: place?.opening_hours || getDefaultSchedule(),
+          images: placeImages.map((img) => img.url),
+        },
+        proposed_data: {
+          ...formData,
+          images: [...keptExistingUrls, ...uploadedUrls],
+          removed_images: removedRequestImages.map((img) => img.url),
+        },
+      };
+
+      const { error } = await supabase
+        .from("place_update_requests")
+        .insert([newRequest]);
+
+      if (error) throw error;
+
+      showToast("Your change request has been submitted to Admin", "success");
+
+      setShowRequestModal(false);
+      setReason("");
+      setRequestImages([]);
+      setRemovedRequestImages([]);
+    } catch (err) {
+      console.error("Error submitting request to Supabase:", err.message);
+      showToast(`Failed to submit request: ${err.message}`, "error");
+    } finally {
+      submittingRequestRef.current = false;
+      setSubmittingRequest(false);
+    }
   };
 
   return (
@@ -977,6 +1082,8 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                               description: place?.description || "",
                               opening_hours: place?.opening_hours || getDefaultSchedule(),
                             });
+                            setRequestImages(placeImages.map((img) => ({ ...img })));
+                            setRemovedRequestImages([]);
                             setReason(""); // Reset lý do cũ
                             setShowRequestModal(true);
                             setShowOptionsDropdown(false);
@@ -1895,17 +2002,73 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                   <option value="closed">Permanently Closed</option>
                 </select>
               </div>
-              {/* Opening Hours Section */}
+
+              {/* Opening Hours */}
               <div className="pt-4 border-t border-gray-100">
                 <OpeningHoursEditor
                   value={formData.opening_hours}
                   onChange={(updatedSchedule) => {
                     setFormData({
                       ...formData,
-                      opening_hours: updatedSchedule
+                      opening_hours: updatedSchedule,
                     });
                   }}
                 />
+              </div>
+
+              {/* Images */}
+              <div className="pt-4 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Place Images
+                  <span className="text-gray-400"> (optional)</span>
+                </label>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleRequestImageChange}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all"
+                />
+
+                <p className="text-xs text-gray-400 mt-1">
+                  Max {MAX_IMAGE_COUNT} images • Max {MAX_IMAGE_SIZE_MB}MB each. Removing an
+                  existing image here only proposes the removal — nothing is deleted until an
+                  admin approves the request.
+                </p>
+
+                {requestImages.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    {requestImages.map((image) => (
+                      <div key={image.id || image.url} className="relative">
+                        <img
+                          src={image.url}
+                          alt="Proposed"
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRequestImage(image)}
+                          className="absolute top-1 right-1 text-white bg-black/40 hover:bg-black/70 rounded p-0.5 cursor-pointer transition-all"
+                          aria-label="Remove image"
+                        >
+                          <X size={11} strokeWidth={3} />
+                        </button>
+                        {image.isNew && (
+                          <span className="absolute bottom-1 left-1 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">
+                            New
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {removedRequestImages.length > 0 && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    {removedRequestImages.length} existing image{removedRequestImages.length !== 1 ? "s" : ""} proposed for removal.
+                  </p>
+                )}
               </div>
 
               {/* Description */}
@@ -1936,60 +2099,21 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             {/* Buttons */}
             <div className="flex gap-3 mt-4 pt-3 border-t border-gray-100">
               <button
+                type="button"
                 onClick={() => setShowRequestModal(false)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm transition-colors"
+                disabled={submittingRequest}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
-                onClick={async () => { // Thêm async ở đây để chạy await
-                  if (!reason.trim()) return alert("Please fill in the reason!");
-                  
-                  try {
-                    // 1. Cấu trúc đúng dữ liệu để insert vào bảng trên Supabase
-                    const newRequest = {
-                      id: "REQ_" + Date.now(),
-                      place_id: place?.id, // Đã sửa thành place
-                      place_name: place?.name || "", // Đã sửa thành place
-                      requested_by_email: user?.email || "guest@example.com",
-                      status: "pending",
-                      reason: reason.trim(),
-                      original_data: {
-                        name: place?.name || "",
-                        address: place?.address || "",
-                        category: place?.category || "",
-                        price_level: place?.price_level || 1,
-                        business_status: place?.business_status || "open",
-                        description: place?.description || "",
-                      },
-                      proposed_data: formData // Lấy dữ liệu từ state formData mà user vừa gõ trên các ô input
-                    };
-
-                    // 2. Gọi Supabase Client để chèn (Insert) dòng mới vào DB
-                    const { error } = await supabase
-                      .from("place_update_requests")
-                      .insert([newRequest]);
-
-                    if (error) throw error;
-
-                    // 3. Thông báo thành công và đóng Modal
-                    if (typeof showToast === 'function') {
-                      showToast("Your change request has been submitted to Admin", "success");
-                    } else {
-                      alert("Your change request has been submitted to Admin!");
-                    }
-
-                    setShowRequestModal(false);
-                    setReason("");
-
-                  } catch (err) {
-                    console.error("Error submitting request to Supabase:", err.message);
-                    alert("Failed to submit request: " + err.message);
-                  }
-                }}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 text-sm transition-colors"
+                type="button"
+                onClick={handleSubmitChangeRequest}
+                disabled={submittingRequest}
+                aria-busy={submittingRequest}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 text-sm transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
-                Submit Request
+                {submittingRequest ? "Submitting..." : "Submit Request"}
               </button>
             </div>
           </div>
