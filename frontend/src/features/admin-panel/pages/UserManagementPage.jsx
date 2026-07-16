@@ -1,13 +1,22 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../auth/api/supabaseClient";
-import { Search, UserCheck, UserX, Loader2 } from "lucide-react";
+import { Search, UserCheck, UserX, Loader2, AlertTriangle } from "lucide-react";
 import AdminNavbar from "../../admin-map/components/AdminNavbar";
 
 export default function UserManagementPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // State quản lý Confirm Modal
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    userId: null,
+    userEmail: "",
+    currentStatus: null,
+  });
+
   const navigate = useNavigate();
 
   // Fetch all users on component mount
@@ -19,7 +28,6 @@ export default function UserManagementPage() {
     try {
       setLoading(true);
       
-      // Giữ nguyên filter .eq("role", "user") để chỉ lấy tài khoản user tiêu chuẩn
       const { data, error } = await supabase
         .from("profiles")
         .select("id, email, role, is_active, updated_at")
@@ -36,9 +44,36 @@ export default function UserManagementPage() {
   };
 
   /**
-   * Toggles the active/inactive status of a target user account
+   * Mở modal xác nhận thay vì thực thi đổi trạng thái ngay lập tức
    */
-  const toggleUserStatus = async (userId, currentStatus) => {
+  const handleOpenConfirmModal = (userId, userEmail, currentStatus) => {
+    setConfirmModal({
+      isOpen: true,
+      userId,
+      userEmail,
+      currentStatus,
+    });
+  };
+
+  /**
+   * Đóng modal và reset data tạm thời
+   */
+  const handleCloseConfirmModal = () => {
+    setConfirmModal({
+      isOpen: false,
+      userId: null,
+      userEmail: "",
+      currentStatus: null,
+    });
+  };
+
+  /**
+   * Xử lý xác nhận thay đổi trạng thái từ Modal
+   */
+  const handleConfirmStatusChange = async () => {
+    const { userId, currentStatus } = confirmModal;
+    if (!userId) return;
+
     try {
       const nextStatus = !currentStatus;
 
@@ -52,13 +87,15 @@ export default function UserManagementPage() {
 
       if (error) throw error;
 
-      // Optimistically update local component state
+      // Cập nhật state UI
       setUsers((prevUsers) =>
         prevUsers.map((u) => (u.id === userId ? { ...u, is_active: nextStatus } : u))
       );
     } catch (err) {
       console.error("Authorization status update failure:", err.message);
       alert("Error: Unable to update user activation state.");
+    } finally {
+      handleCloseConfirmModal();
     }
   };
 
@@ -81,7 +118,7 @@ export default function UserManagementPage() {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-6xl mx-auto">
           
-          {/* Header section với nút Back Dashboard của bạn */}
+          {/* Header section */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">User Management Console</h1>
@@ -106,7 +143,7 @@ export default function UserManagementPage() {
             </button>
           </div>
 
-          {/* 2. Thêm các thẻ thống kê trực quan */}
+          {/* 2. Thẻ thống kê trực quan */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
               <p className="text-xs font-medium text-gray-500">Total Users</p>
@@ -127,7 +164,7 @@ export default function UserManagementPage() {
             </div>
           </div>
 
-          {/* 3. Thanh ô tìm kiếm Search theo Email */}
+          {/* 3. Ô tìm kiếm */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
             <div className="relative">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -141,7 +178,7 @@ export default function UserManagementPage() {
             </div>
           </div>
 
-          {/* Cấu trúc bảng hiển thị danh sách của bạn */}
+          {/* Cấu trúc bảng hiển thị danh sách */}
           <div className="bg-white shadow rounded-xl overflow-hidden border border-gray-200">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -153,7 +190,6 @@ export default function UserManagementPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {/* Đưa trạng thái Loading vào trong body table để không bị vỡ Layout trang */}
                 {loading ? (
                   <tr>
                     <td colSpan="4" className="px-6 py-12 text-center text-sm text-gray-500">
@@ -187,7 +223,7 @@ export default function UserManagementPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
-                          onClick={() => toggleUserStatus(item.id, item.is_active)}
+                          onClick={() => handleOpenConfirmModal(item.id, item.email, item.is_active)}
                           className={`inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
                             item.is_active 
                               ? "bg-red-50 text-red-600 hover:bg-red-100" 
@@ -216,6 +252,50 @@ export default function UserManagementPage() {
 
         </div>
       </div>
+
+      {/* Global Action Confirm Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`p-2 rounded-full ${confirmModal.currentStatus ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                <AlertTriangle size={20} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">
+                {confirmModal.currentStatus ? "Deactivate User Account" : "Activate User Account"}
+              </h3>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              Are you sure you want to {confirmModal.currentStatus ? "deactivate" : "activate"} the account for 
+              <strong className="text-gray-900 mx-1">{confirmModal.userEmail}</strong>? 
+              {confirmModal.currentStatus 
+                ? " This user will be immediately blocked from logging into the management repositories." 
+                : " This user will regain access to full capabilities instantly."
+              }
+            </p>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={handleCloseConfirmModal}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmStatusChange}
+                className={`flex-1 px-4 py-2.5 text-white rounded-xl font-medium transition-colors ${
+                  confirmModal.currentStatus 
+                    ? "bg-red-600 hover:bg-red-700" 
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {confirmModal.currentStatus ? "Deactivate Account" : "Activate Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

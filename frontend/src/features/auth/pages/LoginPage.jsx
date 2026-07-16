@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { signInWithEmail } from "../api/authApi";
 import { supabase } from "../api/supabaseClient";
@@ -14,9 +14,9 @@ function LoginPage() {
 
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const destinationRoute = location.state?.from?.pathname || "/map";
+  // HARDCODED FIX: Always route directly to User Management upon successful login
+  const destinationRoute = "/admin/users";
 
   useEffect(() => {
     // Strictly prevent automatic routing redirection if the security block modal is active
@@ -47,7 +47,7 @@ function LoginPage() {
 
         // 3. Evaluate administrative clearance requirements
         if (!profileError && profile?.role === "admin") {
-          // Access Granted: The active useEffect will seamlessly route to the dashboard
+          // Access Granted: The active useEffect will seamlessly route to /admin/users
         } else {
           // Access Denied: Trigger the visual popup notification lock FIRST
           setShowAccessDeniedModal(true);

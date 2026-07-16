@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { ArrowLeft, Check, X, FileText, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../auth/api/supabaseClient"; // Đảm bảo đúng đường dẫn tới file supabaseClient của bạn
+import { supabase } from "../../auth/api/supabaseClient"; 
 import AdminNavbar from "../../admin-map/components/AdminNavbar";
 
 export default function UpdateRequestsPage() {
@@ -14,13 +14,25 @@ export default function UpdateRequestsPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [expandedRequestId, setExpandedRequestId] = useState(null);
 
-  // FETCH REQUESTS FROM SUPABASE
+  // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA
   const fetchRequests = async () => {
     setLoading(true);
     try {
+      // Thực hiện lấy dữ liệu request đồng thời lấy thông tin thực tế hiện tại của địa điểm từ bảng places
       const { data, error } = await supabase
-        .from("place_update_requests") // Tên bảng lưu trữ request thay đổi
-        .select("*")
+        .from("place_update_requests")
+        .select(`
+          *,
+          places:place_id (
+            name,
+            address,
+            category,
+            price_level,
+            business_status,
+            description,
+            opening_hours
+          )
+        `)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -71,13 +83,12 @@ export default function UpdateRequestsPage() {
     });
   };
 
-  // ===== HANDLE APPROVE (Cập nhật trực tiếp vào bảng places) =====
+  // ===== HANDLE APPROVE =====
   const handleApprove = async (requestId) => {
     const targetRequest = requests.find(r => r.id === requestId);
     if (!targetRequest) return;
 
     try {
-      // Step 1: Cập nhật thông tin mới đè lên bảng places thực tế (Đã thêm opening_hours)
       const { error: placeError } = await supabase
         .from("places")
         .update({
@@ -87,14 +98,13 @@ export default function UpdateRequestsPage() {
           price_level: targetRequest.proposed_data.price_level,
           business_status: targetRequest.proposed_data.business_status,
           description: targetRequest.proposed_data.description,
-          opening_hours: targetRequest.proposed_data.opening_hours, // 🚀 CẬP NHẬT LỊCH TRÌNH VÀO DB
+          opening_hours: targetRequest.proposed_data.opening_hours, 
           updated_at: new Date().toISOString()
         })
         .eq("id", targetRequest.place_id);
 
       if (placeError) throw placeError;
 
-      // Step 2: Cập nhật trạng thái request thành 'approved'
       const { error: requestError } = await supabase
         .from("place_update_requests")
         .update({ status: "approved", updated_at: new Date().toISOString() })
@@ -102,7 +112,6 @@ export default function UpdateRequestsPage() {
 
       if (requestError) throw requestError;
 
-      // Cập nhật lại UI tại chỗ
       setRequests(prev => prev.map(r =>
         r.id === requestId ? { ...r, status: "approved" } : r
       ));
@@ -115,7 +124,7 @@ export default function UpdateRequestsPage() {
     }
   };
 
-  // ===== HANDLE REJECT (Không thay đổi bảng places) =====
+  // ===== HANDLE REJECT =====
   const handleReject = async (requestId) => {
     try {
       const { error } = await supabase
@@ -142,12 +151,16 @@ export default function UpdateRequestsPage() {
     }
   };
 
-  const getChangedFields = (original, proposed) => {
+  // SO SÁNH GIỮA DATA LIVE THỰC TẾ VÀ DATA ĐỀ XUẤT MỚI
+  const getChangedFields = (liveData, originalSnapshot, proposed) => {
     const fields = [];
-    const allKeys = [...new Set([...Object.keys(original || {}), ...Object.keys(proposed || {})])];
+    // Ưu tiên dùng dữ liệu live thực tế từ bảng places, nếu trống mới dùng fallback snapshot cũ
+    const baseData = liveData || originalSnapshot || {};
+    
+    const allKeys = [...new Set([...Object.keys(baseData), ...Object.keys(proposed || {})])];
     
     allKeys.forEach(key => {
-      const oldVal = original?.[key];
+      const oldVal = baseData[key];
       const newVal = proposed?.[key];
       
       if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
@@ -160,25 +173,39 @@ export default function UpdateRequestsPage() {
     return fields;
   };
 
-  // BIẾN ĐỔI DỮ LIỆU ĐỂ HIỂN THỊ LÊN FORM SO SÁNH
+  // ĐỊNH DẠNG TEXT CHO MẢNG LỊCH TRÌNH ĐỂ KHÔNG BỊ LỖI [object Object]
   const formatFieldValue = (key, value) => {
     if (key === "price_level") return getPriceLabel(value);
     if (key === "business_status") return getStatusLabel(value);
     if (key === "category") return getCategoryLabel(value);
     
-    // 🚀 ĐỊNH DẠNG TEXT CHO MẢNG LỊCH TRÌNH ĐỂ KHÔNG BỊ LỖI [object Object]
-    if (key === "opening_hours" && Array.isArray(value)) {
-      if (value.length === 0) return "No schedule set";
-      return value
-        .map((day) => {
-          const dayName = day.dayOfWeek ? (day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()) : "Day";
-          if (!day.isOpen) return `${dayName}: Closed`;
-          return `${dayName}: ${day.openTime || "N/A"} - ${day.closeTime || "N/A"}`;
-        })
-        .join(" | ");
+    if (key === "opening_hours") {
+      if (!value) return "No schedule set";
+      
+      // Nếu là String (do DB trả về hoặc fallback text)
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) value = parsed;
+        } catch (e) {
+          return value;
+        }
+      }
+      
+      // Xử lý render mảng lịch trình tường minh
+      if (Array.isArray(value)) {
+        if (value.length === 0) return "No schedule set";
+        return value
+          .map((day) => {
+            const dayName = day.dayOfWeek ? (day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()) : "Day";
+            if (!day.isOpen) return `${dayName}: Closed`;
+            return `${dayName}: ${day.openTime || "N/A"} - ${day.closeTime || "N/A"}`;
+          })
+          .join(" | ");
+      }
     }
     
-    return value || "N/A";
+    return typeof value === "object" ? JSON.stringify(value) : (value || "N/A");
   };
 
   const formatFieldLabel = (key) => {
@@ -189,22 +216,18 @@ export default function UpdateRequestsPage() {
       price_level: "Price Level",
       business_status: "Business Status",
       description: "Description",
-      opening_hours: "Opening Hours", // 🚀 THÊM LABEL HIỂN THỊ
+      opening_hours: "Opening Hours", 
     };
     return labels[key] || key;
   };
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-gray-50">
-      
-      {/* Navbar */}
       <AdminNavbar pendingRequestsCount={pendingCount} />
       
-      {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-4xl mx-auto">
           
-          {/* Header */}
           <div className="mb-6">
             <button
               onClick={() => navigate("/admin")}
@@ -217,7 +240,6 @@ export default function UpdateRequestsPage() {
             <p className="text-sm text-gray-500 mt-1">Review and manage update requests from users</p>
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-2 mb-6">
             {["pending", "approved", "rejected"].map(tab => (
               <button
@@ -243,7 +265,6 @@ export default function UpdateRequestsPage() {
             ))}
           </div>
 
-          {/* Request Cards Grid / List */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
               <Loader2 className="w-8 h-8 animate-spin text-gray-400 mb-2" />
@@ -252,12 +273,13 @@ export default function UpdateRequestsPage() {
           ) : filteredRequests.length > 0 ? (
             <div className="space-y-4">
               {filteredRequests.map(request => {
-                const changedFields = getChangedFields(request.original_data, request.proposed_data);
+                // TRUYỀN DỮ LIỆU THỰC TẾ LIVE TỪ BẢNG PLACES VÀO ĐỂ SO SÁNH
+                const livePlaceData = request.places;
+                const changedFields = getChangedFields(livePlaceData, request.original_data, request.proposed_data);
                 const isExpanded = expandedRequestId === request.id;
                 
                 return (
                   <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in-50 duration-200">
-                    {/* Compact Card Header */}
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -277,13 +299,11 @@ export default function UpdateRequestsPage() {
                         <p>📅 Created at: {formatDate(request.created_at)}</p>
                       </div>
                       
-                      {/* Reason */}
                       <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
                         <p className="text-xs font-medium text-blue-800 mb-1">📝 Reason for update:</p>
                         <p className="text-sm text-blue-700 leading-relaxed">{request.reason}</p>
                       </div>
 
-                      {/* Reject Reason Display if applicable */}
                       {request.status === "rejected" && request.reject_reason && (
                         <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-100">
                           <p className="text-xs font-medium text-red-800 mb-1">❌ Rejection Reason:</p>
@@ -291,7 +311,6 @@ export default function UpdateRequestsPage() {
                         </div>
                       )}
 
-                      {/* See Detail Button */}
                       <div className="flex justify-end mt-3">
                         <button
                           onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}
@@ -302,10 +321,8 @@ export default function UpdateRequestsPage() {
                       </div>
                     </div>
 
-                    {/* Expanded Detail Section */}
                     {isExpanded && (
                       <>
-                        {/* Proposed Changes Comparison */}
                         <div className="px-5 pb-5 border-t border-gray-100 pt-4 bg-gray-50/50">
                           <h4 className="text-sm font-bold text-gray-900 mb-3">Proposed Changes Comparison</h4>
                           <div className="space-y-3">
@@ -331,7 +348,6 @@ export default function UpdateRequestsPage() {
                           </div>
                         </div>
 
-                        {/* Action Buttons (only for pending) */}
                         {request.status === "pending" && (
                           <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
                             <button
@@ -365,7 +381,7 @@ export default function UpdateRequestsPage() {
         </div>
       </div>
 
-      {/* Approve Modal Popup */}
+      {/* Approve Modal */}
       {showApproveModal && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
@@ -383,7 +399,7 @@ export default function UpdateRequestsPage() {
         </div>
       )}
 
-      {/* Reject Modal Popup */}
+      {/* Reject Modal */}
       {showRejectModal && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
