@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { ArrowLeft, Check, X, FileText, Loader2, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,13 +14,12 @@ export default function UpdateRequestsPage() {
   const [showRejectModal, setShowRejectModal] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [expandedRequestId, setExpandedRequestId] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null); // State phục vụ xem phóng to ảnh toàn màn hình
+  const [previewImage, setPreviewImage] = useState(null);
 
-  // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA WITH GRACEFUL FALLBACK
+  // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      // Thử liên kết bảng places để lấy dữ liệu Live thực tế thời gian thực
       const { data, error } = await supabase
         .from("place_update_requests")
         .select(`
@@ -31,16 +31,13 @@ export default function UpdateRequestsPage() {
             price_level,
             business_status,
             description,
-            opening_hours,
-            images
+            opening_hours
           )
         `)
         .order("created_at", { ascending: false });
 
       if (error) {
-        // Fallback: Nếu Supabase báo lỗi do thiếu ràng buộc khóa ngoại (Foreign Key Relation),
-        // hệ thống tự động tải dữ liệu đơn lẻ bảng requests và đối chiếu thông qua original_data snapshot
-        console.warn("Supabase relation join failed. Attempting fallback query without relation join:", error.message);
+        console.warn("Supabase relation join failed. Attempting fallback query:", error.message);
         
         const { data: fallbackData, error: fallbackError } = await supabase
           .from("place_update_requests")
@@ -98,13 +95,13 @@ export default function UpdateRequestsPage() {
     });
   };
 
-  // ===== HANDLE APPROVE =====
+  // ===== HANDLE APPROVE (FIXED LOGIC) =====
   const handleApprove = async (requestId) => {
     const targetRequest = requests.find(r => r.id === requestId);
     if (!targetRequest) return;
 
     try {
-      // Step 1: Cập nhật thông tin mới đè lên bảng places thực tế
+      // Step 1: Cập nhật thông tin bảng places (Loại bỏ cột 'images' vì không tồn tại trong bảng này)
       const { error: placeError } = await supabase
         .from("places")
         .update({
@@ -114,15 +111,44 @@ export default function UpdateRequestsPage() {
           price_level: targetRequest.proposed_data.price_level,
           business_status: targetRequest.proposed_data.business_status,
           description: targetRequest.proposed_data.description,
-          opening_hours: targetRequest.proposed_data.opening_hours, 
-          images: targetRequest.proposed_data.images, // Đồng bộ lưu mảng URL ảnh đề xuất mới vào database
+          opening_hours: targetRequest.proposed_data.opening_hours,
           updated_at: new Date().toISOString()
         })
         .eq("id", targetRequest.place_id);
 
       if (placeError) throw placeError;
 
-      // Step 2: Cập nhật trạng thái request thành 'approved'
+      // Step 2: Xử lý cập nhật hình ảnh sang bảng 'place_images'
+      if (targetRequest.proposed_data.images) {
+        // 2a. Xóa ảnh cũ
+        const { error: deleteImgError } = await supabase
+          .from("place_images")
+          .delete()
+          .eq("place_id", targetRequest.place_id);
+        
+        if (deleteImgError) throw deleteImgError;
+
+        // 2b. Thêm ảnh mới
+        const newImages = Array.isArray(targetRequest.proposed_data.images) 
+          ? targetRequest.proposed_data.images 
+          : JSON.parse(targetRequest.proposed_data.images || "[]");
+
+        if (newImages.length > 0) {
+          const insertPayload = newImages.map((url, index) => ({
+            place_id: targetRequest.place_id,
+            url: url,
+            sort_order: index + 1
+          }));
+
+          const { error: insertImgError } = await supabase
+            .from("place_images")
+            .insert(insertPayload);
+          
+          if (insertImgError) throw insertImgError;
+        }
+      }
+
+      // Step 3: Cập nhật trạng thái request
       const { error: requestError } = await supabase
         .from("place_update_requests")
         .update({ status: "approved", updated_at: new Date().toISOString() })
@@ -169,29 +195,18 @@ export default function UpdateRequestsPage() {
     }
   };
 
-  // SO SÁNH GIỮA DATA LIVE THỰC TẾ VÀ DATA ĐỀ XUẤT MỚI
   const getChangedFields = (liveData, originalSnapshot, proposed) => {
     const fields = [];
-    // Ưu tiên dùng dữ liệu live thực tế từ bảng places, nếu trống mới dùng fallback snapshot cũ từ original_data
     const baseData = liveData || originalSnapshot || {};
-    
-    // Thiết lập danh sách hiển thị nghiêm ngặt: Bỏ remove_images, đưa opening_hours xuống kế cuối, ngay phía trên images
     const displayOrder = [
-      "name",
-      "address",
-      "category",
-      "price_level",
-      "business_status",
-      "description",
-      "opening_hours", // Hiển thị kế cuối, ngay phía trên images
-      "images"         // Đẩy xuống cuối cùng danh sách so sánh
+      "name", "address", "category", "price_level", "business_status", 
+      "description", "opening_hours", "images"
     ];
 
     displayOrder.forEach(key => {
       const oldVal = baseData[key];
       const newVal = proposed?.[key];
       
-      // Bỏ qua nếu cả hai giá trị đều không tồn tại để giao diện sạch sẽ
       if (oldVal === undefined && newVal === undefined) return;
       
       if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
@@ -204,7 +219,6 @@ export default function UpdateRequestsPage() {
     return fields;
   };
 
-  // ĐỊNH DẠNG TEXT CHO CÁC TRƯỜNG THÔNG TIN THƯỜNG (DẠNG CHỮ)
   const formatFieldValue = (key, value) => {
     if (key === "price_level") return getPriceLabel(value);
     if (key === "business_status") return getStatusLabel(value);
@@ -217,20 +231,16 @@ export default function UpdateRequestsPage() {
         try {
           const parsed = JSON.parse(value);
           if (Array.isArray(parsed)) value = parsed;
-        } catch (e) {
-          return value;
-        }
+        } catch (e) { return value; }
       }
       
       if (Array.isArray(value)) {
         if (value.length === 0) return "No schedule set";
-        return value
-          .map((day) => {
-            const dayName = day.dayOfWeek ? (day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()) : "Day";
-            if (!day.isOpen) return `${dayName}: Closed`;
-            return `${dayName}: ${day.openTime || "N/A"} - ${day.closeTime || "N/A"}`;
-          })
-          .join(" | ");
+        return value.map((day) => {
+          const dayName = day.dayOfWeek ? (day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()) : "Day";
+          if (!day.isOpen) return `${dayName}: Closed`;
+          return `${dayName}: ${day.openTime || "N/A"} - ${day.closeTime || "N/A"}`;
+        }).join(" | ");
       }
     }
     
@@ -239,29 +249,19 @@ export default function UpdateRequestsPage() {
 
   const formatFieldLabel = (key) => {
     const labels = {
-      name: "Name",
-      address: "Address",
-      category: "Category",
-      price_level: "Price Level",
-      business_status: "Business Status",
-      description: "Description",
-      opening_hours: "Opening Hours", 
-      images: "Place Images",
+      name: "Name", address: "Address", category: "Category", price_level: "Price Level", 
+      business_status: "Business Status", description: "Description", 
+      opening_hours: "Opening Hours", images: "Place Images",
     };
     return labels[key] || key;
   };
 
-  // HÀM SO SÁNH HÌNH ẢNH DÀNH RIÊNG CHO KHU VỰC TRƯỜNG IMAGES
   const renderImageComparison = (oldImages, newImages) => {
     const parseImages = (imgData) => {
       if (!imgData) return [];
       if (Array.isArray(imgData)) return imgData;
       if (typeof imgData === "string") {
-        try {
-          return JSON.parse(imgData);
-        } catch (e) {
-          return [imgData];
-        }
+        try { return JSON.parse(imgData); } catch (e) { return [imgData]; }
       }
       return [];
     };
@@ -271,48 +271,32 @@ export default function UpdateRequestsPage() {
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 w-full">
-        {/* Cột ảnh cũ */}
         <div className="p-3 bg-red-50/70 rounded-lg border border-red-100">
           <span className="text-xs text-red-600 font-bold block mb-2">Old Images ({oldList.length}):</span>
-          {oldList.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">No images currently uploaded</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {oldList.map((url, idx) => (
-                <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
-                  <img src={url} alt="Old location" className="w-full h-full object-cover" />
-                  <button 
-                    onClick={() => setPreviewImage(url)}
-                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                  >
-                    <Eye size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-3 gap-2">
+            {oldList.map((url, idx) => (
+              <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+                <img src={url} alt="Old location" className="w-full h-full object-cover" />
+                <button onClick={() => setPreviewImage(url)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer">
+                  <Eye size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Cột ảnh mới đề xuất */}
         <div className="p-3 bg-green-50/70 rounded-lg border border-green-100">
           <span className="text-xs text-green-600 font-bold block mb-2">Proposed New Images ({newList.length}):</span>
-          {newList.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">No new images proposed</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {newList.map((url, idx) => (
-                <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-150 border border-green-200 shadow-sm">
-                  <img src={url} alt="Proposed update" className="w-full h-full object-cover" />
-                  <button 
-                    onClick={() => setPreviewImage(url)}
-                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                  >
-                    <Eye size={16} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-3 gap-2">
+            {newList.map((url, idx) => (
+              <div key={idx} className="relative group aspect-square rounded-lg overflow-hidden bg-gray-150 border border-green-200 shadow-sm">
+                <img src={url} alt="Proposed update" className="w-full h-full object-cover" />
+                <button onClick={() => setPreviewImage(url)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer">
+                  <Eye size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -326,12 +310,8 @@ export default function UpdateRequestsPage() {
         <div className="max-w-4xl mx-auto">
           
           <div className="mb-6">
-            <button
-              onClick={() => navigate("/admin")}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors cursor-pointer"
-            >
-              <ArrowLeft size={16} />
-              Back to Map
+            <button onClick={() => navigate("/admin")} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-3 transition-colors cursor-pointer">
+              <ArrowLeft size={16} /> Back to Map
             </button>
             <h1 className="text-2xl font-bold text-gray-900">Place Update Requests</h1>
             <p className="text-sm text-gray-500 mt-1">Review and manage update requests from users</p>
@@ -352,9 +332,7 @@ export default function UpdateRequestsPage() {
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 {tab === "pending" && pendingCount > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    activeTab === tab ? "bg-white/30 text-white" : "bg-amber-100 text-amber-700"
-                  }`}>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === tab ? "bg-white/30 text-white" : "bg-amber-100 text-amber-700"}`}>
                     {pendingCount}
                   </span>
                 )}
@@ -378,16 +356,12 @@ export default function UpdateRequestsPage() {
                   <div key={request.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-in fade-in-50 duration-200">
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 font-mono">#{request.id}</span>
-                        </div>
+                        <span className="text-xs text-gray-400 font-mono">#{request.id}</span>
                         <span className={`px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wider ${
                           request.status === "pending" ? "bg-amber-100 text-amber-700"
                           : request.status === "approved" ? "bg-green-100 text-green-700"
                           : "bg-red-100 text-red-700"
-                        }`}>
-                          {request.status}
-                        </span>
+                        }`}>{request.status}</span>
                       </div>
                       <h3 className="text-base font-bold text-gray-900 mb-2">📍 {request.place_name}</h3>
                       <div className="space-y-1 text-xs text-gray-500">
@@ -408,10 +382,7 @@ export default function UpdateRequestsPage() {
                       )}
 
                       <div className="flex justify-end mt-3">
-                        <button
-                          onClick={() => setExpandedRequestId(isExpanded ? null : request.id)}
-                          className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 cursor-pointer"
-                        >
+                        <button onClick={() => setExpandedRequestId(isExpanded ? null : request.id)} className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-1 cursor-pointer">
                           {isExpanded ? "Hide Details ▲" : "See Details ▼"}
                         </button>
                       </div>
@@ -427,7 +398,6 @@ export default function UpdateRequestsPage() {
                                 <p className="text-xs font-medium text-gray-500 mb-1.5">{formatFieldLabel(field.key)}</p>
                                 
                                 {field.key === "images" ? (
-                                  // RENDER KHU VỰC SO SÁNH HÌNH ẢNH NẾU KEY LÀ IMAGES
                                   renderImageComparison(field.oldVal, field.newVal)
                                 ) : field.changed ? (
                                   <div className="grid grid-cols-1 gap-2">
@@ -450,19 +420,11 @@ export default function UpdateRequestsPage() {
 
                         {request.status === "pending" && (
                           <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
-                            <button
-                              onClick={() => setShowApproveModal(request)}
-                              className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                              <Check size={16} />
-                              Approve Request
+                            <button onClick={() => setShowApproveModal(request)} className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                              <Check size={16} /> Approve Request
                             </button>
-                            <button
-                              onClick={() => setShowRejectModal(request)}
-                              className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                              <X size={16} />
-                              Reject Request
+                            <button onClick={() => setShowRejectModal(request)} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                              <X size={16} /> Reject Request
                             </button>
                           </div>
                         )}
@@ -490,10 +452,8 @@ export default function UpdateRequestsPage() {
               Apply the proposed changes to "<strong>{showApproveModal.place_name}</strong>"? This will update the map data immediately.
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setShowApproveModal(null)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors cursor-pointer">Cancel</button>
-              <button onClick={() => handleApprove(showApproveModal.id)}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors cursor-pointer">Approve</button>
+              <button onClick={() => setShowApproveModal(null)} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors cursor-pointer">Cancel</button>
+              <button onClick={() => handleApprove(showApproveModal.id)} className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors cursor-pointer">Approve</button>
             </div>
           </div>
         </div>
@@ -508,42 +468,26 @@ export default function UpdateRequestsPage() {
               Reject the update request for "<strong>{showRejectModal.place_name}</strong>"?
             </p>
             <div className="mb-4 text-left">
-              <label className="block text-xs font-medium text-gray-700 mb-2">
-                Reason for rejection <span className="text-gray-400">(optional)</span>
-              </label>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                rows={3}
-                placeholder="Explain why this request is being rejected..."
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-red-500 focus:bg-white resize-none transition-all"
-              />
+              <label className="block text-xs font-medium text-gray-700 mb-2">Reason for rejection <span className="text-gray-400">(optional)</span></label>
+              <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} placeholder="Explain why this request is being rejected..." className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-red-500 focus:bg-white resize-none transition-all" />
             </div>
             <div className="flex gap-3">
-              <button onClick={() => { setShowRejectModal(null); setRejectReason(""); }}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors cursor-pointer">Cancel</button>
-              <button onClick={() => handleReject(showRejectModal.id)}
-                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors cursor-pointer">Reject</button>
+              <button onClick={() => { setShowRejectModal(null); setRejectReason(""); }} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors cursor-pointer">Cancel</button>
+              <button onClick={() => handleReject(showRejectModal.id)} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors cursor-pointer">Reject</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* IMAGE FULL-SCREEN PREVIEW MODAL */}
+      {/* Full Screen Image Preview */}
       {previewImage && (
-        <div 
-          className="fixed inset-0 z-[20000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-150"
-          onClick={() => setPreviewImage(null)}
-        >
+        <div className="fixed inset-0 z-[20000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-150" onClick={() => setPreviewImage(null)}>
           <div className="relative max-w-4xl max-h-[85vh] w-full flex items-center justify-center">
-            <img 
-              src={previewImage} 
-              alt="Preview full screen" 
-              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200"
-            />
+            <img src={previewImage} alt="Preview" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" />
           </div>
         </div>
       )}
     </div>
   );
 }
+
