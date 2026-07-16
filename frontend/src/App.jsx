@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./features/auth/context/AuthContext";
 import LoginPage from "./features/auth/pages/LoginPage";
@@ -28,21 +28,26 @@ function RootHandler() {
 }
 
 export default function App() {
-  const [showIntro, setShowIntro] = useState(true);
+  // Khởi tạo state bằng hàm callback để kiểm tra môi trường ngay lập tức khi load
+  const [showIntro, setShowIntro] = useState(() => {
+    // 1. Nếu đã xem rồi trong phiên này (sessionStorage), không hiện lại
+    if (sessionStorage.getItem('hasSeenIntro')) return false;
+
+    // 2. Kiểm tra nếu là thiết bị di động
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // 3. Kiểm tra nếu đang chạy chế độ PWA (Standalone)
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || (window.navigator.standalone === true);
+
+    // Chỉ hiện Intro nếu là Mobile HOẶC PWA
+    return isMobile || isPWA;
+  });
 
   // Xử lý ẩn Intro sau khi đã hiển thị
   const handleIntroFinished = () => {
     setShowIntro(false);
     sessionStorage.setItem('hasSeenIntro', 'true');
   };
-
-  // Kiểm tra xem đã xem intro trong phiên này chưa
-  useEffect(() => {
-    const seen = sessionStorage.getItem('hasSeenIntro');
-    if (seen) {
-      setShowIntro(false);
-    }
-  }, []);
 
   return (
     <AuthProvider>
