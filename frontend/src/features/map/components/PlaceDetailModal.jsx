@@ -32,6 +32,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   // separately so we never mutate the real place_images table from a request).
   const [requestImages, setRequestImages] = useState([]);
   const [removedRequestImages, setRemovedRequestImages] = useState([]);
+  const [submittingRequest, setSubmittingRequest] = useState(false); // guards against double/rapid submits
 
   // REVIEW STATE
   const [reviews, setReviews] = useState([]);
@@ -90,6 +91,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionRef = useRef(null);
+  const submittingRequestRef = useRef(false); // synchronous lock — blocks rapid double-clicks before React re-renders
   const dropdownRef = useRef(null);
   const timeDropdownRef = useRef(null);
   const ratingDropdownRef = useRef(null);
@@ -888,7 +890,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
   // ===== TASK 2: SUBMIT A "REQUEST CHANGE" (non-owner proposes an edit for admin review) =====
   const handleSubmitChangeRequest = async () => {
     if (!reason.trim()) return alert("Please fill in the reason!");
+    if (submittingRequestRef.current) return; // already submitting — ignore extra clicks, checked synchronously
 
+    submittingRequestRef.current = true;
+    setSubmittingRequest(true);
     try {
       // Upload any newly-added images to storage first (existing, non-removed
       // images just carry their current URL through — nothing is touched in
@@ -959,6 +964,9 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
     } catch (err) {
       console.error("Error submitting request to Supabase:", err.message);
       showToast(`Failed to submit request: ${err.message}`, "error");
+    } finally {
+      submittingRequestRef.current = false;
+      setSubmittingRequest(false);
     }
   };
 
@@ -2091,16 +2099,21 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
             {/* Buttons */}
             <div className="flex gap-3 mt-4 pt-3 border-t border-gray-100">
               <button
+                type="button"
                 onClick={() => setShowRequestModal(false)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm transition-colors"
+                disabled={submittingRequest}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleSubmitChangeRequest}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 text-sm transition-colors"
+                disabled={submittingRequest}
+                aria-busy={submittingRequest}
+                className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 text-sm transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
-                Submit Request
+                {submittingRequest ? "Submitting..." : "Submit Request"}
               </button>
             </div>
           </div>
