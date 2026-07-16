@@ -7,7 +7,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const logoutUser = async () => {
+  // `reason` is optional and gets appended to the /login redirect as a query param
+  // (e.g. "domain") so LoginPage can show the right message after the full page
+  // reload — React state doesn't survive window.location.replace().
+  const logoutUser = async (reason = null) => {
     setUser(null);
     localStorage.removeItem("session_expires_at");
     try {
@@ -15,7 +18,8 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.error("Supabase signout error:", err.message);
     }
-    window.location.replace("/login");
+    const redirectUrl = reason ? `/login?blocked=${reason}` : "/login";
+    window.location.replace(redirectUrl);
   };
 
   useEffect(() => {
@@ -41,7 +45,7 @@ export function AuthProvider({ children }) {
           // Security Restriction 2: Enforce strict whitelist policy matching the designated enterprise domain
           if (!userEmail || !userEmail.endsWith("@netcompany.com")) {
             console.error("Access denied: Client application restricted to authorized domains only.");
-            await logoutUser();
+            await logoutUser("domain");
             return;
           }
 
@@ -55,7 +59,7 @@ export function AuthProvider({ children }) {
           // Security Restriction 3: Force exit immediately if account status is deactivated
           if (profile && profile.is_active === false) {
             console.error("This account has been deactivated by the administrator.");
-            await logoutUser();
+            await logoutUser("deactivated");
             return;
           }
 
@@ -109,7 +113,7 @@ export function AuthProvider({ children }) {
           // Live Security Sweep 2: Whitelist inspection filter preventing foreign domain bindings
           if (!userEmail || !userEmail.endsWith("@netcompany.com")) {
             console.error("Access denied: Client application restricted to authorized domains only.");
-            await logoutUser();
+            await logoutUser("domain");
             return;
           }
 
@@ -123,7 +127,7 @@ export function AuthProvider({ children }) {
           // Live Security Sweep 3: Boot user immediately if deactivated during an active session
           if (profile && profile.is_active === false) {
             console.error("This account has been deactivated by the administrator.");
-            await logoutUser();
+            await logoutUser("deactivated");
             return;
           }
 

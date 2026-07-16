@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { MapPin } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { signInWithEmail, signUpWithEmail, signInWithMicrosoft } from "../api/authApi";
 import Logo from "../../../shared/ui/Logo";
@@ -10,6 +11,7 @@ function LoginPage() {
   const [isRegister, setIsRegister] = useState(false); 
   const [isSubmiting, setIsSubmiting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [showBlockedModal, setShowBlockedModal] = useState(false); // Access-denied modal shown after a redirect from AuthContext
 
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -25,6 +27,18 @@ function LoginPage() {
       navigate(fromPage, { replace: true });
     }
   }, [user, loading, navigate, fromPage]);
+
+  // Kiểm tra query param "blocked" — được AuthContext gắn vào URL khi một tài khoản
+  // bị chặn (domain không hợp lệ, hoặc tài khoản bị deactivate) rồi redirect về đây.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const blockedReason = params.get("blocked");
+    if (blockedReason === "domain" || blockedReason === "deactivated") {
+      setShowBlockedModal(true);
+      // Xóa query param khỏi URL để refresh trang không hiện lại modal
+      navigate("/login", { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Xử lý submit form đăng nhập / đăng ký bằng email
   const handleSubmit = async (e) => {
@@ -80,8 +94,61 @@ function LoginPage() {
   if (user) return null; 
 
   return (
-    <div className='min-h-screen flex items-center justify-center bg-[#94AB71] px-4'>
-      <div className="w-full max-w-[420px] rounded-[22px] bg-white px-10 py-10 shadow-2xl">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[#7fa05c] via-[#8fa870] to-[#a7bd8a] px-4">
+      {/* Decorative background — floating rounded squares + dot grid, echoing Netcompany's square motif */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-16 -left-16 nc-float-slow">
+          <div className="w-72 h-72 rounded-3xl bg-white/10 rotate-12" />
+        </div>
+        <div className="absolute top-1/3 -left-24 nc-float">
+          <div className="w-40 h-40 rounded-2xl border-2 border-white/20 rotate-45" />
+        </div>
+        <div className="absolute bottom-10 left-10 nc-float-slow">
+          <div className="w-24 h-24 rounded-xl bg-[#355e1d]/20 rotate-12" />
+        </div>
+
+        <div className="absolute -bottom-20 -right-16 nc-float-slow">
+          <div className="w-80 h-80 rounded-3xl bg-white/10 -rotate-12" />
+        </div>
+        <div className="absolute top-20 -right-10 nc-float">
+          <div className="w-32 h-32 rounded-2xl border-2 border-white/20 rotate-12" />
+        </div>
+        <div className="absolute bottom-1/3 right-16 nc-float">
+          <div className="w-20 h-20 rounded-xl bg-[#355e1d]/20 -rotate-12" />
+        </div>
+
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        {/* Large watermark logo, sitting behind the card */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 scale-[7] opacity-[0.06]">
+          <Logo />
+        </div>
+
+        {/* Soft glow directly behind the card for depth */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[520px] rounded-full bg-white/25 blur-3xl" />
+
+        {/* Floating map-pin icons — nods to NetSuggest being a place/map app */}
+        <div className="absolute top-24 left-1/4 nc-float text-white/25">
+          <MapPin size={40} strokeWidth={1.5} />
+        </div>
+        <div className="absolute bottom-16 left-1/3 nc-float-slow text-white/20">
+          <MapPin size={28} strokeWidth={1.5} />
+        </div>
+        <div className="absolute top-1/3 right-1/4 nc-float-slow text-white/20">
+          <MapPin size={32} strokeWidth={1.5} />
+        </div>
+        <div className="absolute bottom-24 right-1/4 nc-float text-white/25">
+          <MapPin size={44} strokeWidth={1.5} />
+        </div>
+      </div>
+
+      <div className="relative z-10 w-full max-w-[420px] rounded-[22px] bg-white px-10 py-10 shadow-2xl">
         <div className="mb-6 flex justify-center">
           <Logo />
         </div>
@@ -180,6 +247,47 @@ function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Access-denied modal — shown when AuthContext redirects here with ?blocked=domain or ?blocked=deactivated */}
+      {showBlockedModal && (
+        <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <svg
+                className="h-6 w-6 text-red-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m0 3.75h.008v.008H12v-.008ZM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Your account does not have permission to access this website. Please contact the IT service for support.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowBlockedModal(false)}
+              className="w-full h-11 rounded-lg bg-[#355e1d] text-white font-medium hover:bg-[#2d4f18] transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes nc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+        @keyframes nc-float-slow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-22px); } }
+        .nc-float { animation: nc-float 6s ease-in-out infinite; }
+        .nc-float-slow { animation: nc-float-slow 9s ease-in-out infinite; }
+      `}</style>
     </div>
   );
 }
