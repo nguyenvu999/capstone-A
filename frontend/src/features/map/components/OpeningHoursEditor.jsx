@@ -33,77 +33,173 @@ export default function OpeningHoursEditor({ value, onChange, disabled = false }
   };
 
   return (
-    <div className="space-y-2">
-      <label className="block font-medium text-gray-700 mb-2 text-sm">
-        Opening Hours
-      </label>
+    <div className="w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      {/* Header */}
+      <div className="mb-5">
+        <label className="block text-lg font-semibold text-gray-800">
+          Opening Hours
+        </label>
 
-      {schedule.map((day, index) => (
-        <div key={day.dayOfWeek} className="flex items-center gap-3">
-          {/* Day name */}
-          <div className="w-24 text-xs font-medium text-gray-700">
-            {day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()}
-          </div>
+        <p className="mt-1 text-sm text-gray-500">
+          Select the days and operating hours for this place.
+        </p>
+      </div>
 
-          {/* Toggle */}
-          <button
-            type="button"
-            onClick={() => handleToggle(index)}
-            disabled={disabled}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              day.isOpen ? "bg-green-600" : "bg-gray-300"
-            } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                day.isOpen ? "translate-x-6" : "translate-x-1"
+      {/* Days */}
+      <div className="divide-y divide-gray-100">
+        {schedule.map((day, index) => {
+          const dayName =
+            day.dayOfWeek.charAt(0).toUpperCase() +
+            day.dayOfWeek.slice(1).toLowerCase();
+
+          return (
+            <div
+              key={day.dayOfWeek}
+              className={`py-4 transition-colors ${
+                day.isOpen ? "bg-white" : "bg-gray-50/50"
               }`}
-            />
-          </button>
+            >
+              <div className="flex items-center justify-between gap-4">
+                {/* Day name */}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {dayName}
+                  </p>
 
-          {/* Status text */}
-          <span className={`text-xs font-medium w-12 ${day.isOpen ? "text-green-600" : "text-gray-500"}`}>
-            {day.isOpen ? "Open" : "Closed"}
-          </span>
+                  <p
+                    className={`mt-0.5 text-xs ${
+                      day.isOpen ? "text-green-600" : "text-gray-400"
+                    }`}
+                  >
+                    {day.isOpen
+                      ? `${day.openTime || "09:00"} – ${
+                          day.closeTime || "22:00"
+                        }`
+                      : "Not operating"}
+                  </p>
+                </div>
 
-          {/* Time dropdowns */}
-          {day.isOpen ? (
-            <>
-              <select
-                value={day.openTime || ""}
-                onChange={(e) => handleTimeChange(index, "openTime", e.target.value)}
-                disabled={disabled}
-                className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                <option value="">Open at</option>
-                {TIME_OPTIONS_30MIN.map(time => (
-                  <option key={time} value={time}>{time}</option>
-                ))}
-              </select>
+                {/* Toggle and status */}
+                <div className="flex flex-shrink-0 items-center gap-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={day.isOpen}
+                    aria-label={`Toggle ${dayName} opening hours`}
+                    onClick={() => handleToggle(index)}
+                    disabled={disabled}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      day.isOpen
+                        ? "bg-green-500 shadow-sm"
+                        : "bg-gray-300"
+                    } ${
+                      disabled
+                        ? "cursor-not-allowed opacity-50"
+                        : "cursor-pointer"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                        day.isOpen
+                          ? "translate-x-6"
+                          : "translate-x-1"
+                      }`}
+                    />
+                  </button>
 
-              <span className="text-gray-400 text-xs">-</span>
+                  <span
+                    className={`w-14 rounded-full px-2.5 py-1 text-center text-xs font-semibold ${
+                      day.isOpen
+                        ? "bg-green-100 text-green-700"
+                        : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {day.isOpen ? "Open" : "Closed"}
+                  </span>
+                </div>
+              </div>
 
-              <select
-                value={day.closeTime || ""}
-                onChange={(e) => handleTimeChange(index, "closeTime", e.target.value)}
-                disabled={disabled}
-                className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 cursor-pointer"
-              >
-                <option value="">Close at</option>
-                {TIME_OPTIONS_30MIN.map(time => (
-                  <option key={time} value={time}>{time}</option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <div className="flex-1"></div>
-          )}
-        </div>
-      ))}
+              {/* Time selectors */}
+              {day.isOpen && (
+                <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div>
+                    <label
+                      htmlFor={`open-time-${index}`}
+                      className="mb-1.5 block text-xs font-medium text-gray-500"
+                    >
+                      Opening time
+                    </label>
 
-      <p className="text-xs text-gray-500 mt-2">
-        💡 Supports overnight hours (e.g., 18:00 - 02:00)
-      </p>
+                    <select
+                      id={`open-time-${index}`}
+                      value={day.openTime || ""}
+                      onChange={(e) =>
+                        handleTimeChange(
+                          index,
+                          "openTime",
+                          e.target.value
+                        )
+                      }
+                      disabled={disabled}
+                      className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition hover:border-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
+                    >
+                      <option value="">Select time</option>
+
+                      {TIME_OPTIONS_30MIN.map((time) => (
+                        <option key={time} value={time}>
+                          {time}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <span className="mt-5 text-sm font-medium text-gray-400">
+                    to
+                  </span>
+
+                  <div>
+                    <label
+                      htmlFor={`close-time-${index}`}
+                      className="mb-1.5 block text-xs font-medium text-gray-500"
+                    >
+                      Closing time
+                    </label>
+
+                    <select
+                      id={`close-time-${index}`}
+                      value={day.closeTime || ""}
+                      onChange={(e) =>
+                        handleTimeChange(
+                          index,
+                          "closeTime",
+                          e.target.value
+                        )
+                      }
+                      disabled={disabled}
+                      className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none transition hover:border-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-gray-100"
+                    >
+                      <option value="">Select time</option>
+
+                      {TIME_OPTIONS_30MIN.map((time) => (
+                        <option key={time} value={time}>
+                          {time}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Information */}
+      <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+        <p className="text-xs leading-5 text-blue-700">
+          Overnight operating hours are supported, such as 18:00 to
+          02:00.
+        </p>
+      </div>
     </div>
-  );
-}
+  );}
