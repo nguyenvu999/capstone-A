@@ -36,12 +36,7 @@ export default function MapPage() {
   });
 
   const API_KEYS = [
-    "8193e665190bbc1781789003bbe9e009a8",
-    "77419a61591781935988168acf687f7dee",
-    "e0f1ad1781936067b59fec71b12732236d",
-    "11240f01781936110d1c8755abc1f409bf",
-    "1781936171b911e2359a65b021d8d9c089",
-    "f9fa81781936383165b107982082b1c25c",
+    "24b262f2ae751784692056d25b64ebd3ed"
   ];
   const [currentKeyIndex, setCurrentKeyIndex] = useState(0);
   const API_KEY = API_KEYS[currentKeyIndex]; // Lấy key hiện tại dựa trên Index
