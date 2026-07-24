@@ -832,32 +832,79 @@ export default function PlaceDetailModal({
               </>
             )}
 
-            {/* Opening Hours */}
-            {place.opening_hours && Array.isArray(place.opening_hours) && place.opening_hours.length > 0 && (
-              <>
+              {/* Opening Hours */}
+              {place.opening_hours && Array.isArray(place.opening_hours) &&place.opening_hours.length > 0 && (
+                <>
                 <hr className="border-gray-200" />
                 <div className="py-4">
+                    {/* Title */}
                   <h2 className="text-lg font-bold text-gray-900 mb-3">Opening Hours</h2>
-                  
-                  <p className={`text-sm font-semibold mb-3 ${getOpeningStatusColor(place.opening_hours)}`}>
-                    {getOpeningStatusText(place.opening_hours)}
-                  </p>
 
-                  <div className="space-y-1.5">
-                    {formatOpeningHours(place.opening_hours).map((day) => (
-                      <div key={day.day} className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-gray-700 w-24">
-                          {day.day.charAt(0) + day.day.slice(1).toLowerCase()}
-                        </span>
-                        <span className={day.display === "Closed" ? "text-gray-400" : "text-gray-600"}>
-                          {day.display}
-                        </span>
-                      </div>
-                    ))}
+                    {/* Weekly schedule */}
+                    <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                      {formatOpeningHours(place.opening_hours).map((day) => {
+                        const formattedDay =
+                          day.day.charAt(0).toUpperCase() +
+                          day.day.slice(1).toLowerCase();
+
+                        const currentDay = new Date()
+                          .toLocaleDateString("en-US", {
+                            weekday: "long",
+                          })
+                          .toLowerCase();
+
+                        const isToday =
+                          day.day.toLowerCase() === currentDay;
+
+                        const isClosed = day.display === "Closed";
+
+                        return (
+                          <div
+                            key={day.day}
+                            className={`flex items-center justify-between gap-4 border-b border-gray-100 px-4 py-3 last:border-b-0 ${
+                              isToday ? "bg-blue-50" : "bg-white"
+                            }`}
+                          >
+                            {/* Day name */}
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`text-sm font-semibold ${
+                                  isToday
+                                    ? "text-blue-700"
+                                    : "text-gray-700"
+                                }`}
+                              >
+                                {formattedDay}
+                              </span>
+
+                              {isToday && (
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                  Today
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Opening time */}
+                            {isClosed ? (
+                              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500">
+                                Closed
+                              </span>
+                            ) : (
+                              <span className="text-sm font-medium text-gray-600">
+                                {day.display}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <p className="mt-3 text-xs text-gray-400">
+                      Opening hours may vary on public holidays.
+                    </p>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
 
 
             {/* REVIEWS SECTION */}
