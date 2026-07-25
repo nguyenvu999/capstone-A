@@ -177,133 +177,72 @@ html.accessibility-mode {
   --skeleton-bg: #334155;
 }
 
-html.accessibility-mode .hover\:bg-gray-50:hover,
-html.accessibility-mode .hover\:bg-gray-100:hover,
-html.accessibility-mode .hover\:bg-white:hover,
-html.accessibility-mode .hover\:bg-blue-50:hover,
-html.accessibility-mode .hover\:bg-blue-100:hover {
-  background-color: #1f2937 !important;
-  color: #f8fafc !important;
-}
+/* ==========================================================================
+   ACCESSIBILITY MODE — BROADENED CLASS OVERRIDES
+   Covers entire Tailwind color families so new components auto-adapt.
+   Components using var(--*) tokens need no changes; these catch the rest.
+   ========================================================================== */
 
-html.accessibility-mode .active\:bg-gray-100:active {
-  background-color: #1f2937 !important;
-}
-
-/* ===== PlaceDetailModal overrides ===== */
-
-/* Review sort dropdown containers */
-html.accessibility-mode .bg-white.border-gray-100.rounded-xl.shadow-xl {
-  background-color: #111827 !important;
-  border-color: #475569 !important;
-}
-
-/* Review sort inactive buttons */
-html.accessibility-mode .bg-gray-100.text-gray-600 {
-  background-color: #1f2937 !important;
-  color: #cbd5e1 !important;
-}
-
-/* Review sort dropdown items (only inside white dropdown containers) */
-html.accessibility-mode .bg-white.border-gray-100.rounded-xl.shadow-xl .text-gray-700 {
-  color: #f8fafc !important;
-}
-html.accessibility-mode .bg-white.border-gray-100.rounded-xl.shadow-xl .hover\:bg-gray-50:hover {
-  background-color: #1f2937 !important;
-}
-
-/* "No images" placeholder box */
-html.accessibility-mode .bg-gray-100.rounded-lg.border-2.border-dashed.border-gray-300 {
-  background-color: #1f2937 !important;
-  border-color: #475569 !important;
-}
-html.accessibility-mode .mx-auto.text-gray-400 {
-  color: #94a3b8 !important;
-}
-html.accessibility-mode .text-gray-500.font-medium {
-  color: #cbd5e1 !important;
-}
-
-/* Submit review button — disabled state */
-html.accessibility-mode button:disabled.bg-gray-300 {
-  background-color: #334155 !important;
-  color: #94a3b8 !important;
-}
-
-/* Submit review button — enabled state (only inside write-review-section) */
-html.accessibility-mode #write-review-section .bg-blue-600 {
-  background-color: #f59e0b !important;
-}
-html.accessibility-mode #write-review-section .hover\:bg-blue-700:hover {
-  background-color: #d97706 !important;
-}
-html.accessibility-mode #write-review-section .bg-blue-600.text-white {
-  color: #0f172a !important;
-}
-
-/* Review sort active buttons (Time/Rating dropdowns when selected) */
-html.accessibility-mode .bg-blue-600.text-white {
-  background-color: #f59e0b !important;
-  color: #0f172a !important;
-}
-
-/* ===== Comprehensive overrides for components still using hardcoded classes =====
-   These components (MapSidebar, MapContainer, MyPlacesPanel, PlaceDetailModal,
-   BuildingDetailPanel) were NOT refactored to use CSS variables on this branch,
-   so we override their hardcoded Tailwind classes directly. */
+/* ===== Neutral backgrounds → dark surfaces ===== */
 html.accessibility-mode .bg-white {
   background-color: #111827 !important;
 }
-html.accessibility-mode .bg-gray-50 {
+html.accessibility-mode .bg-gray-50,
+html.accessibility-mode .bg-gray-50\/50,
+html.accessibility-mode .bg-gray-100,
+html.accessibility-mode .bg-gray-200,
+html.accessibility-mode .bg-gray-300 {
   background-color: #1f2937 !important;
 }
-html.accessibility-mode .bg-gray-50\/50 {
+
+/* ===== Light tint backgrounds (50/100 shades) → dark surfaces ===== */
+/* Info boxes, category chips, badges, selected states, "no images" boxes */
+html.accessibility-mode .bg-blue-50,
+html.accessibility-mode .bg-blue-50\/50,
+html.accessibility-mode .bg-blue-100,
+html.accessibility-mode .bg-indigo-50,
+html.accessibility-mode .bg-purple-50,
+html.accessibility-mode .bg-pink-50,
+html.accessibility-mode .bg-orange-50,
+html.accessibility-mode .bg-emerald-50,
+html.accessibility-mode .bg-green-50,
+html.accessibility-mode .bg-green-100,
+html.accessibility-mode .bg-amber-50,
+html.accessibility-mode .bg-amber-100,
+html.accessibility-mode .bg-red-50,
+html.accessibility-mode .bg-red-100,
+html.accessibility-mode .bg-yellow-50 {
   background-color: #1f2937 !important;
 }
-html.accessibility-mode .bg-gray-100 {
-  background-color: #1f2937 !important;
-}
-html.accessibility-mode .bg-blue-50 {
-  background-color: #1f2937 !important;
-}
-html.accessibility-mode .border-gray-100,
-html.accessibility-mode .border-gray-200,
-html.accessibility-mode .border-gray-300 {
-  border-color: #475569 !important;
-}
-html.accessibility-mode .text-gray-800,
-html.accessibility-mode .text-gray-900 {
-  color: #f8fafc !important;
-}
-html.accessibility-mode .text-gray-700 {
-  color: #f8fafc !important;
-}
-html.accessibility-mode .text-gray-600 {
-  color: #cbd5e1 !important;
-}
-html.accessibility-mode .text-gray-500 {
-  color: #94a3b8 !important;
-}
-html.accessibility-mode .text-gray-400 {
-  color: #94a3b8 !important;
-}
-html.accessibility-mode .text-blue-600 {
-  color: #f59e0b !important;
-}
+
+/* ===== Accent buttons (blue-500/600) → amber ===== */
+html.accessibility-mode .bg-blue-500,
 html.accessibility-mode .bg-blue-600 {
   background-color: #f59e0b !important;
   color: #0f172a !important;
 }
-html.accessibility-mode .hover\:bg-blue-50:hover {
-  background-color: #1f2937 !important;
+html.accessibility-mode .hover\:bg-blue-600:hover,
+html.accessibility-mode .hover\:bg-blue-700:hover {
+  background-color: #d97706 !important;
+}
+/* Force dark text on accent buttons that also carry text-white */
+html.accessibility-mode .bg-blue-500.text-white,
+html.accessibility-mode .bg-blue-600.text-white {
+  color: #0f172a !important;
 }
 
-/* ===== Itinerary feature: arbitrary hex values (green buttons) ===== */
-html.accessibility-mode .bg-\[\#2d5a1e\] {
+/* ===== Green hex buttons (itinerary + register form) → amber ===== */
+html.accessibility-mode .bg-\[\#2d5a1e\],
+html.accessibility-mode .bg-\[\#1b5e20\] {
   background-color: #f59e0b !important;
+  color: #0f172a !important;
 }
-html.accessibility-mode .hover\:bg-\[\#234617\]:hover {
+html.accessibility-mode .hover\:bg-\[\#234617\]:hover,
+html.accessibility-mode .hover\:bg-\[\#2e7d32\]:hover {
   background-color: #d97706 !important;
+}
+html.accessibility-mode .hover\:bg-\[\#2d5a1e\]\/5:hover {
+  background-color: rgba(245, 158, 11, 0.1) !important;
 }
 html.accessibility-mode .text-\[\#2d5a1e\] {
   color: #f59e0b !important;
@@ -311,12 +250,190 @@ html.accessibility-mode .text-\[\#2d5a1e\] {
 html.accessibility-mode .border-\[\#2d5a1e\] {
   border-color: #f59e0b !important;
 }
-html.accessibility-mode .hover\:bg-\[\#2d5a1e\]\/5:hover {
-  background-color: rgba(245, 158, 11, 0.1) !important;
-}
-/* Ensure text on green buttons is dark for contrast in accessibility mode */
-html.accessibility-mode .bg-\[\#2d5a1e\].text-white {
+html.accessibility-mode .bg-\[\#2d5a1e\].text-white,
+html.accessibility-mode .bg-\[\#1b5e20\].text-white {
   color: #0f172a !important;
+}
+/* Disabled green button state (RegisterPlaceForm) */
+html.accessibility-mode .disabled\:bg-\[\#a5d6a7\]:disabled {
+  background-color: #334155 !important;
+  color: #94a3b8 !important;
+}
+
+/* ===== Danger buttons (red-500/600) → brighter red, keep semantic ===== */
+html.accessibility-mode .bg-red-500,
+html.accessibility-mode .bg-red-600 {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+html.accessibility-mode .hover\:bg-red-700:hover {
+  background-color: #b91c1c !important;
+}
+html.accessibility-mode .disabled\:bg-red-300:disabled {
+  background-color: #7f1d1d !important;
+  color: #fca5a5 !important;
+}
+
+/* ===== Success/toggle (green-500) → brighter green ===== */
+html.accessibility-mode .bg-green-500 {
+  background-color: #22c55e !important;
+}
+
+/* ===== Toggle switch (OpeningHoursEditor) — off state ===== */
+/* The off-state toggle uses bg-gray-300 which blends into the dark background.
+   Give it a visible border and slightly lighter fill so it's distinguishable. */
+html.accessibility-mode .relative.inline-flex.h-7.w-12.items-center.rounded-full.bg-gray-300 {
+  background-color: #374151 !important;
+  border: 2px solid #6b7280 !important;
+}
+/* Also ensure the on-state toggle has a visible border for consistency */
+html.accessibility-mode .relative.inline-flex.h-7.w-12.items-center.rounded-full.bg-green-500 {
+  border: 2px solid #22c55e !important;
+}
+/* The inner knob stays white */
+html.accessibility-mode .inline-block.h-5.w-5.rounded-full.bg-white.shadow-sm {
+  background-color: #ffffff !important;
+}
+
+/* ===== Text colors ===== */
+/* Neutral text */
+html.accessibility-mode .text-gray-300 {
+  color: #64748b !important;
+}
+html.accessibility-mode .text-gray-400,
+html.accessibility-mode .text-gray-500 {
+  color: #94a3b8 !important;
+}
+html.accessibility-mode .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+html.accessibility-mode .text-gray-700,
+html.accessibility-mode .text-gray-800,
+html.accessibility-mode .text-gray-900 {
+  color: #f8fafc !important;
+}
+html.accessibility-mode .text-white {
+  color: #f8fafc !important;
+}
+
+/* Accent text (blue) → amber */
+html.accessibility-mode .text-blue-500,
+html.accessibility-mode .text-blue-600,
+html.accessibility-mode .text-blue-700 {
+  color: #f59e0b !important;
+}
+
+/* Semantic text — brighten for dark-bg contrast */
+html.accessibility-mode .text-emerald-600,
+html.accessibility-mode .text-emerald-700,
+html.accessibility-mode .text-green-600,
+html.accessibility-mode .text-green-700 {
+  color: #6ee7b7 !important;
+}
+html.accessibility-mode .text-red-400,
+html.accessibility-mode .text-red-500,
+html.accessibility-mode .text-red-600 {
+  color: #fca5a5 !important;
+}
+html.accessibility-mode .text-amber-600,
+html.accessibility-mode .text-amber-700 {
+  color: #fcd34d !important;
+}
+html.accessibility-mode .text-orange-600 {
+  color: #fdba74 !important;
+}
+html.accessibility-mode .text-purple-600 {
+  color: #d8b4fe !important;
+}
+html.accessibility-mode .text-indigo-600 {
+  color: #c4b5fd !important;
+}
+html.accessibility-mode .text-pink-600 {
+  color: #f9a8d4 !important;
+}
+html.accessibility-mode .text-yellow-500 {
+  color: #fde047 !important;
+}
+
+/* ===== Borders ===== */
+html.accessibility-mode .border-gray-100,
+html.accessibility-mode .border-gray-200,
+html.accessibility-mode .border-gray-300,
+html.accessibility-mode .border-gray-400 {
+  border-color: #475569 !important;
+}
+html.accessibility-mode .border-blue-200,
+html.accessibility-mode .border-blue-300,
+html.accessibility-mode .border-blue-400,
+html.accessibility-mode .border-blue-500 {
+  border-color: #f59e0b !important;
+}
+html.accessibility-mode .border-emerald-200,
+html.accessibility-mode .border-emerald-500 {
+  border-color: #6ee7b7 !important;
+}
+html.accessibility-mode .border-red-200,
+html.accessibility-mode .border-red-300,
+html.accessibility-mode .border-red-500 {
+  border-color: #fca5a5 !important;
+}
+html.accessibility-mode .border-amber-100,
+html.accessibility-mode .border-amber-500 {
+  border-color: #fcd34d !important;
+}
+html.accessibility-mode .hover\:border-gray-300:hover,
+html.accessibility-mode .hover\:border-gray-400:hover {
+  border-color: #64748b !important;
+}
+html.accessibility-mode .hover\:border-blue-300:hover,
+html.accessibility-mode .hover\:border-blue-400:hover,
+html.accessibility-mode .hover\:border-blue-500:hover {
+  border-color: #f59e0b !important;
+}
+
+/* ===== Hover backgrounds ===== */
+html.accessibility-mode .hover\:bg-gray-50:hover,
+html.accessibility-mode .hover\:bg-gray-100:hover,
+html.accessibility-mode .hover\:bg-gray-200:hover,
+html.accessibility-mode .hover\:bg-white:hover,
+html.accessibility-mode .hover\:bg-blue-50:hover,
+html.accessibility-mode .hover\:bg-blue-100:hover,
+html.accessibility-mode .hover\:bg-emerald-50:hover,
+html.accessibility-mode .hover\:bg-green-50:hover,
+html.accessibility-mode .hover\:bg-amber-50:hover,
+html.accessibility-mode .hover\:bg-indigo-50:hover,
+html.accessibility-mode .hover\:bg-purple-50:hover,
+html.accessibility-mode .hover\:bg-pink-50:hover,
+html.accessibility-mode .hover\:bg-orange-50:hover {
+  background-color: #1f2937 !important;
+  color: #f8fafc !important;
+}
+html.accessibility-mode .hover\:bg-red-50:hover,
+html.accessibility-mode .hover\:bg-red-100:hover {
+  background-color: #451a1b !important;
+}
+html.accessibility-mode .active\:bg-gray-100:active {
+  background-color: #1f2937 !important;
+}
+
+/* ===== Ring / focus accents ===== */
+html.accessibility-mode .ring-blue-500\/20 {
+  --tw-ring-color: rgba(245, 158, 11, 0.2) !important;
+}
+html.accessibility-mode .focus\:ring-blue-100:focus,
+html.accessibility-mode .focus\:ring-blue-500:focus {
+  --tw-ring-color: rgba(245, 158, 11, 0.3) !important;
+}
+html.accessibility-mode .focus\:border-blue-500:focus,
+html.accessibility-mode .focus-within\:border-blue-500:focus-within {
+  border-color: #f59e0b !important;
+}
+
+/* ===== Disabled states ===== */
+html.accessibility-mode button:disabled.bg-gray-300,
+html.accessibility-mode .disabled\:bg-gray-300:disabled {
+  background-color: #334155 !important;
+  color: #94a3b8 !important;
 }
 
 /* ===== Input fields & placeholders in accessibility mode ===== */
@@ -375,4 +492,11 @@ body,
 .custom-google-popup .mapboxgl-popup-tip,
 .custom-google-popup .trackasiagl-popup-tip {
   border-top-color: #ffffff !important;
+}
+
+/* Popup cards keep white background in accessibility mode — reset text to dark for readability */
+/* The popup uses className "focused-place-popup" (see MapContainer.jsx line 795).
+   Higher specificity (2 classes + !important) beats the broad .text-gray-600 override (1 class + !important). */
+html.accessibility-mode .focused-place-popup .text-gray-600 {
+  color: #4b5563 !important;
 }
