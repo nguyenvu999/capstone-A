@@ -7,7 +7,7 @@ import { supabase } from "../../auth/api/supabaseClient";
 
 export default function Navbar({ user, onSignOut, onRegisterClick, onNotificationClick }) {
   const navigate = useNavigate();
-  const { isAccessibilityMode, toggleAccessibilityMode, resetAccessibilityMode } = useAccessibility();
+  const { isAccessibilityMode, toggleAccessibilityMode } = useAccessibility();
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -222,7 +222,6 @@ export default function Navbar({ user, onSignOut, onRegisterClick, onNotificatio
                 <button
                   onClick={() => {
                     setIsDropdownOpen(false);
-                    resetAccessibilityMode();
                     if (onSignOut) onSignOut();
                   }}
                   className={`w-full text-left px-3 py-2 text-sm font-medium rounded-xl flex items-center gap-2 transition-colors text-[var(--text-danger)] hover:bg-[var(--bg-danger-hover)]`}

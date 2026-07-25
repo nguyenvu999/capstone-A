@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { MapPin } from "lucide-react";
+import { MapPin, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { signInWithEmail, signUpWithEmail, signInWithMicrosoft } from "../api/authApi";
 import Logo from "../../../shared/ui/Logo";
+import { useAccessibility } from "../../../shared/context/AccessibilityContext";
 
 function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,6 +15,7 @@ function LoginPage() {
   const [showBlockedModal, setShowBlockedModal] = useState(false); // Access-denied modal shown after a redirect from AuthContext
 
   const { user, loading } = useAuth();
+  const { isAccessibilityMode, toggleAccessibilityMode } = useAccessibility();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -95,6 +97,20 @@ function LoginPage() {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-[#7fa05c] via-[#8fa870] to-[#a7bd8a] px-4">
+      {/* Accessibility Toggle — upper-left corner */}
+      <button
+        type="button"
+        onClick={toggleAccessibilityMode}
+        aria-pressed={isAccessibilityMode}
+        className={`absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium transition-all shadow-md backdrop-blur-sm ${
+          isAccessibilityMode
+            ? "bg-[#1f2937]/90 text-[#fbbf24] border border-[#f59e0b]/50"
+            : "bg-white/80 text-gray-700 border border-gray-200/50 hover:bg-white"
+        }`}
+      >
+        {isAccessibilityMode ? <Eye size={14} /> : <EyeOff size={14} />}
+        <span className="hidden sm:inline">Accessibility</span>
+      </button>
       {/* Decorative background — floating rounded squares + dot grid, echoing Netcompany's square motif */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-16 -left-16 nc-float-slow">

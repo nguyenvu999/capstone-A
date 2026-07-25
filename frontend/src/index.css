@@ -500,3 +500,80 @@ body,
 html.accessibility-mode .focused-place-popup .text-gray-600 {
   color: #4b5563 !important;
 }
+
+/* ==========================================================================
+   ACCESSIBILITY MODE — LOGIN PAGE OVERRIDES
+   The login page uses custom green hex colors that aren't in the broad overrides.
+   ========================================================================== */
+
+/* Card background is already handled by .bg-white → #111827 override above */
+
+/* Custom green text → light/amber for dark background readability */
+html.accessibility-mode .text-\[\#5f6a60\],
+html.accessibility-mode .text-\[\#6b746c\] {
+  color: #cbd5e1 !important;
+}
+html.accessibility-mode .text-\[\#355e1d\] {
+  color: #f59e0b !important;
+}
+
+/* Custom green buttons → amber */
+html.accessibility-mode .bg-\[\#355e1d\] {
+  background-color: #f59e0b !important;
+  color: #0f172a !important;
+}
+html.accessibility-mode .hover\:bg-\[\#2d4f18\]:hover {
+  background-color: #d97706 !important;
+}
+
+/* Input focus border → amber */
+html.accessibility-mode .focus\:border-\[\#355e1d\]:focus {
+  border-color: #f59e0b !important;
+}
+
+/* Decorative background elements — keep subtle but tone down brightness */
+html.accessibility-mode .bg-\[\#355e1d\]\/20 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+/* Logo component in accessibility mode */
+html.accessibility-mode .bg-\[\#dce8c8\] {
+  background-color: #1e293b !important;
+}
+html.accessibility-mode .text-black {
+  color: #f8fafc !important;
+}
+html.accessibility-mode h1,
+html.accessibility-mode h2 {
+  color: #f8fafc !important;
+}
+
+/* ===== Login page background — darken the entire backdrop ===== */
+/* Main gradient background */
+html.accessibility-mode .bg-gradient-to-br.from-\[\#7fa05c\].via-\[\#8fa870\].to-\[\#a7bd8a\] {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #111827 100%) !important;
+}
+
+/* Decorative white translucent squares → dark translucent */
+html.accessibility-mode .bg-white\/10 {
+  background-color: rgba(15, 23, 42, 0.3) !important;
+}
+html.accessibility-mode .bg-white\/25 {
+  background-color: rgba(15, 23, 42, 0.5) !important;
+}
+html.accessibility-mode .border-white\/20 {
+  border-color: rgba(245, 158, 11, 0.15) !important;
+}
+
+/* Map pin icons in background → amber tinted */
+html.accessibility-mode .text-white\/20,
+html.accessibility-mode .text-white\/25 {
+  color: rgba(245, 158, 11, 0.15) !important;
+}
+
+/* Dot grid pattern — already very subtle, keep but shift to dark */
+html.accessibility-mode [style*="radial-gradient"] {
+  opacity: 0.03 !important;
+}
+
+/* Watermark logo behind card — already handled by .text-black override above */
