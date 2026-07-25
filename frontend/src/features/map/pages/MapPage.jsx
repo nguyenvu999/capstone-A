@@ -34,6 +34,7 @@ export default function MapPage() {
     priceLevels: [],
     ratings: []
   });
+
   const API_KEYS = [
     "24b262f2ae751784692056d25b64ebd3ed"
   ];

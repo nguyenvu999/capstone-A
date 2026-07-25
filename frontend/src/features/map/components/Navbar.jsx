@@ -93,10 +93,12 @@ export default function Navbar({ user, onSignOut, onRegisterClick, onNotificatio
     : "border-gray-100 shadow-sm";
 
   // ✅ MỚI: Bấm vào 1 notification cụ thể → đóng dropdown + báo cho MapPage mở đúng place đó
+  // Bảng "notifications" không có cột place_id riêng, nên place_id được lưu tạm
+  // trong cột "link" có sẵn (xem UpdateRequestsPage.jsx phía admin, hàm sendNotification).
   const handleNotificationItemClick = (notif) => {
     setShowNotifications(false);
-    if (onNotificationClick && notif.place_id) {
-      onNotificationClick(notif.place_id);
+    if (onNotificationClick && notif.link) {
+      onNotificationClick(notif.link);
     }
   };
 
