@@ -94,6 +94,25 @@ export default function PlaceDetailModal({
     loadImages();
   }, [place?.id]);
 
+  // ✅ MỚI: Sync lại editData mỗi khi `place` prop đổi (ví dụ do realtime cập nhật
+  // từ trang Admin Map sau khi request được approve). Không ghi đè khi đang ở
+  // Edit mode để tránh mất dữ liệu admin đang gõ dở.
+  useEffect(() => {
+    if (showEditForm) return;
+    setEditData({
+      name: place?.name || "",
+      description: place?.description || "",
+      address: place?.address || "",
+      latitude: place?.latitude || "",
+      longitude: place?.longitude || "",
+      price_level: place?.price_level || 1,
+      business_status: place?.business_status || "open",
+      floor_level: place?.floor_level ? String(place.floor_level) : "1",
+      category: place?.category || "restaurant",
+      opening_hours: place?.opening_hours || getDefaultSchedule(),
+    });
+  }, [place]);
+
   // LOAD REVIEWS WHEN MODAL OPENS 
   useEffect(() => {
     let mounted = true;
