@@ -5,6 +5,28 @@ import { useAuth } from "../../auth/context/AuthContext";
 import { supabase } from "../../auth/api/supabaseClient";
 import Logo from "../../../shared/ui/Logo";
 
+// ✅ MỚI: "đã xem" phải sống sót qua việc chuyển trang (AdminNavbar bị mount lại
+// ở mỗi trang admin), nên lưu vào localStorage thay vì chỉ giữ trong state.
+const SEEN_STORAGE_KEY = "admin_notif_seen_request_ids";
+
+const loadSeenIds = () => {
+  try {
+    const raw = localStorage.getItem(SEEN_STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const saveSeenIds = (set) => {
+  try {
+    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // localStorage không khả dụng (private mode, quota...) — bỏ qua, không crash app
+  }
+};
+
 export default function AdminNavbar() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -12,7 +34,8 @@ export default function AdminNavbar() {
   // ✅ MỚI: tập id các request mà admin đã "xem" (mở dropdown / bấm vào).
   // Tách biệt hoàn toàn khỏi trạng thái pending/approved/rejected trên server —
   // chỉ dùng để quyết định số hiển thị trên chuông, KHÔNG ảnh hưởng dữ liệu request.
-  const [seenIds, setSeenIds] = useState(new Set());
+  // Khởi tạo từ localStorage để không bị mất khi component remount lúc chuyển trang.
+  const [seenIds, setSeenIds] = useState(() => loadSeenIds());
 
   const notifRef = useRef(null);
   const navigate = useNavigate();
@@ -21,6 +44,16 @@ export default function AdminNavbar() {
 
   // ✅ MỚI: unreadCount tính động = số request pending mà admin CHƯA xem qua chuông
   const unreadCount = notifications.filter(n => !seenIds.has(n.id)).length;
+
+  // ✅ MỚI: helper — vừa update state vừa ghi xuống localStorage cùng lúc
+  const markAsSeen = (ids) => {
+    setSeenIds(prev => {
+      const updated = new Set(prev);
+      ids.forEach(id => updated.add(id));
+      saveSeenIds(updated);
+      return updated;
+    });
+  };
 
   // 1. Fetch ONLY pending requests from the database
   const fetchNotifications = async () => {
@@ -34,8 +67,26 @@ export default function AdminNavbar() {
 
       if (error) throw error;
 
-      setNotifications(data || []);
+      const pending = data || [];
+      setNotifications(pending);
       // ❌ Không set unreadCount ở đây nữa — nó được tính từ notifications + seenIds
+
+      // ✅ MỚI: dọn rác — id nào đã approve/reject rồi (không còn pending) thì
+      // bỏ khỏi seenIds trong localStorage, tránh phình to vô hạn theo thời gian.
+      const pendingIds = new Set(pending.map(n => n.id));
+      setSeenIds(prev => {
+        let changed = false;
+        const trimmed = new Set();
+        prev.forEach(id => {
+          if (pendingIds.has(id)) {
+            trimmed.add(id);
+          } else {
+            changed = true;
+          }
+        });
+        if (changed) saveSeenIds(trimmed);
+        return changed ? trimmed : prev;
+      });
     } catch (err) {
       console.error("Error fetching notifications:", err.message);
     }
@@ -102,15 +153,12 @@ export default function AdminNavbar() {
 
   // ✅ MỚI: Bấm mở chuông → đánh dấu toàn bộ notification hiện có là "đã xem" ngay,
   // số trên chuông giảm về 0 ngay lập tức mà không cần chờ admin approve/reject.
+  // Dùng markAsSeen nên trạng thái này được lưu localStorage, sống sót qua điều hướng trang.
   const handleToggleNotifications = () => {
     setShowNotifications(prev => {
       const next = !prev;
       if (next) {
-        setSeenIds(prevSeen => {
-          const updated = new Set(prevSeen);
-          notifications.forEach(n => updated.add(n.id));
-          return updated;
-        });
+        markAsSeen(notifications.map(n => n.id));
       }
       return next;
     });
@@ -119,7 +167,7 @@ export default function AdminNavbar() {
   // ✅ MỚI: Bấm vào từng notification cụ thể — đánh dấu seen (phòng trường hợp bấm
   // nhanh trước khi handleToggleNotifications kịp cập nhật) rồi điều hướng như cũ.
   const handleNotificationItemClick = (notif) => {
-    setSeenIds(prev => new Set(prev).add(notif.id));
+    markAsSeen([notif.id]);
     navigate("/admin/requests");
     setShowNotifications(false);
   };
