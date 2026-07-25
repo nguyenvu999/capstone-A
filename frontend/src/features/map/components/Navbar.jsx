@@ -4,10 +4,11 @@ import { LogOut, Map, Plus, BookMarked, Eye, EyeOff, Bell, Clock } from "lucide-
 import { useAccessibility } from "../../../shared/context/AccessibilityContext";
 // CHÚ Ý: Sửa đường dẫn dưới đây cho đúng với vị trí thực tế của file supabaseClient.js trong máy bạn
 import { supabase } from "../../auth/api/supabaseClient";
-export default function Navbar({ user, onSignOut, onRegisterClick }) {
+
+export default function Navbar({ user, onSignOut, onRegisterClick, onNotificationClick }) {
   const navigate = useNavigate();
   const { isAccessibilityMode, toggleAccessibilityMode } = useAccessibility();
-  
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -91,6 +92,16 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
     ? "border-[#f59e0b] shadow-[0_8px_30px_rgba(15,23,42,0.35)]"
     : "border-gray-100 shadow-sm";
 
+  // ✅ MỚI: Bấm vào 1 notification cụ thể → đóng dropdown + báo cho MapPage mở đúng place đó
+  // Bảng "notifications" không có cột place_id riêng, nên place_id được lưu tạm
+  // trong cột "link" có sẵn (xem UpdateRequestsPage.jsx phía admin, hàm sendNotification).
+  const handleNotificationItemClick = (notif) => {
+    setShowNotifications(false);
+    if (onNotificationClick && notif.link) {
+      onNotificationClick(notif.link);
+    }
+  };
+
   return (
     <nav className={`absolute top-0 left-0 right-0 z-[100] h-16 backdrop-blur-md border-b px-4 md:px-6 flex items-center justify-between select-none transition-colors duration-200 bg-[var(--nav-bg)] ${navClasses}`}>
       
@@ -129,7 +140,11 @@ export default function Navbar({ user, onSignOut, onRegisterClick }) {
                   <p className="p-4 text-xs text-center text-[var(--text-secondary)]">No new notifications</p>
                 ) : (
                   notifications.map((notif) => (
-                    <div key={notif.id} className="px-4 py-3 hover:bg-[var(--bg-hover)] cursor-pointer flex gap-3 items-start border-b border-[var(--border)] last:border-0">
+                    <div
+                      key={notif.id}
+                      onClick={() => handleNotificationItemClick(notif)}
+                      className="px-4 py-3 hover:bg-[var(--bg-hover)] cursor-pointer flex gap-3 items-start border-b border-[var(--border)] last:border-0"
+                    >
                       <Clock size={16} className="text-amber-500 mt-0.5" />
                       <div>
                         <p className="text-xs text-[var(--text-primary)]">{notif.message}</p>
