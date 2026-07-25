@@ -34,7 +34,6 @@ export default function MapPage() {
     priceLevels: [],
     ratings: []
   });
-
   const API_KEYS = [
     "24b262f2ae751784692056d25b64ebd3ed"
   ];
@@ -401,10 +400,167 @@ export default function MapPage() {
     }
   };
 
+  // =====================================================================
+  // ✅ MỚI 1: Bấm vào 1 notification → fetch đúng place từ DB → mở Place
+  //    Detail Modal + fly map tới marker của place đó
+  // =====================================================================
+  const handleNotificationClick = async (placeId) => {
+    if (!placeId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("places")
+        .select("*")
+        .eq("id", placeId)
+        .single();
+
+      if (error || !data) {
+        console.error("❌ [MapPage] Không tìm thấy địa điểm từ notification:", error?.message);
+        return;
+      }
+
+      const normalizedPlace = {
+        ...data,
+        latitude: Number(data.latitude),
+        longitude: Number(data.longitude),
+        isSupabaseData: true,
+        place_type: data.place_type || "standalone",
+        building_name: data.building_name || null,
+        floor_level: data.floor_level ? String(data.floor_level).toUpperCase() : null,
+        building_address: data.building_address || null,
+      };
+
+      // Đóng các panel khác đang mở
+      setShowRegisterForm(false);
+      setShowMyPlaces(false);
+      setOpenedFromBuilding(null);
+      setOpenedFromBuildingFloor(null);
+
+      // Mở Place Detail Modal đúng place này
+      setSelectedPlace(normalizedPlace);
+
+      // Fly map tới marker + mở popup
+      setFocusedLocation({
+        id: normalizedPlace.id,
+        lat: normalizedPlace.latitude,
+        lng: normalizedPlace.longitude,
+        name: normalizedPlace.name,
+        address: normalizedPlace.address,
+        rating: normalizedPlace.rating || 0,
+        isNewCustomPoint: false,
+        place_type: normalizedPlace.place_type,
+        building_name: normalizedPlace.building_name,
+        floor_level: normalizedPlace.floor_level,
+        popupRefreshKey: Date.now(),
+      });
+    } catch (err) {
+      console.error("❌ [MapPage] handleNotificationClick error:", err);
+    }
+  };
+
+  // =====================================================================
+  // ✅ MỚI 2: Lắng nghe realtime UPDATE trên bảng "places". Khi admin
+  //    approve 1 request và bảng places được cập nhật, panel đang mở
+  //    (selectedPlace) và marker/popup trên map (categoryResults /
+  //    focusedLocation) sẽ tự cập nhật ngay, không cần refresh trang.
+  // =====================================================================
+  useEffect(() => {
+    const channel = supabase
+      .channel("user_places_realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "places" },
+        (payload) => {
+          const updated = payload.new;
+          if (!updated) return;
+
+          const normalized = {
+            id: updated.id,
+            name: updated.name,
+            latitude: Number(updated.latitude),
+            longitude: Number(updated.longitude),
+            address: updated.address,
+            category: updated.category,
+            price_level: updated.price_level,
+            business_status: updated.business_status,
+            rating: updated.rating || 0,
+            created_by: updated.created_by,
+            created_by_email: updated.created_by_email,
+            description: updated.description,
+            opening_hours: updated.opening_hours || null,
+            isSupabaseData: true,
+            place_type: updated.place_type || "standalone",
+            building_name: updated.building_name || null,
+            floor_level: updated.floor_level ? String(updated.floor_level).toUpperCase() : null,
+            building_address: updated.building_address || null,
+          };
+
+          // Nếu đang lọc theo category mà place đổi category ra khỏi filter
+          // hiện tại → gỡ khỏi danh sách hiển thị. Ngược lại → cập nhật tại chỗ.
+          const stillMatchesCategory = !activeCategory || normalized.category === activeCategory;
+
+          setAllPlaces(prev => {
+            if (!stillMatchesCategory) {
+              return prev.filter(p => String(p.id) !== String(normalized.id));
+            }
+            return prev.map(p =>
+              String(p.id) === String(normalized.id)
+                ? { ...p, ...normalized, distanceText: p.distanceText }
+                : p
+            );
+          });
+
+          setCategoryResults(prev => {
+            if (!stillMatchesCategory) {
+              return prev.filter(p => String(p.id) !== String(normalized.id));
+            }
+            return prev.map(p =>
+              String(p.id) === String(normalized.id)
+                ? { ...p, ...normalized, distanceText: p.distanceText }
+                : p
+            );
+          });
+
+          // Panel đang mở đúng place này → cập nhật ngay
+          setSelectedPlace(prev =>
+            prev && String(prev.id) === String(normalized.id)
+              ? { ...prev, ...normalized }
+              : prev
+          );
+
+          // Marker/popup đang focus đúng place này → cập nhật ngay
+          setFocusedLocation(prev =>
+            prev && String(prev.id) === String(normalized.id)
+              ? {
+                  ...prev,
+                  name: normalized.name,
+                  address: normalized.address,
+                  rating: normalized.rating,
+                  place_type: normalized.place_type,
+                  building_name: normalized.building_name,
+                  floor_level: normalized.floor_level,
+                  popupRefreshKey: Date.now(),
+                }
+              : prev
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeCategory]);
+
   return (
     <div className="relative h-screen w-screen overflow-hidden flex flex-col bg-white">
       {/* ===== THAY ĐỔI: Truyền handleOpenRegisterForm thay vì setShowRegisterForm ===== */}
-      <Navbar user={user} onSignOut={logoutUser} onRegisterClick={handleOpenRegisterForm} />
+      <Navbar
+        user={user}
+        onSignOut={logoutUser}
+        onRegisterClick={handleOpenRegisterForm}
+        onNotificationClick={handleNotificationClick}
+      />
       
       <div className="w-full flex-1 relative flex overflow-hidden z-10">
         
