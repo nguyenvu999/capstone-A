@@ -32,9 +32,19 @@ export function AccessibilityProvider({ children }) {
     };
   }, [isAccessibilityMode]);
 
+  const resetAccessibilityMode = () => {
+    setIsAccessibilityMode(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("netsuggest-accessibility-mode");
+      document.documentElement.classList.remove("accessibility-mode");
+      document.body.classList.remove("accessibility-mode");
+    }
+  };
+
   const value = useMemo(() => ({
     isAccessibilityMode,
     toggleAccessibilityMode: () => setIsAccessibilityMode((prev) => !prev),
+    resetAccessibilityMode,
   }), [isAccessibilityMode]);
 
   return (
