@@ -16,7 +16,9 @@ export default function UpdateRequestsPage() {
   const [previewImage, setPreviewImage] = useState(null);
 
   // --- HÀM GỬI THÔNG BÁO ---
-  const sendNotification = async (email, title, message) => {
+  // ✅ MỚI: nhận thêm placeId, lưu vào cột "link" có sẵn trong bảng notifications
+  // (bảng không có cột place_id riêng nên tận dụng cột link để trỏ tới place)
+  const sendNotification = async (email, title, message, placeId = null) => {
     try {
       const { data: userData } = await supabase
         .from("profiles")
@@ -30,6 +32,7 @@ export default function UpdateRequestsPage() {
           title: title,
           message: message,
           is_read: false,
+          link: placeId ? String(placeId) : null, // ✅ MỚI
         });
       }
     } catch (err) {
@@ -172,11 +175,12 @@ export default function UpdateRequestsPage() {
 
       if (requestError) throw requestError;
 
-      // Gửi thông báo
+      // Gửi thông báo — ✅ truyền kèm place_id để user bấm vào mở đúng place
       await sendNotification(
         targetRequest.requested_by_email,
         "Update Approved",
-        `Your update request for "${targetRequest.place_name}" has been approved.`
+        `Your update request for "${targetRequest.place_name}" has been approved.`,
+        targetRequest.place_id
       );
 
       setRequests(prev => prev.map(r =>
@@ -206,11 +210,12 @@ export default function UpdateRequestsPage() {
 
       if (error) throw error;
 
-      // Gửi thông báo
+      // Gửi thông báo — ✅ truyền kèm place_id để user bấm vào mở đúng place
       await sendNotification(
         targetRequest.requested_by_email,
         "Update Rejected",
-        `Your update request for "${targetRequest.place_name}" was rejected. ${rejectReason ? `Reason: ${rejectReason}` : ""}`
+        `Your update request for "${targetRequest.place_name}" was rejected. ${rejectReason ? `Reason: ${rejectReason}` : ""}`,
+        targetRequest.place_id
       );
 
       setRequests(prev => prev.map(r =>

@@ -5,15 +5,55 @@ import { useAuth } from "../../auth/context/AuthContext";
 import { supabase } from "../../auth/api/supabaseClient";
 import Logo from "../../../shared/ui/Logo";
 
+// ✅ MỚI: "đã xem" phải sống sót qua việc chuyển trang (AdminNavbar bị mount lại
+// ở mỗi trang admin), nên lưu vào localStorage thay vì chỉ giữ trong state.
+const SEEN_STORAGE_KEY = "admin_notif_seen_request_ids";
+
+const loadSeenIds = () => {
+  try {
+    const raw = localStorage.getItem(SEEN_STORAGE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const saveSeenIds = (set) => {
+  try {
+    localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    // localStorage không khả dụng (private mode, quota...) — bỏ qua, không crash app
+  }
+};
+
 export default function AdminNavbar() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+
+  // ✅ MỚI: tập id các request mà admin đã "xem" (mở dropdown / bấm vào).
+  // Tách biệt hoàn toàn khỏi trạng thái pending/approved/rejected trên server —
+  // chỉ dùng để quyết định số hiển thị trên chuông, KHÔNG ảnh hưởng dữ liệu request.
+  // Khởi tạo từ localStorage để không bị mất khi component remount lúc chuyển trang.
+  const [seenIds, setSeenIds] = useState(() => loadSeenIds());
 
   const notifRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { logoutUser } = useAuth();
+
+  // ✅ MỚI: unreadCount tính động = số request pending mà admin CHƯA xem qua chuông
+  const unreadCount = notifications.filter(n => !seenIds.has(n.id)).length;
+
+  // ✅ MỚI: helper — vừa update state vừa ghi xuống localStorage cùng lúc
+  const markAsSeen = (ids) => {
+    setSeenIds(prev => {
+      const updated = new Set(prev);
+      ids.forEach(id => updated.add(id));
+      saveSeenIds(updated);
+      return updated;
+    });
+  };
 
   // 1. Fetch ONLY pending requests from the database
   const fetchNotifications = async () => {
@@ -27,8 +67,26 @@ export default function AdminNavbar() {
 
       if (error) throw error;
 
-      setNotifications(data || []);
-      setUnreadCount(data?.length || 0);
+      const pending = data || [];
+      setNotifications(pending);
+      // ❌ Không set unreadCount ở đây nữa — nó được tính từ notifications + seenIds
+
+      // ✅ MỚI: dọn rác — id nào đã approve/reject rồi (không còn pending) thì
+      // bỏ khỏi seenIds trong localStorage, tránh phình to vô hạn theo thời gian.
+      const pendingIds = new Set(pending.map(n => n.id));
+      setSeenIds(prev => {
+        let changed = false;
+        const trimmed = new Set();
+        prev.forEach(id => {
+          if (pendingIds.has(id)) {
+            trimmed.add(id);
+          } else {
+            changed = true;
+          }
+        });
+        if (changed) saveSeenIds(trimmed);
+        return changed ? trimmed : prev;
+      });
     } catch (err) {
       console.error("Error fetching notifications:", err.message);
     }
@@ -93,11 +151,32 @@ export default function AdminNavbar() {
     return `${diffDays}d ago`;
   };
 
+  // ✅ MỚI: Bấm mở chuông → đánh dấu toàn bộ notification hiện có là "đã xem" ngay,
+  // số trên chuông giảm về 0 ngay lập tức mà không cần chờ admin approve/reject.
+  // Dùng markAsSeen nên trạng thái này được lưu localStorage, sống sót qua điều hướng trang.
+  const handleToggleNotifications = () => {
+    setShowNotifications(prev => {
+      const next = !prev;
+      if (next) {
+        markAsSeen(notifications.map(n => n.id));
+      }
+      return next;
+    });
+  };
+
+  // ✅ MỚI: Bấm vào từng notification cụ thể — đánh dấu seen (phòng trường hợp bấm
+  // nhanh trước khi handleToggleNotifications kịp cập nhật) rồi điều hướng như cũ.
+  const handleNotificationItemClick = (notif) => {
+    markAsSeen([notif.id]);
+    navigate("/admin/requests");
+    setShowNotifications(false);
+  };
+
   // Main navigation links visible directly on the navbar
   const navItems = [
     { path: "/admin", label: "Map View", icon: Map },
     { path: "/admin/users", label: "User Management", icon: Users },
-    { path: "/admin/requests", label: "Update Requests", icon: FileText, hasBadge: true },
+    { path: "/admin/requests", label: "Update Requests", icon: FileText },
   ];
 
   return (
@@ -134,13 +213,8 @@ export default function AdminNavbar() {
               >
                 <Icon size={16} />
                 <span>{item.label}</span>
-                
-                {/* Inline Badge inside the Update Requests button tab for quick visibility */}
-                {item.hasBadge && unreadCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">
-                    {unreadCount}
-                  </span>
-                )}
+                {/* ❌ ĐÃ XOÁ: badge số pending request trên tab Update Requests.
+                    Số lượng chưa xem giờ chỉ hiển thị trên icon chuông. */}
               </button>
             );
           })}
@@ -164,9 +238,7 @@ export default function AdminNavbar() {
                   title={item.label}
                 >
                   <Icon size={18} />
-                  {item.hasBadge && unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                  )}
+                  {/* ❌ ĐÃ XOÁ: chấm đỏ báo pending trên icon mobile của Update Requests */}
                 </button>
               );
             })}
@@ -177,7 +249,7 @@ export default function AdminNavbar() {
           {/* REALTIME PENDING NOTIFICATION BELL (FACEBOOK STYLE) */}
           <div className="relative" ref={notifRef}>
             <button
-              onClick={() => setShowNotifications(!showNotifications)}
+              onClick={handleToggleNotifications}
               className={`relative p-2 rounded-full transition-all cursor-pointer focus:outline-none ${
                 showNotifications ? "bg-blue-50 text-blue-600" : "text-gray-500 hover:text-blue-600 hover:bg-gray-100"
               }`}
@@ -216,10 +288,7 @@ export default function AdminNavbar() {
                     notifications.map((notif) => (
                       <div
                         key={notif.id}
-                        onClick={() => {
-                          navigate("/admin/requests");
-                          setShowNotifications(false);
-                        }}
+                        onClick={() => handleNotificationItemClick(notif)}
                         className="p-3 hover:bg-gray-50 bg-blue-50/60 flex gap-3 items-start transition-colors cursor-pointer"
                       >
                         <div className="mt-0.5">
