@@ -41,8 +41,10 @@ export default function UpdateRequestsPage() {
   };
 
   // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA
-  const fetchRequests = async () => {
-    setLoading(true);
+  // ✅ MỚI: silent=true để refetch do realtime chạy êm, không hiện lại spinner
+  // full-page (chỉ dùng spinner cho lần load đầu tiên khi vào trang).
+  const fetchRequests = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data, error } = await supabase
         .from("place_update_requests")
@@ -75,14 +77,36 @@ export default function UpdateRequestsPage() {
       }
     } catch (error) {
       console.error("Error fetching requests:", error.message);
-      alert("Failed to load update requests: " + error.message);
+      if (!silent) alert("Failed to load update requests: " + error.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchRequests();
+
+    // ✅ MỚI: Lắng nghe realtime trên bảng place_update_requests. Khi có request
+    // mới được user gửi lên (INSERT), hoặc 1 request khác được xử lý ở tab/máy
+    // khác (UPDATE), trang này tự fetch lại — không cần F5.
+    const channel = supabase
+      .channel("update_requests_page_realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "place_update_requests",
+        },
+        () => {
+          fetchRequests(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filteredRequests = requests.filter(r => r.status === activeTab);
