@@ -1026,7 +1026,7 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                 </button>
 
                 {showOptionsDropdown && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute right-0 mt-2 w-48 max-h-64 overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150 custom-scrollbar">
                     {isOwner ? (
                       /* Owner menu */
                       <>
@@ -1051,44 +1051,10 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                           <Trash2 size={16} />
                           <span>Delete Place</span>
                         </button>
-
-                        <hr className="my-1 border-gray-100" />
-
-                        <button
-                          onClick={() => {
-                            if (!user) {
-                              showToast("Please log in to add places to an itinerary", "warning");
-                              setShowOptionsDropdown(false);
-                              return;
-                            }
-                            setShowAddToItinerary(true);
-                            setShowOptionsDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
-                        >
-                          <Bookmark size={16} className="text-gray-400" />
-                          <span>Add to Itinerary</span>
-                        </button>
                       </>
                     ) : (
                       /* Non-owner menu */
                       <>
-                        <button
-                          onClick={() => {
-                            if (!user) {
-                              showToast("Please log in to add places to an itinerary", "warning");
-                              setShowOptionsDropdown(false);
-                              return;
-                            }
-                            setShowAddToItinerary(true);
-                            setShowOptionsDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
-                        >
-                          <Bookmark size={16} className="text-gray-400" />
-                          <span>Add to Itinerary</span>
-                        </button>
-
                         <button
                           onClick={() => {
                             // Tự động đồng bộ data của địa điểm hiện tại vào Form trước khi hiển thị
@@ -1189,6 +1155,21 @@ export default function PlaceDetailModal({ place, onClose, onStatusUpdated, apiK
                     <span className="text-sm">{place.distanceText}</span>
                   </div>
                 )}
+
+                <button
+                  onClick={() => {
+                    if (!user) {
+                      showToast("Please log in to add places to an itinerary", "warning");
+                      return;
+                    }
+                    setShowAddToItinerary(true);
+                  }}
+                  aria-label="Add to Itinerary"
+                  title="Add to Itinerary"
+                  className="p-1.5 rounded-full text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  <Bookmark size={16} />
+                </button>
               </div>
 
               {/* Status */}
