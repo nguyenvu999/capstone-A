@@ -1,11 +1,5 @@
-// 💡 Chỉ cho phép đăng nhập Email/Password NẾU ĐANG Ở LOCAL (DEV) VÀ BIẾN ENV LÀ 'true'
-const isEmailPasswordEnabled = 
-  import.meta.env.DEV && 
-  import.meta.env.VITE_ENABLE_EMAIL_PASSWORD_LOGIN === "true";
+// src/shared/config/FeatureFlags.js
 
-// Sử dụng biến này để ẩn/hHiện form đăng nhập Email/Password
-if (isEmailPasswordEnabled) {
-  // Hiển thị ô nhập Email / Password
-} else {
-  // Chỉ hiển thị nút Đăng nhập bằng Microsoft SSO
-}
+// Chỉ bật khi ở LOCAL (import.meta.env.DEV) VÀ biến env = "true"
+export const ENABLE_EMAIL_PASSWORD_LOGIN =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_EMAIL_PASSWORD_LOGIN === "true";
