@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Check, X, FileText, Loader2, Eye } from "lucide-react";
+import { 
+  ArrowLeft, Check, X, FileText, Loader2, Eye, 
+  CheckCircle2, AlertCircle, Info 
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../auth/api/supabaseClient"; 
 import AdminNavbar from "../../admin-map/components/AdminNavbar";
@@ -15,9 +18,17 @@ export default function UpdateRequestsPage() {
   const [expandedRequestId, setExpandedRequestId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
 
+  // --- STATE TOAST NOTIFICATION ---
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+
+  const triggerToast = (message, type = "success") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: "", type: "success" });
+    }, 3500);
+  };
+
   // --- HÀM GỬI THÔNG BÁO ---
-  // ✅ MỚI: nhận thêm placeId, lưu vào cột "link" có sẵn trong bảng notifications
-  // (bảng không có cột place_id riêng nên tận dụng cột link để trỏ tới place)
   const sendNotification = async (email, title, message, placeId = null) => {
     try {
       const { data: userData } = await supabase
@@ -32,7 +43,7 @@ export default function UpdateRequestsPage() {
           title: title,
           message: message,
           is_read: false,
-          link: placeId ? String(placeId) : null, // ✅ MỚI
+          link: placeId ? String(placeId) : null,
         });
       }
     } catch (err) {
@@ -41,8 +52,6 @@ export default function UpdateRequestsPage() {
   };
 
   // FETCH REQUESTS AND JOIN WITH LIVE PLACES DATA
-  // ✅ MỚI: silent=true để refetch do realtime chạy êm, không hiện lại spinner
-  // full-page (chỉ dùng spinner cho lần load đầu tiên khi vào trang).
   const fetchRequests = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -77,7 +86,7 @@ export default function UpdateRequestsPage() {
       }
     } catch (error) {
       console.error("Error fetching requests:", error.message);
-      if (!silent) alert("Failed to load update requests: " + error.message);
+      if (!silent) triggerToast("Failed to load update requests: " + error.message, "error");
     } finally {
       if (!silent) setLoading(false);
     }
@@ -86,9 +95,6 @@ export default function UpdateRequestsPage() {
   useEffect(() => {
     fetchRequests();
 
-    // ✅ MỚI: Lắng nghe realtime trên bảng place_update_requests. Khi có request
-    // mới được user gửi lên (INSERT), hoặc 1 request khác được xử lý ở tab/máy
-    // khác (UPDATE), trang này tự fetch lại — không cần F5.
     const channel = supabase
       .channel("update_requests_page_realtime")
       .on(
@@ -199,7 +205,6 @@ export default function UpdateRequestsPage() {
 
       if (requestError) throw requestError;
 
-      // Gửi thông báo — ✅ truyền kèm place_id để user bấm vào mở đúng place
       await sendNotification(
         targetRequest.requested_by_email,
         "Update Approved",
@@ -212,10 +217,10 @@ export default function UpdateRequestsPage() {
       ));
       
       setShowApproveModal(null);
-      alert("Request approved! Changes have been successfully applied.");
+      triggerToast("Request approved! Changes applied successfully.", "success");
     } catch (error) {
       console.error("Approve error:", error.message);
-      alert(`Failed to approve request: ${error.message}`);
+      triggerToast(`Failed to approve request: ${error.message}`, "error");
     }
   };
 
@@ -234,7 +239,6 @@ export default function UpdateRequestsPage() {
 
       if (error) throw error;
 
-      // Gửi thông báo — ✅ truyền kèm place_id để user bấm vào mở đúng place
       await sendNotification(
         targetRequest.requested_by_email,
         "Update Rejected",
@@ -248,10 +252,10 @@ export default function UpdateRequestsPage() {
 
       setShowRejectModal(null);
       setRejectReason("");
-      alert("Request rejected.");
+      triggerToast("Request rejected.", "info");
     } catch (error) {
       console.error("Reject error:", error.message);
-      alert(`Failed to reject request: ${error.message}`);
+      triggerToast(`Failed to reject request: ${error.message}`, "error");
     }
   };
 
@@ -363,7 +367,7 @@ export default function UpdateRequestsPage() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-gray-50">
+    <div className="h-screen w-screen overflow-hidden flex flex-col bg-gray-50 relative">
       <AdminNavbar pendingRequestsCount={pendingCount} />
       
       <div className="flex-1 overflow-y-auto p-6">
@@ -503,7 +507,7 @@ export default function UpdateRequestsPage() {
         </div>
       </div>
 
-      {/* Approve Modal */}
+      {/* CONFIRMATION MODAL - APPROVE */}
       {showApproveModal && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
@@ -519,7 +523,7 @@ export default function UpdateRequestsPage() {
         </div>
       )}
 
-      {/* Reject Modal */}
+      {/* CONFIRMATION MODAL - REJECT */}
       {showRejectModal && (
         <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
@@ -539,12 +543,28 @@ export default function UpdateRequestsPage() {
         </div>
       )}
 
-      {/* Full Screen Image Preview */}
+      {/* FULL SCREEN IMAGE PREVIEW */}
       {previewImage && (
         <div className="fixed inset-0 z-[20000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-150" onClick={() => setPreviewImage(null)}>
           <div className="relative max-w-4xl max-h-[85vh] w-full flex items-center justify-center">
             <img src={previewImage} alt="Preview" className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200" />
           </div>
+        </div>
+      )}
+
+      {/* TOAST NOTIFICATION */}
+      {toast.show && (
+        <div className="fixed bottom-6 right-6 z-[30000] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl bg-white border border-gray-100 animate-in slide-in-from-bottom-5 duration-200">
+          {toast.type === "success" && <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />}
+          {toast.type === "error" && <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />}
+          {toast.type === "info" && <Info className="w-5 h-5 text-blue-500 shrink-0" />}
+          <span className="text-sm font-medium text-gray-800">{toast.message}</span>
+          <button 
+            onClick={() => setToast(prev => ({ ...prev, show: false }))} 
+            className="text-gray-400 hover:text-gray-600 ml-2 cursor-pointer transition-colors"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>
