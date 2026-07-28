@@ -2,14 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { MapPin, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { signInWithEmail, signUpWithEmail, signInWithMicrosoft } from "../api/authApi";
+import { signInWithEmail, signInWithMicrosoft } from "../api/authApi";
 import Logo from "../../../shared/ui/Logo";
 import { useAccessibility } from "../../../shared/context/AccessibilityContext";
+import { ENABLE_EMAIL_PASSWORD_LOGIN } from "../../../shared/config/FeatureFlags";
 
 function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isRegister, setIsRegister] = useState(false); 
   const [isSubmiting, setIsSubmiting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [showBlockedModal, setShowBlockedModal] = useState(false); // Access-denied modal shown after a redirect from AuthContext
@@ -42,22 +42,17 @@ function LoginPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Xử lý submit form đăng nhập / đăng ký bằng email
+  // Xử lý submit form đăng nhập bằng email
+  // ✅ Sign up đã bị xoá hoàn toàn — chỉ còn Sign In. Nếu ENABLE_EMAIL_PASSWORD_LOGIN
+  // = false thì cả form này không được render nên hàm dưới đây sẽ không bao giờ chạy.
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmiting(true);
     setErrorMsg("");
 
     try {
-      if (isRegister) {
-        const { error } = await signUpWithEmail(email, password);
-        if (error) throw error;
-        alert("Sign up successful! Please sign in.");
-        setIsRegister(false);
-      } else {
-        const { error } = await signInWithEmail(email, password);
-        if (error) throw error;
-      }
+      const { error } = await signInWithEmail(email, password);
+      if (error) throw error;
     } catch (err) {
       setErrorMsg(err.message || "An error occurred. Please try again.");
     } finally {
@@ -170,10 +165,12 @@ function LoginPage() {
         </div>
         <div className="text-center">
           <h1 className="mb-2 text-2xl font-bold">
-            {isRegister ? "Create an account" : "Sign in to NetSuggest"}
+            Sign in to NetSuggest
           </h1>
           <p className="mb-6 text-sm text-[#5f6a60]">
-            {isRegister ? "Sign up with your email" : "Use your email and password"}
+            {ENABLE_EMAIL_PASSWORD_LOGIN
+              ? "Use your email and password"
+              : "Sign in with your company Microsoft account"}
           </p>
           
           {errorMsg && (
@@ -182,58 +179,63 @@ function LoginPage() {
             </div>
           )}
 
-          {/* Form Email/Password Authentication */}
-          <form onSubmit={handleSubmit} className="space-y-4 text-left">
-            <div>
-              <label className="text-xs font-semibold text-gray-600">Email Address</label>
-              <input 
-                type="email" 
-                required 
-                value={email} 
-                onChange={e => setEmail(e.target.value)}
-                placeholder="name@company.com"
-                className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600">Password</label>
-              <input 
-                type="password" 
-                required 
-                value={password} 
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
-              />
-            </div>
-            
-            <button
-              type="submit"
-              disabled={isSubmiting}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#355e1d] px-4 text-base font-medium text-white transition hover:bg-[#2d4f18] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmiting && !isRegister ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Processing...
-                </>
-              ) : (
-                isRegister ? "Sign Up" : "Sign In"
-              )}
-            </button>
-          </form>
-          
-          {/* Đường phân cách lựa chọn OAuth */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-gray-400">Or continue with</span>
-            </div>
-          </div>
+          {/* ✅ Form Email/Password chỉ render khi feature flag bật (dev). Ở production
+              build với flag false, Vite tree-shake bỏ hẳn nhánh này khỏi bundle. */}
+          {ENABLE_EMAIL_PASSWORD_LOGIN && (
+            <>
+              <form onSubmit={handleSubmit} className="space-y-4 text-left">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600">Email Address</label>
+                  <input 
+                    type="email" 
+                    required 
+                    value={email} 
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600">Password</label>
+                  <input 
+                    type="password" 
+                    required 
+                    value={password} 
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="mt-1 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-[#355e1d] focus:outline-none transition" 
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={isSubmiting}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#355e1d] px-4 text-base font-medium text-white transition hover:bg-[#2d4f18] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmiting ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Sign In"
+                  )}
+                </button>
+              </form>
 
-          {/* Nút bấm Đăng nhập qua Microsoft */}
+              {/* Đường phân cách lựa chọn OAuth — chỉ cần khi có form email ở trên */}
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-400">Or continue with</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Nút bấm Đăng nhập qua Microsoft — luôn hiện, kể cả khi email/password bị tắt */}
           <button
             type="button"
             onClick={handleMicrosoftLogin}
@@ -247,15 +249,6 @@ function LoginPage() {
               <path fill="#ffba08" d="M12 12h11v11H12z"/>
             </svg>
             Sign in with Microsoft
-          </button>
-
-          {/* Chuyển đổi trạng thái Đăng ký / Đăng nhập */}
-          <button 
-            type="button"
-            onClick={() => { setIsRegister(!isRegister); setErrorMsg(""); }}
-            className="mt-6 text-xs font-semibold text-[#355e1d] hover:underline transition"
-          >
-            {isRegister ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
           </button>
 
           <p className="mt-6 text-xs text-[#6b746c]">

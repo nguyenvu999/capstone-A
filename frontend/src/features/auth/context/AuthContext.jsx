@@ -3,6 +3,13 @@ import { supabase } from "../api/supabaseClient";
 
 const AuthContext = createContext(null);
 
+// ✅ MỚI: whitelist domain gộp về 1 chỗ — thêm/bớt domain chỉ cần sửa mảng này,
+// không phải sửa rải rác ở nhiều nơi trong initializeAuth + onAuthStateChange.
+const ALLOWED_EMAIL_DOMAINS = ["@netcompany.com", "@rmit.edu.vn"];
+
+const isAllowedDomain = (email) =>
+  !!email && ALLOWED_EMAIL_DOMAINS.some((domain) => email.endsWith(domain));
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -42,8 +49,8 @@ export function AuthProvider({ children }) {
             return;
           }
 
-          // Security Restriction 2: Enforce strict whitelist policy matching the designated enterprise domain
-          if (!userEmail || !userEmail.endsWith("@netcompany.com")) {
+          // Security Restriction 2: Enforce strict whitelist policy matching the designated enterprise domains
+          if (!isAllowedDomain(userEmail)) {
             console.error("Access denied: Client application restricted to authorized domains only.");
             await logoutUser("domain");
             return;
@@ -111,7 +118,7 @@ export function AuthProvider({ children }) {
           }
 
           // Live Security Sweep 2: Whitelist inspection filter preventing foreign domain bindings
-          if (!userEmail || !userEmail.endsWith("@netcompany.com")) {
+          if (!isAllowedDomain(userEmail)) {
             console.error("Access denied: Client application restricted to authorized domains only.");
             await logoutUser("domain");
             return;
