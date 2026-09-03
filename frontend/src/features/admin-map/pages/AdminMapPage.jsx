@@ -6,12 +6,10 @@ import PlaceDetailModal from "../components/PlaceDetailModal";
 import { supabase } from "../../auth/api/supabaseClient";
 
 const API_KEYS = [
-  "24b262f2ae751784692056d25b64ebd3ed",
-  "1c5cc61784993958d5d9d3ac5c3a778bef",
-  "22c714e9b4b6001e5178499426733eaf11",
-  "1f4178499438602917861d2b0912ca8d00",
-  "141784994531dbd388f13b06d371db3334",
-  "a099eeeafc611784994658510372c95a96"
+  "9c17178845024480f72e8f0e2e65c8cf79",
+  "c86b43f0d5718c41788450376b4515dcc8",
+  "6c275e3fe36a330b178845042185e91818",
+  "3e906178845047522b0929545e1e98899e",
 ];
 
 export default function AdminMapPage() {
