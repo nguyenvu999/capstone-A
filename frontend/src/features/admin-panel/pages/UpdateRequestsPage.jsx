@@ -366,6 +366,85 @@ export default function UpdateRequestsPage() {
     );
   };
 
+  // ===== OPENING HOURS: PARSE + 2-COLUMN COMPARISON =====
+  const parseSchedule = (value) => {
+    if (!value) return [];
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return Array.isArray(value) ? value : [];
+  };
+
+  const formatDayLine = (day) => {
+    if (!day) return { text: "—" };
+    const dayName = day.dayOfWeek
+      ? day.dayOfWeek.charAt(0) + day.dayOfWeek.slice(1).toLowerCase()
+      : "Day";
+    if (!day.isOpen) return { dayName, text: "Closed" };
+    return { dayName, text: `${day.openTime || "N/A"} - ${day.closeTime || "N/A"}` };
+  };
+
+  const renderScheduleComparison = (oldSchedule, newSchedule) => {
+    const oldList = parseSchedule(oldSchedule);
+    const newList = parseSchedule(newSchedule);
+
+    const dayOrder = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+    const allDays = dayOrder.filter(d =>
+      oldList.some(x => x.dayOfWeek === d) || newList.some(x => x.dayOfWeek === d)
+    );
+
+    if (allDays.length === 0) {
+      return <p className="text-xs text-gray-500 italic">No schedule set</p>;
+    }
+
+    const dayLabel = (d) => d.charAt(0) + d.slice(1).toLowerCase();
+
+    return (
+      <div className="grid grid-cols-2 gap-4 mt-2 w-full">
+        <div className="p-3 bg-red-50/70 rounded-lg border border-red-100">
+          <span className="text-xs text-red-600 font-bold block mb-2">Old Schedule</span>
+          <div className="space-y-1">
+            {allDays.map(d => {
+              const oldDay = oldList.find(x => x.dayOfWeek === d);
+              const newDay = newList.find(x => x.dayOfWeek === d);
+              const oldF = formatDayLine(oldDay);
+              const changed = JSON.stringify(oldDay) !== JSON.stringify(newDay);
+              return (
+                <div key={d} className={`flex justify-between text-xs px-2 py-1 rounded ${changed ? "bg-red-100/80 font-semibold" : ""}`}>
+                  <span className="text-red-700">{dayLabel(d)}</span>
+                  <span className="text-red-700">{oldDay ? oldF.text : "—"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="p-3 bg-green-50/70 rounded-lg border border-green-100">
+          <span className="text-xs text-green-600 font-bold block mb-2">New Schedule</span>
+          <div className="space-y-1">
+            {allDays.map(d => {
+              const oldDay = oldList.find(x => x.dayOfWeek === d);
+              const newDay = newList.find(x => x.dayOfWeek === d);
+              const newF = formatDayLine(newDay);
+              const changed = JSON.stringify(oldDay) !== JSON.stringify(newDay);
+              return (
+                <div key={d} className={`flex justify-between text-xs px-2 py-1 rounded ${changed ? "bg-green-100/80 font-semibold" : ""}`}>
+                  <span className="text-green-700">{dayLabel(d)}</span>
+                  <span className="text-green-700">{newDay ? newF.text : "—"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-gray-50 relative">
       <AdminNavbar pendingRequestsCount={pendingCount} />
@@ -463,6 +542,8 @@ export default function UpdateRequestsPage() {
                                 
                                 {field.key === "images" ? (
                                   renderImageComparison(field.oldVal, field.newVal)
+                                ) : field.key === "opening_hours" ? (
+                                  renderScheduleComparison(field.oldVal, field.newVal)
                                 ) : field.changed ? (
                                   <div className="grid grid-cols-1 gap-2">
                                     <div className="p-2 bg-red-50/70 rounded border border-red-100 flex items-start gap-1.5">
